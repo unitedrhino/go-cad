@@ -7,51 +7,19 @@ package cad
 import (
 	"bytes"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"image/png"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
 
-// requirePreR13Sample 返回样本字节；语料不可用时跳过测试。
-func requirePreR13Sample(t *testing.T, rel string) []byte {
-	t.Helper()
-	path := filepath.Join(testsupport.LibredwgTestDataDir(), rel)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Skipf("pre-R13 样本不可用: %v", err)
-	}
-	return data
-}
-
-// parsePreR13Gold 用 LibreDWG dwgread 生成样本 gold JSON（不可用时跳过）。
-func parsePreR13Gold(t *testing.T, dwgPath string) string {
-	t.Helper()
-	dwgread, err := exec.LookPath("/tmp/libredwg-build/dwgread")
-	if err != nil {
-		if dwgread, err = exec.LookPath("dwgread"); err != nil {
-			t.Skip("dwgread 不可用，跳过 gold 对照")
-		}
-	}
-	out := filepath.Join(t.TempDir(), "gold.json")
-	cmd := exec.Command(dwgread, "-O", "JSON", "-o", out, dwgPath)
-	if err := cmd.Run(); err != nil {
-		t.Skipf("dwgread 生成 gold 失败: %v", err)
-	}
-	data, err := os.ReadFile(out)
-	if err != nil {
-		t.Skipf("读取 gold 失败: %v", err)
-	}
-	return string(data)
-}
-
 // TestPreR13ParseR10Gold R10 样本实体几何与 gold 值级对照
 // （gold 值取自 dwgread -O JSON，见 test-data/r10/entities.dwg）。
 func TestPreR13ParseR10Gold(t *testing.T) {
-	data := requirePreR13Sample(t, filepath.Join("r10", "entities.dwg"))
+	data := testsupport.RequirePreR13Sample(t, filepath.Join("r10", "entities.dwg"))
 	doc, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Parse R10 失败: %v", err)
@@ -63,7 +31,7 @@ func TestPreR13ParseR10Gold(t *testing.T) {
 	var lines []*entity.EntLine
 	var texts []*entity.EntText
 	var circles []*entity.EntCircle
-	for _, e := range doc.modelSpace {
+	for _, e := range doc.ModelSpace {
 		switch v := e.(type) {
 		case *entity.EntLine:
 			lines = append(lines, v)
@@ -105,7 +73,7 @@ func TestPreR13ParseR10Gold(t *testing.T) {
 
 // TestPreR13ParseR11Gold R11 样本逐实体几何对照（/entities-2d.dwg gold 值）。
 func TestPreR13ParseR11Gold(t *testing.T) {
-	data := requirePreR13Sample(t, filepath.Join("r11", "entities-2d.dwg"))
+	data := testsupport.RequirePreR13Sample(t, filepath.Join("r11", "entities-2d.dwg"))
 	doc, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Parse R11 失败: %v", err)
@@ -116,14 +84,14 @@ func TestPreR13ParseR11Gold(t *testing.T) {
 	// gold 值（dwgread -O JSON entities-2d.dwg）：
 	// POINT (1,2,3)；LINE (2,3,4)-(3,4,5)；ARC c=(5,5) r=1 a=270°~0°；
 	// CIRCLE c=(3,1) r=1（elev=2）；TEXT "FOO" ins=(1,4) h=0.75 对齐点 (3,4)
-	wantPoint := entity.Point3{1, 2, 3}
+	wantPoint := entity.Point3{X: 1, Y: 2, Z: 3}
 	gotPoint := false
 	wantLine := [6]float64{2, 3, 4, 3, 4, 5}
 	gotLine := false
 	wantArc := false
 	wantCircle := false
 	var fooText *entity.EntText
-	for _, e := range doc.modelSpace {
+	for _, e := range doc.ModelSpace {
 		switch v := e.(type) {
 		case *entity.EntPoint:
 			if testsupport.NearEq(v.Location.X, wantPoint.X) && testsupport.NearEq(v.Location.Y, wantPoint.Y) && testsupport.NearEq(v.Location.Z, wantPoint.Z) {
@@ -179,7 +147,7 @@ func TestPreR13ParseR11Gold(t *testing.T) {
 
 // TestPreR13Texts R11 的 Texts() 提取（Document 文本链路接入验证）。
 func TestPreR13Texts(t *testing.T) {
-	data := requirePreR13Sample(t, filepath.Join("r11", "entities-2d.dwg"))
+	data := testsupport.RequirePreR13Sample(t, filepath.Join("r11", "entities-2d.dwg"))
 	doc, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Parse 失败: %v", err)
@@ -206,7 +174,7 @@ func TestPreR13RenderPNG(t *testing.T) {
 		filepath.Join("r11", "entities-3d.dwg"),
 	}
 	for _, rel := range samples {
-		data := requirePreR13Sample(t, rel)
+		data := testsupport.RequirePreR13Sample(t, rel)
 		doc, err := Parse(data)
 		if err != nil {
 			t.Errorf("%s: Parse 失败: %v", rel, err)
@@ -235,13 +203,13 @@ func TestPreR13F2Shape(t *testing.T) {
 		filepath.Join("r10", "entities.dwg"),
 		filepath.Join("r11", "entities-2d.dwg"),
 	} {
-		data := requirePreR13Sample(t, rel)
+		data := testsupport.RequirePreR13Sample(t, rel)
 		doc, err := Parse(data)
 		if err != nil {
 			t.Fatalf("%s: Parse 失败: %v", rel, err)
 		}
 		var shape *entity.EntShape
-		for _, e := range doc.modelSpace {
+		for _, e := range doc.ModelSpace {
 			if s, ok := e.(*entity.EntShape); ok {
 				shape = s
 			}
@@ -274,14 +242,14 @@ func TestPreR13F2Attrib(t *testing.T) {
 		filepath.Join("r10", "entities.dwg"),
 		filepath.Join("r11", "entities-2d.dwg"),
 	} {
-		data := requirePreR13Sample(t, rel)
+		data := testsupport.RequirePreR13Sample(t, rel)
 		doc, err := Parse(data)
 		if err != nil {
 			t.Fatalf("%s: Parse 失败: %v", rel, err)
 		}
 		var attdefs []*entity.EntAttrib
 		var attrib *entity.EntAttrib
-		for _, e := range doc.modelSpace {
+		for _, e := range doc.ModelSpace {
 			switch v := e.(type) {
 			case *entity.EntAttrib:
 				if v.TypeName == "ATTDEF" {
@@ -337,7 +305,7 @@ func TestPreR13F2Attrib(t *testing.T) {
 		}
 	}
 	// R11 entities-2d：Texts() 链路应提取 ATTRIB "4" 与 ATTDEF 缺省值 "3"
-	data := requirePreR13Sample(t, filepath.Join("r11", "entities-2d.dwg"))
+	data := testsupport.RequirePreR13Sample(t, filepath.Join("r11", "entities-2d.dwg"))
 	doc, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Parse 失败: %v", err)
@@ -366,13 +334,13 @@ func TestPreR13F23DLine(t *testing.T) {
 		{filepath.Join("r10", "entities.dwg"), 5, 9, 0, 6, 10, 1},
 	}
 	for _, tc := range cases {
-		data := requirePreR13Sample(t, tc.rel)
+		data := testsupport.RequirePreR13Sample(t, tc.rel)
 		doc, err := Parse(data)
 		if err != nil {
 			t.Fatalf("%s: Parse 失败: %v", tc.rel, err)
 		}
 		var line *entity.EntLine
-		for _, e := range doc.modelSpace {
+		for _, e := range doc.ModelSpace {
 			if v, ok := e.(*entity.EntLine); ok && v.TypeName == "3DLINE" {
 				line = v
 			}
@@ -400,13 +368,13 @@ func TestPreR13F23DFace(t *testing.T) {
 		filepath.Join("r10", "entities.dwg"),
 		filepath.Join("r11", "entities-3d.dwg"),
 	} {
-		data := requirePreR13Sample(t, rel)
+		data := testsupport.RequirePreR13Sample(t, rel)
 		doc, err := Parse(data)
 		if err != nil {
 			t.Fatalf("%s: Parse 失败: %v", rel, err)
 		}
 		var face *entity.EntFace3d
-		for _, e := range doc.modelSpace {
+		for _, e := range doc.ModelSpace {
 			if v, ok := e.(*entity.EntFace3d); ok {
 				face = v
 			}
@@ -427,19 +395,19 @@ func TestPreR13F23DFace(t *testing.T) {
 // TestPreR13F2Viewport ACEB10 VIEWPORT 与 gold 值级对照（图纸空间实体：
 // center=(28.566,17,0) width=57.132 height=34 id=1，存档 pspaceSpace）。
 func TestPreR13F2Viewport(t *testing.T) {
-	data := requirePreR13Sample(t, filepath.Join("r11", "ACEB10.dwg"))
+	data := testsupport.RequirePreR13Sample(t, filepath.Join("r11", "ACEB10.dwg"))
 	doc, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Parse 失败: %v", err)
 	}
 	var vp *entity.EntViewport
-	for _, e := range doc.pspaceSpace {
+	for _, e := range doc.PspaceSpace {
 		if v, ok := e.(*entity.EntViewport); ok {
 			vp = v
 		}
 	}
 	if vp == nil {
-		t.Fatalf("pspaceSpace 未解出 VIEWPORT（共 %d 实体）", len(doc.pspaceSpace))
+		t.Fatalf("pspaceSpace 未解出 VIEWPORT（共 %d 实体）", len(doc.PspaceSpace))
 	}
 	if !testsupport.NearEq(vp.Center.X, 28.56607142857143) || !testsupport.NearEq(vp.Center.Y, 17) || !testsupport.NearEq(vp.Center.Z, 0) {
 		t.Errorf("VIEWPORT center = (%v,%v,%v), want (28.566,17,0)", vp.Center.X, vp.Center.Y, vp.Center.Z)
@@ -472,13 +440,13 @@ func TestPreR13F2Dimension(t *testing.T) {
 		{filepath.Join("r11", "entities-2d.dwg"), 2, 3},
 	}
 	for _, tc := range cases {
-		data := requirePreR13Sample(t, tc.rel)
+		data := testsupport.RequirePreR13Sample(t, tc.rel)
 		doc, err := Parse(data)
 		if err != nil {
 			t.Fatalf("%s: Parse 失败: %v", tc.rel, err)
 		}
 		var dim *entity.EntDimension
-		for _, e := range doc.modelSpace {
+		for _, e := range doc.ModelSpace {
 			if v, ok := e.(*entity.EntDimension); ok && v.TypeName == "DIMENSION_ALIGNED" {
 				dim = v
 			}
@@ -504,13 +472,13 @@ func TestPreR13F2Dimension(t *testing.T) {
 		}
 	}
 	// ACEB10：15 个 DIMENSION_LINEAR（图纸空间），gold 首条几何对照
-	data := requirePreR13Sample(t, filepath.Join("r11", "ACEB10.dwg"))
+	data := testsupport.RequirePreR13Sample(t, filepath.Join("r11", "ACEB10.dwg"))
 	doc, err := Parse(data)
 	if err != nil {
 		t.Fatalf("ACEB10: Parse 失败: %v", err)
 	}
 	var dims []*entity.EntDimension
-	for _, e := range doc.pspaceSpace {
+	for _, e := range doc.PspaceSpace {
 		if v, ok := e.(*entity.EntDimension); ok && v.TypeName == "DIMENSION_LINEAR" {
 			dims = append(dims, v)
 		}
@@ -547,21 +515,21 @@ func TestPreR13F2Dimension(t *testing.T) {
 // polyline（flag=1）；ACEB10 块区 27 POLYLINE 聚合 93 顶点。
 func TestPreR13F2Polyline(t *testing.T) {
 	// entities-2d（R11）
-	data := requirePreR13Sample(t, filepath.Join("r11", "entities-2d.dwg"))
+	data := testsupport.RequirePreR13Sample(t, filepath.Join("r11", "entities-2d.dwg"))
 	doc, err := Parse(data)
 	if err != nil {
 		t.Fatalf("entities-2d: Parse 失败: %v", err)
 	}
 	assertPolylineVerts(t, "entities-2d", doc, 1, [][3]float64{{5, 7, 2}, {6, 8, 2}, {7, 7, 2}})
 	// r10（主区 + extras 区闭合 POLYLINE）
-	data = requirePreR13Sample(t, filepath.Join("r10", "entities.dwg"))
+	data = testsupport.RequirePreR13Sample(t, filepath.Join("r10", "entities.dwg"))
 	doc, err = Parse(data)
 	if err != nil {
 		t.Fatalf("r10: Parse 失败: %v", err)
 	}
 	assertPolylineVerts(t, "r10", doc, 2, [][3]float64{{5, 7, 0}, {6, 8, 0}, {7, 7, 0}})
 	var closed *entity.EntPolyline2d
-	for _, e := range doc.modelSpace {
+	for _, e := range doc.ModelSpace {
 		if p, ok := e.(*entity.EntPolyline2d); ok && p.Flags&1 != 0 {
 			closed = p
 		}
@@ -570,14 +538,14 @@ func TestPreR13F2Polyline(t *testing.T) {
 		t.Errorf("r10: 未找到闭合 POLYLINE_2D（extras flag=1）")
 	}
 	// ACEB10：块区 POLYLINE 与顶点聚合
-	data = requirePreR13Sample(t, filepath.Join("r11", "ACEB10.dwg"))
+	data = testsupport.RequirePreR13Sample(t, filepath.Join("r11", "ACEB10.dwg"))
 	doc, err = Parse(data)
 	if err != nil {
 		t.Fatalf("ACEB10: Parse 失败: %v", err)
 	}
 	np, nv := 0, 0
 	owned := 0
-	for _, list := range doc.blocks {
+	for _, list := range doc.Blocks {
 		for _, e := range list {
 			switch v := e.(type) {
 			case *entity.EntPolyline2d:
@@ -605,7 +573,7 @@ func assertPolylineVerts(t *testing.T, name string, doc *Document, wantN int, wa
 	t.Helper()
 	var poly *entity.EntPolyline2d
 	n := 0
-	for _, e := range doc.modelSpace {
+	for _, e := range doc.ModelSpace {
 		if p, ok := e.(*entity.EntPolyline2d); ok {
 			n++
 			if poly == nil {
@@ -620,7 +588,7 @@ func assertPolylineVerts(t *testing.T, name string, doc *Document, wantN int, wa
 		return
 	}
 	var vmap = map[uint64]*entity.EntVertex2d{}
-	for _, e := range doc.modelSpace {
+	for _, e := range doc.ModelSpace {
 		if v, ok := e.(*entity.EntVertex2d); ok {
 			vmap[v.Handle] = v
 		}
@@ -655,9 +623,9 @@ func TestPreR13F2TypeCounts(t *testing.T) {
 				}
 			}
 		}
-		add(doc.modelSpace)
-		add(doc.pspaceSpace)
-		for _, list := range doc.blocks {
+		add(doc.ModelSpace)
+		add(doc.PspaceSpace)
+		for _, list := range doc.Blocks {
 			add(list)
 		}
 		return count
@@ -677,7 +645,7 @@ func TestPreR13F2TypeCounts(t *testing.T) {
 		"3DLINE": 1, "3DFACE": 1,
 	}
 	for _, rel := range []string{filepath.Join("r9", "entities.dwg"), filepath.Join("r10", "entities.dwg")} {
-		data := requirePreR13Sample(t, rel)
+		data := testsupport.RequirePreR13Sample(t, rel)
 		doc, err := Parse(data)
 		if err != nil {
 			t.Fatalf("%s: Parse 失败: %v", rel, err)
@@ -690,13 +658,13 @@ func TestPreR13F2TypeCounts(t *testing.T) {
 		"INSERT": 2, "SHAPE": 1, "SOLID": 3, "ATTDEF": 3, "ATTRIB": 1,
 		"POLYLINE_2D": 1, "VERTEX_2D": 3, "DIMENSION_ALIGNED": 1,
 	}
-	data := requirePreR13Sample(t, filepath.Join("r11", "entities-2d.dwg"))
+	data := testsupport.RequirePreR13Sample(t, filepath.Join("r11", "entities-2d.dwg"))
 	doc, err := Parse(data)
 	if err != nil {
 		t.Fatalf("entities-2d: Parse 失败: %v", err)
 	}
 	assert("entities-2d", countTypes(doc), r11)
-	data = requirePreR13Sample(t, filepath.Join("r11", "entities-3d.dwg"))
+	data = testsupport.RequirePreR13Sample(t, filepath.Join("r11", "entities-3d.dwg"))
 	doc, err = Parse(data)
 	if err != nil {
 		t.Fatalf("entities-3d: Parse 失败: %v", err)
@@ -704,7 +672,7 @@ func TestPreR13F2TypeCounts(t *testing.T) {
 	r11["3DFACE"] = 1
 	assert("entities-3d", countTypes(doc), r11)
 	// ACEB10：块区 + 图纸空间（主区全 PSPACE）
-	data = requirePreR13Sample(t, filepath.Join("r11", "ACEB10.dwg"))
+	data = testsupport.RequirePreR13Sample(t, filepath.Join("r11", "ACEB10.dwg"))
 	doc, err = Parse(data)
 	if err != nil {
 		t.Fatalf("ACEB10: Parse 失败: %v", err)
@@ -719,16 +687,16 @@ func TestPreR13F2TypeCounts(t *testing.T) {
 // TestPreR13F2InsertAttribs INSERT 的 HAS_ATTRIBS 位与后续 ATTRIB 挂接
 // （gold r10：INSERT flag_r11=128，后随 ATTRIB(31) 至 SEQEND）。
 func TestPreR13F2InsertAttribs(t *testing.T) {
-	data := requirePreR13Sample(t, filepath.Join("r10", "entities.dwg"))
+	data := testsupport.RequirePreR13Sample(t, filepath.Join("r10", "entities.dwg"))
 	doc, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Parse 失败: %v", err)
 	}
 	withAttribs := 0
-	for _, e := range doc.modelSpace {
+	for _, e := range doc.ModelSpace {
 		if ins, ok := e.(*entity.EntInsert); ok && len(ins.Attribs) > 0 {
 			withAttribs++
-			if doc.attribs[ins.Attribs[0]] == nil {
+			if doc.Attribs[ins.Attribs[0]] == nil {
 				t.Errorf("INSERT attribs[0]=%d 未归档 doc.attribs", ins.Attribs[0])
 			}
 		}
@@ -742,28 +710,28 @@ func TestPreR13F2InsertAttribs(t *testing.T) {
 // 3DFACE 图元进入展开结果，ACEB10（图纸空间布局）渲染非空白，
 // PNG 编码成功。
 func TestPreR13F2Render(t *testing.T) {
-	data := requirePreR13Sample(t, filepath.Join("r11", "entities-2d.dwg"))
+	data := testsupport.RequirePreR13Sample(t, filepath.Join("r11", "entities-2d.dwg"))
 	doc, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Parse 失败: %v", err)
 	}
 	count := map[string]int{}
-	for _, p := range newTessellator(doc).expandAll() {
-		count[p.kind0]++
+	for _, p := range drawing.NewTessellator(doc).ExpandAll() {
+		count[p.Kind0]++
 	}
 	for _, kind := range []string{"POLYLINE_2D", "DIMENSION", "ATTRIB", "LINE"} {
 		if count[kind] == 0 {
 			t.Errorf("entities-2d 渲染原语缺 %s（%v）", kind, count)
 		}
 	}
-	data = requirePreR13Sample(t, filepath.Join("r10", "entities.dwg"))
+	data = testsupport.RequirePreR13Sample(t, filepath.Join("r10", "entities.dwg"))
 	doc, err = Parse(data)
 	if err != nil {
 		t.Fatalf("Parse 失败: %v", err)
 	}
 	count = map[string]int{}
-	for _, p := range newTessellator(doc).expandAll() {
-		count[p.kind0]++
+	for _, p := range drawing.NewTessellator(doc).ExpandAll() {
+		count[p.Kind0]++
 	}
 	// 3DLINE 复用 entLine 模型，渲染输出为 LINE 原语（r10 gold 3 条 LINE
 	// + 1 条 3DLINE = 4）；3DFACE 独立原语
@@ -771,12 +739,12 @@ func TestPreR13F2Render(t *testing.T) {
 		t.Errorf("r10 渲染原语缺 3DFACE 或 LINE 数不对（%v）", count)
 	}
 	// ACEB10：图纸空间布局展开非空白（批次 F 时为 0 原语空白图）
-	data = requirePreR13Sample(t, filepath.Join("r11", "ACEB10.dwg"))
+	data = testsupport.RequirePreR13Sample(t, filepath.Join("r11", "ACEB10.dwg"))
 	doc, err = Parse(data)
 	if err != nil {
 		t.Fatalf("Parse 失败: %v", err)
 	}
-	prims := newTessellator(doc).expandAll()
+	prims := drawing.NewTessellator(doc).ExpandAll()
 	if len(prims) < 1000 {
 		t.Errorf("ACEB10 渲染原语 = %d, want >= 1000（图纸空间+块展开）", len(prims))
 	}
@@ -793,20 +761,20 @@ func TestPreR13F2Render(t *testing.T) {
 // 文件 BLOCK 表为 [BLOCK1, BLOCK2, *D]，INSERT 的 RS 引用即该表索引；
 // 块实体区 BLOCK/ENDBLK 界定内容归属）。
 func TestPreR13BlockInsert(t *testing.T) {
-	data := requirePreR13Sample(t, filepath.Join("r10", "entities.dwg"))
+	data := testsupport.RequirePreR13Sample(t, filepath.Join("r10", "entities.dwg"))
 	doc, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Parse 失败: %v", err)
 	}
 	total := 0
-	for _, list := range doc.blocks {
+	for _, list := range doc.Blocks {
 		total += len(list)
 	}
 	if total == 0 {
 		t.Fatalf("块定义内容为空，期望 BLOCK1/*D 有归属实体")
 	}
 	var inserts []*entity.EntInsert
-	for _, e := range doc.modelSpace {
+	for _, e := range doc.ModelSpace {
 		if ins, ok := e.(*entity.EntInsert); ok {
 			inserts = append(inserts, ins)
 		}
@@ -822,7 +790,7 @@ func TestPreR13BlockInsert(t *testing.T) {
 		}
 		// gold：INSERT 引用 BLOCK1（含 LINE）；引用 BLOCK2 的内容仅
 		// ATTDEF（首批实体集之外，允许为空）
-		if len(doc.blocks[ins.BlockHeader]) > 0 {
+		if len(doc.Blocks[ins.BlockHeader]) > 0 {
 			withContent++
 		}
 	}
@@ -848,8 +816,8 @@ func TestPreR13DWGReadCross(t *testing.T) {
 	}
 	for _, rel := range samples {
 		path := filepath.Join(testsupport.LibredwgTestDataDir(), rel)
-		_ = parsePreR13Gold(t, path)
-		data := requirePreR13Sample(t, rel)
+		_ = testsupport.ParsePreR13Gold(t, path)
+		data := testsupport.RequirePreR13Sample(t, rel)
 		doc, err := Parse(data)
 		if err != nil {
 			t.Errorf("%s: %v", rel, err)
@@ -865,16 +833,16 @@ func TestPreR13DWGReadCross(t *testing.T) {
 // TestPreR13LayerColor R11 样本 LAYER 表颜色解析（gold：表条目
 // name="0" color=7、name="DEFPOINTS" color=7；索引即实体 layerIdx）。
 func TestPreR13LayerColor(t *testing.T) {
-	data := requirePreR13Sample(t, filepath.Join("r11", "entities-2d.dwg"))
+	data := testsupport.RequirePreR13Sample(t, filepath.Join("r11", "entities-2d.dwg"))
 	doc, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Parse 失败: %v", err)
 	}
-	if len(doc.layerColors) < 2 {
-		t.Fatalf("图层颜色数 = %d，期望至少 2 条", len(doc.layerColors))
+	if len(doc.LayerColors) < 2 {
+		t.Fatalf("图层颜色数 = %d，期望至少 2 条", len(doc.LayerColors))
 	}
-	for idx, lc := range doc.layerColors {
-		if lc.index == 0 {
+	for idx, lc := range doc.LayerColors {
+		if lc.Index == 0 {
 			t.Errorf("图层 %d 颜色索引为 0（表条目解析未命中）", idx)
 		}
 	}
@@ -886,7 +854,7 @@ func TestPreR13LayerColor(t *testing.T) {
 // 渲染出图。gold 口径：块区+图纸空间全部实体计数对齐 dwgread
 // （TestPreR13F2TypeCounts），模型空间/块内实体 1269 个。
 func TestPreR13ACEB10Smoke(t *testing.T) {
-	data := requirePreR13Sample(t, filepath.Join("r11", "ACEB10.dwg"))
+	data := testsupport.RequirePreR13Sample(t, filepath.Join("r11", "ACEB10.dwg"))
 	doc, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Parse 失败: %v", err)

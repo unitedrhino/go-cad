@@ -199,7 +199,7 @@ func TestEntityScanDebug(t *testing.T) {
 			t.Fatal(err)
 		}
 		fmt.Printf("type=%d dataStartBit=%d size=%d bodyLen=%d dataEnd=%d codepage=%d\n",
-			h.TypeCode, h.DataStartBit, rec.Size, len(rec.Body)*8, rec.DataEndBit(), doc.codepage)
+			h.TypeCode, h.DataStartBit, rec.Size, len(rec.Body)*8, rec.DataEndBit(), doc.Codepage)
 		r := rec.BodyBitStream()
 		r.SetBitPos(h.DataStartBit)
 		head, err := entity.ParseCommonEntityHeadR14(r, rec.DataEndBit())
@@ -249,7 +249,7 @@ func TestEntityScanDebug(t *testing.T) {
 		rd("extents_h", eh, e8)
 		ew, e9 := r.ReadBD()
 		rd("extents_w", ew, e9)
-		tv, e10 := r.ReadTV(doc.codepage)
+		tv, e10 := r.ReadTV(doc.Codepage)
 		if e10 != nil {
 			t.Fatalf("text: %v", e10)
 		}

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/object"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
@@ -22,10 +23,10 @@ import (
 func fwdSynthDoc(t *testing.T, ents ...any) *Document {
 	t.Helper()
 	doc := &Document{
-		version:     container.VerR2000,
-		blocks:      map[uint64][]any{},
-		attribs:     map[uint64]*entity.EntAttrib{},
-		layerColors: map[uint64]layerColor{0x10: {index: 3, name: "FWD"}},
+		Ver:         container.VerR2000,
+		Blocks:      map[uint64][]any{},
+		Attribs:     map[uint64]*entity.EntAttrib{},
+		LayerColors: map[uint64]drawing.LayerColor{0x10: {Index: 3, Name: "FWD"}},
 	}
 	for i, e := range ents {
 		b := entity.EntityBase(e)
@@ -35,7 +36,7 @@ func fwdSynthDoc(t *testing.T, ents ...any) *Document {
 		b.Handle = uint64(0x30 + i)
 		b.Mode = 2
 		b.Layer = 0x10
-		doc.classify(e)
+		doc.Classify(e)
 	}
 	return doc
 }
@@ -61,34 +62,34 @@ func nearGeo(a, b float64) bool { return math.Abs(a-b) < 0.01 }
 // ELLIPSE/LWPOLYLINE/TEXT/MTEXT/SOLID/3DFACE）→ WriteDwg → Parse，
 // 实体数、类型、几何与文本逐项对照。
 func TestWriteForwardSyntheticR2000(t *testing.T) {
-	line := &entity.EntLine{Start: entity.Point3{0, 0, 0}, End: entity.Point3{100, 50, 0}}
-	circle := &entity.EntCircle{Center: entity.Point3{10, 20, 0}, Radius: 12.5}
-	arc := &entity.EntArc{Center: entity.Point3{5, 6, 0}, Radius: 7, AngleStart: 0.5, AngleEnd: 2.5}
-	point := &entity.EntPoint{Location: entity.Point3{33, 44, 0}, Rotation: 1.25}
-	ellipse := &entity.EntEllipse{Center: entity.Point3{1, 2, 0}, MajorAxis: entity.Point3{10, 0, 0}, Ratio: 0.5, StartAng: 0, EndAng: math.Pi}
+	line := &entity.EntLine{Start: entity.Point3{X: 0, Y: 0, Z: 0}, End: entity.Point3{X: 100, Y: 50, Z: 0}}
+	circle := &entity.EntCircle{Center: entity.Point3{X: 10, Y: 20, Z: 0}, Radius: 12.5}
+	arc := &entity.EntArc{Center: entity.Point3{X: 5, Y: 6, Z: 0}, Radius: 7, AngleStart: 0.5, AngleEnd: 2.5}
+	point := &entity.EntPoint{Location: entity.Point3{X: 33, Y: 44, Z: 0}, Rotation: 1.25}
+	ellipse := &entity.EntEllipse{Center: entity.Point3{X: 1, Y: 2, Z: 0}, MajorAxis: entity.Point3{X: 10, Y: 0, Z: 0}, Ratio: 0.5, StartAng: 0, EndAng: math.Pi}
 	lwp := &entity.EntLwPolyline{
 		Vertices: []entity.Point2{{0, 0}, {10, 0}, {10, 10}, {0, 10}},
 		Bulges:   []float64{0, 0.5, 0, 0},
 	}
-	text := &entity.EntText{Text: "HELLO_FWD", Insertion: entity.Point3{7, 8, 0}, Height: 3.5, Rotation: 0.25}
-	mtext := &entity.EntMText{Text: "MTEXT_FWD", Insertion: entity.Point3{9, 9, 0}, RectWidth: 20, TextHeight: 2.5, Attachment: 1, XAxisDir: entity.Point3{1, 0, 0}}
-	solid := &entity.EntSolid{P1: entity.Point2{0, 0}, P2: entity.Point2{10, 0}, P3: entity.Point2{0, 10}, P4: entity.Point2{10, 10}, Elevation: 1.5, Thickness: 0.25, Extrusion: entity.Point3{0, 0, 1}}
-	face := &entity.EntFace3d{P1: entity.Point3{0, 0, 0}, P2: entity.Point3{20, 0, 0}, P3: entity.Point3{20, 15, 0}, P4: entity.Point3{0, 15, 0}}
+	text := &entity.EntText{Text: "HELLO_FWD", Insertion: entity.Point3{X: 7, Y: 8, Z: 0}, Height: 3.5, Rotation: 0.25}
+	mtext := &entity.EntMText{Text: "MTEXT_FWD", Insertion: entity.Point3{X: 9, Y: 9, Z: 0}, RectWidth: 20, TextHeight: 2.5, Attachment: 1, XAxisDir: entity.Point3{X: 1, Y: 0, Z: 0}}
+	solid := &entity.EntSolid{P1: entity.Point2{X: 0, Y: 0}, P2: entity.Point2{X: 10, Y: 0}, P3: entity.Point2{X: 0, Y: 10}, P4: entity.Point2{X: 10, Y: 10}, Elevation: 1.5, Thickness: 0.25, Extrusion: entity.Point3{X: 0, Y: 0, Z: 1}}
+	face := &entity.EntFace3d{P1: entity.Point3{X: 0, Y: 0, Z: 0}, P2: entity.Point3{X: 20, Y: 0, Z: 0}, P3: entity.Point3{X: 20, Y: 15, Z: 0}, P4: entity.Point3{X: 0, Y: 15, Z: 0}}
 	doc := fwdSynthDoc(t, line, circle, arc, point, ellipse, lwp, text, mtext, solid, face)
 	got := fwdWriteParse(t, doc)
-	if got.EntityCount() != len(doc.modelSpace) {
-		t.Fatalf("实体数: %d != %d", got.EntityCount(), len(doc.modelSpace))
+	if got.EntityCount() != len(doc.ModelSpace) {
+		t.Fatalf("实体数: %d != %d", got.EntityCount(), len(doc.ModelSpace))
 	}
 	if got.Version() != "AC1015" {
 		t.Fatalf("版本: %s != AC1015", got.Version())
 	}
 	// 逐类型取回读实体并对照几何（按句柄映射）
 	byHandle := map[uint64]any{}
-	for _, e := range got.modelSpace {
+	for _, e := range got.ModelSpace {
 		byHandle[entity.EntityBase(e).Handle] = e
 	}
-	if len(byHandle) != len(doc.modelSpace) {
-		t.Fatalf("回读实体种类数: %d != %d", len(byHandle), len(doc.modelSpace))
+	if len(byHandle) != len(doc.ModelSpace) {
+		t.Fatalf("回读实体种类数: %d != %d", len(byHandle), len(doc.ModelSpace))
 	}
 	gl := byHandle[line.Handle].(*entity.EntLine)
 	if !nearGeo(gl.Start.X, 0) || !nearGeo(gl.Start.Y, 0) || !nearGeo(gl.End.X, 100) || !nearGeo(gl.End.Y, 50) {
@@ -99,7 +100,7 @@ func TestWriteForwardSyntheticR2000(t *testing.T) {
 		t.Errorf("CIRCLE 几何: %+v r=%v", gc.Center, gc.Radius)
 	}
 	ga := byHandle[arc.Handle].(*entity.EntArc)
-	if !nearGeo(ga.Radius, 7) || !nearGeo(rad2deg(ga.AngleStart), rad2deg(0.5)) || !nearGeo(rad2deg(ga.AngleEnd), rad2deg(2.5)) {
+	if !nearGeo(ga.Radius, 7) || !nearGeo(drawing.Rad2deg(ga.AngleStart), drawing.Rad2deg(0.5)) || !nearGeo(drawing.Rad2deg(ga.AngleEnd), drawing.Rad2deg(2.5)) {
 		t.Errorf("ARC 几何: r=%v a0=%v a1=%v", ga.Radius, ga.AngleStart, ga.AngleEnd)
 	}
 	gp := byHandle[point.Handle].(*entity.EntPoint)
@@ -160,36 +161,36 @@ func TestWriteForwardBlockInsert(t *testing.T) {
 	doc := fwdSynthDoc(t)
 	const blkHdl = uint64(0x200)
 	// 块内 POLYLINE_2D + 2 顶点（owner 归属块头/父实体）
-	poly := &entity.EntPolyline2d{Flags: 0, CurveType: 0, Extrusion: entity.Point3{0, 0, 1}}
+	poly := &entity.EntPolyline2d{Flags: 0, CurveType: 0, Extrusion: entity.Point3{X: 0, Y: 0, Z: 1}}
 	poly.Handle = 0x210
 	poly.Mode = 0
 	poly.Owner = blkHdl
 	poly.Layer = 0x10
 	poly.FirstVertex = 0x211
 	poly.LastVertex = 0x212
-	v1 := &entity.EntVertex2d{Position: entity.Point3{0, 0, 0}, Bulge: 0}
+	v1 := &entity.EntVertex2d{Position: entity.Point3{X: 0, Y: 0, Z: 0}, Bulge: 0}
 	v1.Handle = 0x211
 	v1.Mode = 0
 	v1.Owner = poly.Handle
 	v1.Layer = 0x10
-	v2 := &entity.EntVertex2d{Position: entity.Point3{30, 40, 0}}
+	v2 := &entity.EntVertex2d{Position: entity.Point3{X: 30, Y: 40, Z: 0}}
 	v2.Handle = 0x212
 	v2.Mode = 0
 	v2.Owner = poly.Handle
 	v2.Layer = 0x10
-	doc.blocks[blkHdl] = []any{poly, v1, v2}
+	doc.Blocks[blkHdl] = []any{poly, v1, v2}
 	// 模型空间 INSERT 引用块
-	ins := &entity.EntInsert{Position: entity.Point3{1, 2, 0}, Scale: entity.Point3{1, 1, 1}, BlockHeader: blkHdl}
+	ins := &entity.EntInsert{Position: entity.Point3{X: 1, Y: 2, Z: 0}, Scale: entity.Point3{X: 1, Y: 1, Z: 1}, BlockHeader: blkHdl}
 	ins.Handle = 0x300
 	ins.Mode = 2
 	ins.Layer = 0x10
-	doc.classify(ins)
+	doc.Classify(ins)
 	got := fwdWriteParse(t, doc)
 	if got.EntityCount() == 0 {
 		t.Fatal("回读实体为空")
 	}
 	var gIns *entity.EntInsert
-	for _, e := range got.modelSpace {
+	for _, e := range got.ModelSpace {
 		if ins2, ok := e.(*entity.EntInsert); ok {
 			gIns = ins2
 		}
@@ -205,7 +206,7 @@ func TestWriteForwardBlockInsert(t *testing.T) {
 	}
 	// 块内顶点按 owner 聚合：poly 的 owner 为块头，顶点的 owner 为 poly
 	var gotPoly *entity.EntPolyline2d
-	for _, list := range got.blocks {
+	for _, list := range got.Blocks {
 		for _, v := range list {
 			if p, ok := v.(*entity.EntPolyline2d); ok {
 				gotPoly = p
@@ -215,7 +216,7 @@ func TestWriteForwardBlockInsert(t *testing.T) {
 	if gotPoly == nil {
 		t.Fatal("回读缺少 POLYLINE_2D")
 	}
-	verts, ok := got.blocks[gotPoly.Handle]
+	verts, ok := got.Blocks[gotPoly.Handle]
 	if !ok || len(verts) < 2 {
 		t.Fatalf("顶点归属聚合实体数: %d（want ≥2）", len(verts))
 	}
@@ -248,19 +249,19 @@ func TestWriteForwardInsertAttrib(t *testing.T) {
 	endblk.Mode = 0
 	endblk.Owner = blkHdl
 	endblk.TypeName = "ENDBLK"
-	doc.blocks[blkHdl] = []any{blkEnt, endblk}
-	attr := &entity.EntAttrib{Text: "ROOM-101", Tag: "ROOM", Insertion: entity.Point3{1, 1, 0}, Height: 2}
+	doc.Blocks[blkHdl] = []any{blkEnt, endblk}
+	attr := &entity.EntAttrib{Text: "ROOM-101", Tag: "ROOM", Insertion: entity.Point3{X: 1, Y: 1, Z: 0}, Height: 2}
 	attr.Handle = 0x220
 	attr.Mode = 0
 	attr.Owner = blkHdl
 	attr.Layer = 0x10
-	doc.classify(attr)
-	doc.attribs[attr.Handle] = attr
-	ins := &entity.EntInsert{Position: entity.Point3{5, 6, 0}, Scale: entity.Point3{1, 1, 1}, BlockHeader: blkHdl, Attribs: []uint64{attr.Handle}}
+	doc.Classify(attr)
+	doc.Attribs[attr.Handle] = attr
+	ins := &entity.EntInsert{Position: entity.Point3{X: 5, Y: 6, Z: 0}, Scale: entity.Point3{X: 1, Y: 1, Z: 1}, BlockHeader: blkHdl, Attribs: []uint64{attr.Handle}}
 	ins.Handle = 0x230
 	ins.Mode = 2
 	ins.Layer = 0x10
-	doc.classify(ins)
+	doc.Classify(ins)
 	got := fwdWriteParse(t, doc)
 	if got.EntityCount() == 0 {
 		t.Fatal("回读实体为空")
@@ -276,7 +277,7 @@ func TestWriteForwardInsertAttrib(t *testing.T) {
 		t.Errorf("Texts 缺少正向写出的 ATTRIB 文本: %v", texts)
 	}
 	var gIns *entity.EntInsert
-	for _, e := range got.modelSpace {
+	for _, e := range got.ModelSpace {
 		if i2, ok := e.(*entity.EntInsert); ok {
 			gIns = i2
 		}
@@ -287,7 +288,7 @@ func TestWriteForwardInsertAttrib(t *testing.T) {
 	if len(gIns.Attribs) < 2 || gIns.Attribs[0] != attr.Handle {
 		t.Errorf("INSERT 属性句柄: %v（want 首=%d）", gIns.Attribs, attr.Handle)
 	}
-	if a, ok := got.attribs[attr.Handle]; !ok || a.Text != "ROOM-101" {
+	if a, ok := got.Attribs[attr.Handle]; !ok || a.Text != "ROOM-101" {
 		t.Errorf("ATTRIB 回读: %+v", a)
 	}
 }
@@ -297,7 +298,7 @@ func TestWriteForwardInsertAttrib(t *testing.T) {
 // gold JSON 与同源 DWG 样本缺失时跳过。
 func TestWriteForwardJSONGoldRoundtrip(t *testing.T) {
 	cases := []struct {
-		ver    string // gold JSON 版本串（ex2000.json 等）
+		Ver    string // gold JSON 版本串（ex2000.json 等）
 		sample string // 同源 DWG 样本名
 	}{
 		{"2000", "example_2000.dwg"},
@@ -311,8 +312,8 @@ func TestWriteForwardJSONGoldRoundtrip(t *testing.T) {
 	}
 	dataDir := testsupport.LibredwgTestDataDir()
 	for _, tc := range cases {
-		t.Run(tc.ver, func(t *testing.T) {
-			goldPath := testsupport.LibredwgGoldJSONPath(tc.ver)
+		t.Run(tc.Ver, func(t *testing.T) {
+			goldPath := testsupport.LibredwgGoldJSONPath(tc.Ver)
 			gold, err := os.ReadFile(goldPath)
 			if err != nil {
 				t.Skipf("gold JSON 不可用: %v", err)
@@ -349,7 +350,7 @@ func compareForwardEntities(t *testing.T, base, got *Document) {
 	t.Helper()
 	pick := func(doc *Document) map[uint64]any {
 		m := map[uint64]any{}
-		for _, e := range doc.modelSpaceEntities() {
+		for _, e := range doc.ModelSpaceEntities() {
 			if b := entity.EntityBase(e); b != nil && b.Handle != 0 {
 				m[b.Handle] = e
 			}
@@ -385,7 +386,7 @@ func compareForwardEntities(t *testing.T, base, got *Document) {
 		case *entity.EntArc:
 			if b, ok := ge.(*entity.EntArc); ok {
 				if nearTol(a.Center.X, b.Center.X, tol) && nearTol(a.Radius, b.Radius, tol) &&
-					nearTol(rad2deg(a.AngleStart), rad2deg(b.AngleStart), 0.5) {
+					nearTol(drawing.Rad2deg(a.AngleStart), drawing.Rad2deg(b.AngleStart), 0.5) {
 					checked++
 				} else {
 					t.Errorf("h=%d ARC 不一致: c=%v r=%v vs c=%v r=%v", h, a.Center, a.Radius, b.Center, b.Radius)
@@ -428,7 +429,7 @@ func compareForwardEntities(t *testing.T, base, got *Document) {
 			}
 		case *entity.EntMText:
 			if b, ok := ge.(*entity.EntMText); ok {
-				if stripMTextFormat(a.Text) == stripMTextFormat(b.Text) {
+				if drawing.StripMTextFormat(a.Text) == drawing.StripMTextFormat(b.Text) {
 					checked++
 				} else {
 					t.Errorf("h=%d MTEXT 不一致: %q vs %q", h, a.Text, b.Text)
@@ -646,46 +647,46 @@ func TestWriteForwardBatchE(t *testing.T) {
 	// DIMENSION 七型（flag 低 3 位分派）
 	dimLinear := &entity.EntDimension{
 		DimFlags: 0x80, DimFlag: 0x80,
-		Extrusion: entity.Point3{0, 0, 1}, TextMidpoint: entity.Point3{5, 6, 0}, Elevation: 0,
+		Extrusion: entity.Point3{X: 0, Y: 0, Z: 1}, TextMidpoint: entity.Point3{X: 5, Y: 6, Z: 0}, Elevation: 0,
 		UserText: "DL<>", TextRotation: 0.1, HorizontalDir: 0.2,
-		InsertScale: entity.Point3{1, 1, 1}, InsertRotation: 0.3,
+		InsertScale: entity.Point3{X: 1, Y: 1, Z: 1}, InsertRotation: 0.3,
 		AttachmentPoint: 1, LineSpacingStyle: 1, LineSpacingFactor: 1.5,
-		ActualMeasurement: 42.5, InsertPoint: entity.Point3{1, 2, 0}, HasInsertPoint: true,
-		Point13: entity.Point3{0, 0, 0}, Point14: entity.Point3{40, 0, 0}, Point10: entity.Point3{10, -5, 0},
+		ActualMeasurement: 42.5, InsertPoint: entity.Point3{X: 1, Y: 2, Z: 0}, HasInsertPoint: true,
+		Point13: entity.Point3{X: 0, Y: 0, Z: 0}, Point14: entity.Point3{X: 40, Y: 0, Z: 0}, Point10: entity.Point3{X: 10, Y: -5, Z: 0},
 		ExtLineRotation: 0.05, DimRotation: 0.25,
 	}
-	dimAligned := &entity.EntDimension{DimFlags: 0x81, DimFlag: 0x81, Extrusion: entity.Point3{0, 0, 1},
-		TextMidpoint: entity.Point3{9, 9, 0}, Point13: entity.Point3{0, 0, 0}, Point14: entity.Point3{30, 40, 0},
-		Point10: entity.Point3{15, 20, 0}, ExtLineRotation: 0.02}
-	dimAng2Ln := &entity.EntDimension{DimFlags: 0x82, DimFlag: 0x82, Extrusion: entity.Point3{0, 0, 1},
-		TextMidpoint: entity.Point3{1, 1, 0}, Point16x: 7, P16y: 8,
-		Point13: entity.Point3{0, 0, 0}, Point14: entity.Point3{10, 0, 0}, Point15: entity.Point3{20, 10, 0},
-		Point10: entity.Point3{5, 5, 0}}
-	dimDiameter := &entity.EntDimension{DimFlags: 0x83, DimFlag: 0x83, Extrusion: entity.Point3{0, 0, 1},
-		TextMidpoint: entity.Point3{2, 2, 0}, Point15: entity.Point3{12, 12, 0}, Point10: entity.Point3{-12, -12, 0},
+	dimAligned := &entity.EntDimension{DimFlags: 0x81, DimFlag: 0x81, Extrusion: entity.Point3{X: 0, Y: 0, Z: 1},
+		TextMidpoint: entity.Point3{X: 9, Y: 9, Z: 0}, Point13: entity.Point3{X: 0, Y: 0, Z: 0}, Point14: entity.Point3{X: 30, Y: 40, Z: 0},
+		Point10: entity.Point3{X: 15, Y: 20, Z: 0}, ExtLineRotation: 0.02}
+	dimAng2Ln := &entity.EntDimension{DimFlags: 0x82, DimFlag: 0x82, Extrusion: entity.Point3{X: 0, Y: 0, Z: 1},
+		TextMidpoint: entity.Point3{X: 1, Y: 1, Z: 0}, Point16x: 7, P16y: 8,
+		Point13: entity.Point3{X: 0, Y: 0, Z: 0}, Point14: entity.Point3{X: 10, Y: 0, Z: 0}, Point15: entity.Point3{X: 20, Y: 10, Z: 0},
+		Point10: entity.Point3{X: 5, Y: 5, Z: 0}}
+	dimDiameter := &entity.EntDimension{DimFlags: 0x83, DimFlag: 0x83, Extrusion: entity.Point3{X: 0, Y: 0, Z: 1},
+		TextMidpoint: entity.Point3{X: 2, Y: 2, Z: 0}, Point15: entity.Point3{X: 12, Y: 12, Z: 0}, Point10: entity.Point3{X: -12, Y: -12, Z: 0},
 		LeaderLen: 8.25, DimstyleHandle: 0x77}
-	dimRadius := &entity.EntDimension{DimFlags: 0x84, DimFlag: 0x84, Extrusion: entity.Point3{0, 0, 1},
-		TextMidpoint: entity.Point3{3, 3, 0}, Point10: entity.Point3{0, 0, 0}, Point15: entity.Point3{9, 0, 0},
+	dimRadius := &entity.EntDimension{DimFlags: 0x84, DimFlag: 0x84, Extrusion: entity.Point3{X: 0, Y: 0, Z: 1},
+		TextMidpoint: entity.Point3{X: 3, Y: 3, Z: 0}, Point10: entity.Point3{X: 0, Y: 0, Z: 0}, Point15: entity.Point3{X: 9, Y: 0, Z: 0},
 		LeaderLen: 3.5}
-	dimAng3Pt := &entity.EntDimension{DimFlags: 0x85, DimFlag: 0x85, Extrusion: entity.Point3{0, 0, 1},
-		TextMidpoint: entity.Point3{4, 4, 0}, Point10: entity.Point3{0, 0, 0}, Point13: entity.Point3{10, 0, 0},
-		Point14: entity.Point3{0, 10, 0}, Point15: entity.Point3{5, 5, 0}}
-	dimOrdinate := &entity.EntDimension{DimFlags: 0x86, DimFlag: 0x86, Extrusion: entity.Point3{0, 0, 1},
-		TextMidpoint: entity.Point3{6, 6, 0}, Point10: entity.Point3{1, 1, 0}, Point13: entity.Point3{11, 1, 0},
-		Point14: entity.Point3{1, 11, 0}, Flag2: 0x80}
+	dimAng3Pt := &entity.EntDimension{DimFlags: 0x85, DimFlag: 0x85, Extrusion: entity.Point3{X: 0, Y: 0, Z: 1},
+		TextMidpoint: entity.Point3{X: 4, Y: 4, Z: 0}, Point10: entity.Point3{X: 0, Y: 0, Z: 0}, Point13: entity.Point3{X: 10, Y: 0, Z: 0},
+		Point14: entity.Point3{X: 0, Y: 10, Z: 0}, Point15: entity.Point3{X: 5, Y: 5, Z: 0}}
+	dimOrdinate := &entity.EntDimension{DimFlags: 0x86, DimFlag: 0x86, Extrusion: entity.Point3{X: 0, Y: 0, Z: 1},
+		TextMidpoint: entity.Point3{X: 6, Y: 6, Z: 0}, Point10: entity.Point3{X: 1, Y: 1, Z: 0}, Point13: entity.Point3{X: 11, Y: 1, Z: 0},
+		Point14: entity.Point3{X: 1, Y: 11, Z: 0}, Flag2: 0x80}
 	// HATCH：边集路径（直线+弧）与多段线路径（带凸度）
 	hatchEdges := &entity.EntHatch{
-		Elevation: 1.25, Extrusion: entity.Point3{0, 0, 1}, Name: "ANGLE",
+		Elevation: 1.25, Extrusion: entity.Point3{X: 0, Y: 0, Z: 1}, Name: "ANGLE",
 		Associative: true, Style: 0, PatternType: 1, Angle: 0.5, ScaleSpacing: 2,
 		Deflines: []entity.HatchDefLine{{
-			Angle: 0.25, Pt0: entity.Point2{1, 2}, Offset: entity.Point2{3, 4},
+			Angle: 0.25, Pt0: entity.Point2{X: 1, Y: 2}, Offset: entity.Point2{X: 3, Y: 4},
 			Dashes: []float64{10, -3},
 		}},
 		Paths: []entity.HatchPath{{
 			Flag: 1,
 			Segs: []entity.HatchSeg{
-				{CurveType: 1, First: entity.Point2{0, 0}, Second: entity.Point2{10, 0}},
-				{CurveType: 2, Center: entity.Point2{10, 5}, Radius: 5, StartAng: 0, EndAng: 1.5, Ccw: true},
+				{CurveType: 1, First: entity.Point2{X: 0, Y: 0}, Second: entity.Point2{X: 10, Y: 0}},
+				{CurveType: 2, Center: entity.Point2{X: 10, Y: 5}, Radius: 5, StartAng: 0, EndAng: 1.5, Ccw: true},
 			},
 		}},
 		Seeds: []entity.Point2{{2, 3}, {4, 5}},
@@ -698,49 +699,49 @@ func TestWriteForwardBatchE(t *testing.T) {
 			BulgesPresent: true,
 			Closed:        true,
 			PolyVerts: []entity.HatchPolyVert{
-				{P: entity.Point2{0, 0}, Bulge: 0},
-				{P: entity.Point2{10, 0}, Bulge: 0.5},
-				{P: entity.Point2{10, 10}, Bulge: 0},
+				{P: entity.Point2{X: 0, Y: 0}, Bulge: 0},
+				{P: entity.Point2{X: 10, Y: 0}, Bulge: 0.5},
+				{P: entity.Point2{X: 10, Y: 10}, Bulge: 0},
 			},
 		}},
 	}
-	ray := &entity.EntRay{Start: entity.Point3{1, 2, 3}, UnitVector: entity.Point3{1, 0, 0}}
-	xline := &entity.EntRay{Start: entity.Point3{4, 5, 6}, UnitVector: entity.Point3{0, 1, 0}, Xline: true}
+	ray := &entity.EntRay{Start: entity.Point3{X: 1, Y: 2, Z: 3}, UnitVector: entity.Point3{X: 1, Y: 0, Z: 0}}
+	xline := &entity.EntRay{Start: entity.Point3{X: 4, Y: 5, Z: 6}, UnitVector: entity.Point3{X: 0, Y: 1, Z: 0}, Xline: true}
 	leader := &entity.EntLeader{
 		AnnotationType: 1, PathType: 0,
 		Points:    []entity.Point3{{0, 0, 0}, {10, 10, 0}, {20, 10, 0}},
-		Origin:    entity.Point3{0, 0, 0},
+		Origin:    entity.Point3{X: 0, Y: 0, Z: 0},
 		BoxHeight: 3, BoxWidth: 12, ArrowheadOn: true, ArrowheadType: 1,
 	}
 	mline := &entity.EntMLine{
 		Scale: 20, Justification: 1, OpenClosed: 3, LinesInStyle: 2,
 		Vertices: []entity.EntMLineVertex{
-			{Position: entity.Point3{0, 0, 0}, Direction: entity.Point3{1, 0, 0}, Miter: entity.Point3{0, 1, 0},
+			{Position: entity.Point3{X: 0, Y: 0, Z: 0}, Direction: entity.Point3{X: 1, Y: 0, Z: 0}, Miter: entity.Point3{X: 0, Y: 1, Z: 0},
 				SegParams: []float64{-10, 10, -10, 10}, AreaParams: []float64{0, 0, 0, 0}},
-			{Position: entity.Point3{50, 0, 0}, Direction: entity.Point3{1, 0, 0}, Miter: entity.Point3{0, 1, 0},
+			{Position: entity.Point3{X: 50, Y: 0, Z: 0}, Direction: entity.Point3{X: 1, Y: 0, Z: 0}, Miter: entity.Point3{X: 0, Y: 1, Z: 0},
 				SegParams: []float64{-10, 10, -10, 10}, AreaParams: []float64{0, 0, 0, 0}},
 		},
 		StyleHandle: 0x99,
 	}
 	tolerance := &entity.EntTolerance{
-		Text: "{\\Fgdt;r}%%v1", Insertion: entity.Point3{7, 8, 0},
-		XDirection: entity.Point3{1, 0, 0}, Extrusion: entity.Point3{0, 0, 1}, Dimstyle: 0x88,
+		Text: "{\\Fgdt;r}%%v1", Insertion: entity.Point3{X: 7, Y: 8, Z: 0},
+		XDirection: entity.Point3{X: 1, Y: 0, Z: 0}, Extrusion: entity.Point3{X: 0, Y: 0, Z: 1}, Dimstyle: 0x88,
 	}
 	shape := &entity.EntShape{
-		Insertion: entity.Point3{1, 1, 0}, Scale: 2, Rotation: 0.5, WidthFactor: 1,
-		Oblique: 0.1, Thickness: 0.2, StyleId: 3, Extrusion: entity.Point3{0, 0, 1},
+		Insertion: entity.Point3{X: 1, Y: 1, Z: 0}, Scale: 2, Rotation: 0.5, WidthFactor: 1,
+		Oblique: 0.1, Thickness: 0.2, StyleId: 3, Extrusion: entity.Point3{X: 0, Y: 0, Z: 1},
 	}
 	viewport := &entity.EntViewport{
-		Center: entity.Point3{100, 100, 0}, Width: 210, Height: 148,
-		ViewTarget: entity.Point3{0, 0, 0}, ViewDir: entity.Point3{0, 0, 1}, ViewTwist: 0.1,
+		Center: entity.Point3{X: 100, Y: 100, Z: 0}, Width: 210, Height: 148,
+		ViewTarget: entity.Point3{X: 0, Y: 0, Z: 0}, ViewDir: entity.Point3{X: 0, Y: 0, Z: 1}, ViewTwist: 0.1,
 		ViewSize: 200, LensLength: 50, FrontZ: 0, BackZ: 0, SnapAng: 0,
-		ViewCtr: entity.Point2{50, 50}, SnapBase: entity.Point2{0, 0}, SnapUnit: entity.Point2{10, 10},
-		GridUnit: entity.Point2{10, 10}, CircleZoom: 100, NumFrozenLayers: 0,
+		ViewCtr: entity.Point2{X: 50, Y: 50}, SnapBase: entity.Point2{X: 0, Y: 0}, SnapUnit: entity.Point2{X: 10, Y: 10},
+		GridUnit: entity.Point2{X: 10, Y: 10}, CircleZoom: 100, NumFrozenLayers: 0,
 		StatusFlag: 1, StyleSheet: "", RenderMode: 0, UcsVP: true,
-		Ucsorg: entity.Point3{0, 0, 0}, Ucsxdir: entity.Point3{1, 0, 0}, Ucsydir: entity.Point3{0, 1, 0},
+		Ucsorg: entity.Point3{X: 0, Y: 0, Z: 0}, Ucsxdir: entity.Point3{X: 1, Y: 0, Z: 0}, Ucsydir: entity.Point3{X: 0, Y: 1, Z: 0},
 	}
-	vtx3d := &entity.EntVertex3d{Flags: 32, Position: entity.Point3{1, 2, 3}}
-	pfaceVtx := &entity.EntVertexPface{Flag: 192, Position: entity.Point3{4, 5, 6}}
+	vtx3d := &entity.EntVertex3d{Flags: 32, Position: entity.Point3{X: 1, Y: 2, Z: 3}}
+	pfaceVtx := &entity.EntVertexPface{Flag: 192, Position: entity.Point3{X: 4, Y: 5, Z: 6}}
 	pfaceFace := &entity.EntVertexPfaceFace{Flag: 128, Vertind: [4]int32{1, 2, 3, 0}}
 	poly3d := &entity.EntPolyline3d{Flags75: 0, Flags70: 0}
 	polyPface := &entity.EntPolylinePface{NumVertices: 3, NumFaces: 1}
@@ -752,7 +753,7 @@ func TestWriteForwardBatchE(t *testing.T) {
 		vtx3d, pfaceVtx, pfaceFace, poly3d, polyPface, polyMesh)
 	got := fwdWriteParse(t, doc)
 	byHandle := map[uint64]any{}
-	for _, e := range got.modelSpace {
+	for _, e := range got.ModelSpace {
 		byHandle[entity.EntityBase(e).Handle] = e
 	}
 	get := func(want any) any {
@@ -949,8 +950,8 @@ func TestWriteForwardDynamicClasses(t *testing.T) {
 	// IMAGE 与 WIPEOUT 同布局（entWipeout 承载，按 typeName 路由）
 	image := &entity.EntWipeout{
 		ClassVersion: 0,
-		Pt0:          entity.Point3{100, 200, 0}, Uvec: entity.Point3{50, 0, 0}, Vvec: entity.Point3{0, 40, 0},
-		ImageSize: entity.Point2{1, 1}, DisplayProps: 7, Clipping: true,
+		Pt0:          entity.Point3{X: 100, Y: 200, Z: 0}, Uvec: entity.Point3{X: 50, Y: 0, Z: 0}, Vvec: entity.Point3{X: 0, Y: 40, Z: 0},
+		ImageSize: entity.Point2{X: 1, Y: 1}, DisplayProps: 7, Clipping: true,
 		Brightness: 50, Contrast: 50, Fade: 0,
 		ClipBoundaryType: 1,
 		ClipVerts:        []entity.Point2{{0, 0}, {1, 1}},
@@ -958,8 +959,8 @@ func TestWriteForwardDynamicClasses(t *testing.T) {
 	image.TypeName = "IMAGE"
 	wipeout := &entity.EntWipeout{
 		ClassVersion: 0,
-		Pt0:          entity.Point3{0, 0, 0}, Uvec: entity.Point3{10, 0, 0}, Vvec: entity.Point3{0, 10, 0},
-		ImageSize: entity.Point2{1, 1}, DisplayProps: 7,
+		Pt0:          entity.Point3{X: 0, Y: 0, Z: 0}, Uvec: entity.Point3{X: 10, Y: 0, Z: 0}, Vvec: entity.Point3{X: 0, Y: 10, Z: 0},
+		ImageSize: entity.Point2{X: 1, Y: 1}, DisplayProps: 7,
 		ClipBoundaryType: 2,
 		ClipVerts:        []entity.Point2{{0, 0}, {0.5, 0.2}, {1, 0.5}, {0.3, 1}},
 	}
@@ -973,18 +974,18 @@ func TestWriteForwardDynamicClasses(t *testing.T) {
 	light := &entity.EntLight{
 		ClassVersion: 1, Name: "ProbeLight", LightType: 3, Status: true,
 		LightColorIndex: 5, Intensity: 5.4,
-		Position: entity.Point3{1, 2, 0}, Target: entity.Point3{3, 4, 0},
+		Position: entity.Point3{X: 1, Y: 2, Z: 0}, Target: entity.Point3{X: 3, Y: 4, Z: 0},
 		AttenuationEnd: 10, HotspotAngle: 0.785, FalloffAngle: 0.87,
 		CastShadows: true, ShadowMapSize: 256, ShadowMapSoftness: 1,
 	}
 	arcDim := &entity.EntDimension{
 		DimFlags: 0x25, DimFlag: 0x25,
-		Extrusion: entity.Point3{0, 0, 1}, TextMidpoint: entity.Point3{2, 2, 0},
-		UserText: "ARC<>", InsertScale: entity.Point3{1, 1, 1},
+		Extrusion: entity.Point3{X: 0, Y: 0, Z: 1}, TextMidpoint: entity.Point3{X: 2, Y: 2, Z: 0},
+		UserText: "ARC<>", InsertScale: entity.Point3{X: 1, Y: 1, Z: 1},
 		AttachmentPoint: 5, LineSpacingStyle: 1, LineSpacingFactor: 1,
-		InsertPoint: entity.Point3{6125, 2865, 0}, HasInsertPoint: true,
-		DefPt: entity.Point3{6125, 2865, 0}, Point13: entity.Point3{5486, 2529, 0},
-		Point14: entity.Point3{6571, 2539, 0}, Point15: entity.Point3{6100, 2700, 0},
+		InsertPoint: entity.Point3{X: 6125, Y: 2865, Z: 0}, HasInsertPoint: true,
+		DefPt: entity.Point3{X: 6125, Y: 2865, Z: 0}, Point13: entity.Point3{X: 5486, Y: 2529, Z: 0},
+		Point14: entity.Point3{X: 6571, Y: 2539, Z: 0}, Point15: entity.Point3{X: 6100, Y: 2700, Z: 0},
 		IsPartial:     true,
 		ArcStartParam: 0.3, ArcEndParam: 2.1,
 		HasLeader:      false,
@@ -994,7 +995,7 @@ func TestWriteForwardDynamicClasses(t *testing.T) {
 	doc := fwdSynthDoc(t, image, wipeout, mleader, light, arcDim)
 	got := fwdWriteParse(t, doc)
 	byKind := map[string]any{}
-	for _, e := range got.modelSpace {
+	for _, e := range got.ModelSpace {
 		switch d := e.(type) {
 		case *entity.EntWipeout:
 			byKind[d.TypeName] = d
@@ -1139,9 +1140,9 @@ func TestWriteForwardGenericObjects(t *testing.T) {
 		},
 	}
 	doc := fwdSynthDoc(t)
-	doc.internalObjects = map[uint64]*object.ObjGeneric{}
+	doc.InternalObjs = map[uint64]*object.ObjGeneric{}
 	for _, g := range []*object.ObjGeneric{group, xrecord, dictvar, scale, layout, wipeoutVars, placeholder, appid} {
-		doc.internalObjects[g.Handle] = g
+		doc.InternalObjs[g.Handle] = g
 	}
 	got := fwdWriteParse(t, doc)
 	// 回读侧按句柄取 objGeneric 并按类型断键
@@ -1213,7 +1214,7 @@ func TestWriteForwardGenericObjects(t *testing.T) {
 	// 回读对象在 internalObjects（实体分类外）；XRECORD 读侧走 objXrecord
 	// 专用路径（encodeXrecordR2000 的对称解码），单独断言
 	found := 0
-	for h, g := range got.internalObjects {
+	for h, g := range got.InternalObjs {
 		check, ok := probes[h]
 		if !ok {
 			continue
@@ -1247,7 +1248,7 @@ func TestWriteForwardGenericObjects(t *testing.T) {
 func missingProbeHandles(doc *Document, probes map[uint64]func(*object.ObjGeneric) error) []string {
 	var missing []string
 	for h := range probes {
-		if _, ok := doc.internalObjects[h]; !ok {
+		if _, ok := doc.InternalObjs[h]; !ok {
 			missing = append(missing, fmt.Sprintf("%#x", h))
 		}
 	}

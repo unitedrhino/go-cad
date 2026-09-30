@@ -219,13 +219,13 @@ func TestXrecordRoundTrip(t *testing.T) {
 			t.Errorf("解析 %s 失败: %v", name, err)
 			continue
 		}
-		supported := doc.version == container.VerR2000
-		for _, x1 := range doc.xrecords {
+		supported := doc.Ver == container.VerR2000
+		for _, x1 := range doc.Xrecs {
 			if x1 == nil || x1.XdataSize <= 0 || len(x1.Xdata) == 0 {
 				continue
 			}
 			if !supported {
-				t.Logf("%s h=%d 版本 %v 编码器未覆盖，跳过", name, x1.Handle, doc.version)
+				t.Logf("%s h=%d 版本 %v 编码器未覆盖，跳过", name, x1.Handle, doc.Ver)
 				skipCnt++
 				continue
 			}
@@ -245,14 +245,14 @@ func TestXrecordRoundTrip(t *testing.T) {
 				defectCnt++
 				continue
 			}
-			body2, err := encodeXrecordR2000(x1, doc.version)
+			body2, err := encodeXrecordR2000(x1, doc.Ver)
 			if err != nil {
 				t.Errorf("%s h=%d 重编码失败: %v", name, x1.Handle, err)
 				continue
 			}
 			t.Logf("%s h=%d xdataSize=%d items=%d body2=%d 字节", name, x1.Handle, x1.XdataSize, len(x1.Xdata), len(body2))
 			rec2 := &objrec.ObjectRecord{Body: body2, BodyBitOffset: 0, Size: uint32(len(body2))}
-			x2, err := object.DecodeXrecordObject(rec2.BodyBitStream(), rec2, doc.version, false)
+			x2, err := object.DecodeXrecordObject(rec2.BodyBitStream(), rec2, doc.Ver, false)
 			if err != nil {
 				t.Errorf("%s h=%d 重解码失败: %v", name, x1.Handle, err)
 				continue
@@ -312,13 +312,13 @@ func TestDictionaryRoundTrip(t *testing.T) {
 			t.Errorf("解析 %s 失败: %v", name, err)
 			continue
 		}
-		supported := doc.version == container.VerR2000
-		for _, d1 := range doc.dictionaries {
+		supported := doc.Ver == container.VerR2000
+		for _, d1 := range doc.Dictionaries {
 			if d1 == nil || d1.NumItems == 0 {
 				continue
 			}
 			if !supported {
-				t.Logf("%s h=%d 版本 %v 编码器未覆盖，跳过", name, d1.Handle, doc.version)
+				t.Logf("%s h=%d 版本 %v 编码器未覆盖，跳过", name, d1.Handle, doc.Ver)
 				skipCnt++
 				continue
 			}
@@ -329,14 +329,14 @@ func TestDictionaryRoundTrip(t *testing.T) {
 						fail++
 					}
 				}()
-				body2, err := encodeDictionaryR2000(d1, doc.version, false)
+				body2, err := encodeDictionaryR2000(d1, doc.Ver, false)
 				if err != nil {
 					t.Errorf("%s h=%d 重编码失败: %v", name, d1.Handle, err)
 					fail++
 					return
 				}
 				rec2 := &objrec.ObjectRecord{Body: body2, BodyBitOffset: 0, Size: uint32(len(body2))}
-				d2, err := object.DecodeDictionaryObjectFull(rec2.BodyBitStream(), rec2, doc.version, false, false)
+				d2, err := object.DecodeDictionaryObjectFull(rec2.BodyBitStream(), rec2, doc.Ver, false, false)
 				if err != nil {
 					t.Errorf("%s h=%d 重解码失败: %v", name, d1.Handle, err)
 					fail++

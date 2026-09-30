@@ -7,6 +7,7 @@ package cad
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"image/png"
 	"os"
@@ -17,7 +18,7 @@ import (
 
 // apiE2EVersion 全版本矩阵的一行：版本串 + 代表样本（每版本至少 1 个）。
 type apiE2EVersion struct {
-	ver    string // Parse 后 Document.Version() 的期望值
+	Ver    string // Parse 后 Document.Version() 的期望值
 	sample string // testdata 下的样本文件名
 }
 
@@ -47,7 +48,7 @@ func loadAPIE2EData(t *testing.T, name string) []byte {
 func TestAPIE2EMatrix(t *testing.T) {
 	for _, row := range apiE2EVersions {
 		row := row
-		t.Run(row.ver+"/"+row.sample, func(t *testing.T) {
+		t.Run(row.Ver+"/"+row.sample, func(t *testing.T) {
 			data := loadAPIE2EData(t, row.sample)
 
 			// ---- Parse / 文档访问器 ----
@@ -55,8 +56,8 @@ func TestAPIE2EMatrix(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Parse 失败: %v", err)
 			}
-			if got := doc.Version(); got != row.ver {
-				t.Fatalf("Version = %s, 期望 %s", got, row.ver)
+			if got := doc.Version(); got != row.Ver {
+				t.Fatalf("Version = %s, 期望 %s", got, row.Ver)
 			}
 			if n := doc.EntityCount(); n < 1 {
 				t.Fatalf("EntityCount = %d, 期望 ≥1（样本含模型空间图元）", n)
@@ -80,7 +81,7 @@ func TestAPIE2EMatrix(t *testing.T) {
 
 			// EntityByHandle：已解析句柄命中、未知句柄返回 nil
 			var firstHandle uint64
-			for h := range doc.entityByHandle {
+			for h := range doc.ByHandle {
 				firstHandle = h
 				break
 			}
@@ -137,7 +138,7 @@ func TestAPIE2EMatrix(t *testing.T) {
 			// ---- R2004+ 命名段/对象图调试 API ----
 			// R13/R14/R2000 为段目录式容器，无命名段，按设计返回错误；
 			// 不允许 panic。
-			isR2004Plus := row.ver != "AC1012" && row.ver != "AC1014" && row.ver != "AC1015"
+			isR2004Plus := row.Ver != "AC1012" && row.Ver != "AC1014" && row.Ver != "AC1015"
 			secData, secErr := LoadNamedSectionDebug2(data, "AcDb:AcDbObjects")
 			if isR2004Plus {
 				if secErr != nil {
@@ -159,7 +160,7 @@ func TestAPIE2EMatrix(t *testing.T) {
 					t.Fatal("DebugObjectIndexExport 输出为空")
 				}
 				// DebugRecord2：取对象图第一条解析 body
-				body, _, size, err := DebugRecord2(secData, idxRefs[0], verStringR2010Plus(row.ver))
+				body, _, size, err := DebugRecord2(secData, idxRefs[0], verStringR2010Plus(row.Ver))
 				if err != nil {
 					t.Fatalf("DebugRecord2 失败: %v", err)
 				}
@@ -205,8 +206,8 @@ func TestAPIE2EMatrix(t *testing.T) {
 			if err != nil {
 				t.Fatalf("WriteDwg 产物再 Parse 失败: %v", err)
 			}
-			if doc2.Version() != row.ver {
-				t.Fatalf("回写产物版本 = %s, 期望 %s", doc2.Version(), row.ver)
+			if doc2.Version() != row.Ver {
+				t.Fatalf("回写产物版本 = %s, 期望 %s", doc2.Version(), row.Ver)
 			}
 			if doc2.EntityCount() != doc.EntityCount() {
 				t.Errorf("回写产物实体数 %d != 原始 %d", doc2.EntityCount(), doc.EntityCount())
@@ -278,13 +279,13 @@ func TestAPITextsConsistency(t *testing.T) {
 			t.Fatalf("DumpEntities(%s) 失败: %v", sample, err)
 		}
 		direct := 0
-		for _, ent := range doc.modelSpace {
+		for _, ent := range doc.ModelSpace {
 			var txt string
 			switch e := ent.(type) {
 			case *entity.EntText:
-				txt = stripMTextFormat(e.Text)
+				txt = drawing.StripMTextFormat(e.Text)
 			case *entity.EntMText:
-				txt = stripMTextFormat(e.Text)
+				txt = drawing.StripMTextFormat(e.Text)
 			default:
 				continue
 			}

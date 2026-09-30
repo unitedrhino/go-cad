@@ -13,10 +13,10 @@ import (
 // TestEntityGeometryFinite entityGeometryFinite 全实体类型分支。
 func TestEntityGeometryFinite(t *testing.T) {
 	ok := func(ent any) bool { return entity.EntityGeometryFinite(ent) }
-	if !ok(&entity.EntLine{Start: entity.Point3{0, 0, 0}, End: entity.Point3{1, 1, 0}}) {
+	if !ok(&entity.EntLine{Start: entity.Point3{X: 0, Y: 0, Z: 0}, End: entity.Point3{X: 1, Y: 1, Z: 0}}) {
 		t.Error("LINE 合法值应通过")
 	}
-	if ok(&entity.EntLine{Start: entity.Point3{math.Inf(1), 0, 0}}) {
+	if ok(&entity.EntLine{Start: entity.Point3{X: math.Inf(1), Y: 0, Z: 0}}) {
 		t.Error("LINE Inf 应拒绝")
 	}
 	if !ok(&entity.EntCircle{Center: entity.Point3{}, Radius: 5}) {
@@ -28,10 +28,10 @@ func TestEntityGeometryFinite(t *testing.T) {
 	if ok(&entity.EntArc{AngleStart: 1e7}) {
 		t.Error("ARC 天文角度应拒绝")
 	}
-	if !ok(&entity.EntPoint{Location: entity.Point3{1, 2, 3}}) {
+	if !ok(&entity.EntPoint{Location: entity.Point3{X: 1, Y: 2, Z: 3}}) {
 		t.Error("POINT 合法值应通过")
 	}
-	if !ok(&entity.EntEllipse{Center: entity.Point3{}, MajorAxis: entity.Point3{1, 0, 0}, Ratio: 0.5}) {
+	if !ok(&entity.EntEllipse{Center: entity.Point3{}, MajorAxis: entity.Point3{X: 1, Y: 0, Z: 0}, Ratio: 0.5}) {
 		t.Error("ELLIPSE 合法值应通过")
 	}
 	if !ok(&entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {1, 1}}}) {
@@ -46,7 +46,7 @@ func TestEntityGeometryFinite(t *testing.T) {
 	if !ok(&entity.EntMText{TextHeight: 2.5, RectWidth: 10, Insertion: entity.Point3{}}) {
 		t.Error("MTEXT 合法值应通过")
 	}
-	if !ok(&entity.EntInsert{Position: entity.Point3{}, Scale: entity.Point3{1, 1, 1}}) {
+	if !ok(&entity.EntInsert{Position: entity.Point3{}, Scale: entity.Point3{X: 1, Y: 1, Z: 1}}) {
 		t.Error("INSERT 合法值应通过")
 	}
 	if !ok(&entity.EntSpline{ControlPoints: []entity.Point3{{0, 0, 0}}}) {
@@ -79,7 +79,7 @@ func TestEntityGeometryFinite(t *testing.T) {
 	if !ok(&entity.EntMpolygon{Hatch: &entity.EntHatch{Paths: []entity.HatchPath{{Points: []entity.Point2{{1, 1}}}}}}) {
 		t.Error("MPOLYGON 路径应通过")
 	}
-	if !ok(&entity.EntRay{Start: entity.Point3{}, UnitVector: entity.Point3{1, 0, 0}}) {
+	if !ok(&entity.EntRay{Start: entity.Point3{}, UnitVector: entity.Point3{X: 1, Y: 0, Z: 0}}) {
 		t.Error("RAY 合法值应通过")
 	}
 	if !ok(&entity.EntSolid{}) {
@@ -101,7 +101,7 @@ func TestEntityGeometryFinite(t *testing.T) {
 
 // TestEntityGeometryScore entityGeometryScore 全实体类型分支。
 func TestEntityGeometryScore(t *testing.T) {
-	if entity.EntityGeometryScore(&entity.EntLine{Start: entity.Point3{0, 0, 0}, End: entity.Point3{1, 1, 0}}) <= 0 {
+	if entity.EntityGeometryScore(&entity.EntLine{Start: entity.Point3{X: 0, Y: 0, Z: 0}, End: entity.Point3{X: 1, Y: 1, Z: 0}}) <= 0 {
 		t.Error("LINE 合理几何应为正分")
 	}
 	if entity.EntityGeometryScore(&entity.EntCircle{Radius: 5, Center: entity.Point3{}}) <= 0 {
@@ -116,7 +116,7 @@ func TestEntityGeometryScore(t *testing.T) {
 	if entity.EntityGeometryScore(&entity.EntPoint{Location: entity.Point3{}}) <= 0 {
 		t.Error("POINT 应为正分")
 	}
-	if entity.EntityGeometryScore(&entity.EntEllipse{MajorAxis: entity.Point3{2, 0, 0}, Center: entity.Point3{}}) <= 0 {
+	if entity.EntityGeometryScore(&entity.EntEllipse{MajorAxis: entity.Point3{X: 2, Y: 0, Z: 0}, Center: entity.Point3{}}) <= 0 {
 		t.Error("ELLIPSE 应为正分")
 	}
 	if entity.EntityGeometryScore(&entity.EntLwPolyline{}) != -50 {
@@ -137,7 +137,7 @@ func TestEntityGeometryScore(t *testing.T) {
 	if entity.EntityGeometryScore(&entity.EntMText{TextHeight: 0, RectWidth: -1}) != -50 {
 		t.Error("MTEXT 非法应为 -50")
 	}
-	if entity.EntityGeometryScore(&entity.EntInsert{Position: entity.Point3{1, 1, 1}}) <= 0 {
+	if entity.EntityGeometryScore(&entity.EntInsert{Position: entity.Point3{X: 1, Y: 1, Z: 1}}) <= 0 {
 		t.Error("INSERT 应为正分")
 	}
 	if entity.EntityGeometryScore(&entity.EntAttrib{Height: 2.5, Text: "TAG"}) <= 0 {
@@ -150,10 +150,10 @@ func TestEntityGeometryScore(t *testing.T) {
 		t.Error("未知类型应为 0")
 	}
 	// pointScore/radiusScore 边界
-	if entity.PointScore(entity.Point3{math.NaN(), 0, 0}) != -60 {
+	if entity.PointScore(entity.Point3{X: math.NaN(), Y: 0, Z: 0}) != -60 {
 		t.Error("NaN 应罚 -60")
 	}
-	if entity.PointScore(entity.Point3{1e12, 0, 0}) != -60 {
+	if entity.PointScore(entity.Point3{X: 1e12, Y: 0, Z: 0}) != -60 {
 		t.Error("超量级应罚 -60")
 	}
 	if entity.RadiusScore(0) != -60 || entity.RadiusScore(-1) != -60 {

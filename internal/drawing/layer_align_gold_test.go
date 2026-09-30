@@ -3,7 +3,7 @@
 // 审计测试 TestInternalObjectAudit 不覆盖 LAYER（0x33 在 decodeObjects
 // 早期消费、不进 internalObjects），本测试为其对象侧专项硬门禁；样本清单
 // 与审计的 27 样本一致（gold 位于 /tmp/<alias>.json，缺失时跳过）。
-package cad
+package drawing
 
 import (
 	"encoding/json"
@@ -39,7 +39,7 @@ func TestLayerAlignGold(t *testing.T) {
 			t.Logf("%s: gold 不可用，跳过", alias)
 			continue
 		}
-		sample := resolveSamplePath(alias)
+		sample := testsupport.ResolveSamplePath(alias)
 		if sample == "" {
 			t.Errorf("%s: 无法从别名推导样本路径", alias)
 			continue
@@ -104,14 +104,14 @@ func TestLayerAlignGold(t *testing.T) {
 			default:
 				continue
 			}
-			lc, ok := doc.layerColors[h]
+			lc, ok := doc.LayerColors[h]
 			if !ok {
 				t.Errorf("[%s] LAYER h=%d 未解析（缺失）", alias, h)
 				continue
 			}
 			n++
-			if lc.name != gn {
-				t.Errorf("[%s] LAYER h=%d 名称: got %q want %q", alias, h, lc.name, gn)
+			if lc.Name != gn {
+				t.Errorf("[%s] LAYER h=%d 名称: got %q want %q", alias, h, lc.Name, gn)
 			}
 			wantIdx := gIdx
 			if wantIdx < 0 {
@@ -120,18 +120,18 @@ func TestLayerAlignGold(t *testing.T) {
 			if gDict {
 				// R2004+：rgb 派生真彩与位流一致即对；index 键为调色板反查
 				// 派生值（可能为 ByLayer 256 或反查失败值），不直接比
-				if lc.hasTrue {
-					if lc.trueColor != gLow {
-						t.Errorf("[%s] LAYER h=%d 真彩: got %#06x want %#06x", alias, h, lc.trueColor, gLow)
+				if lc.HasTrue {
+					if lc.TrueColor != gLow {
+						t.Errorf("[%s] LAYER h=%d 真彩: got %#06x want %#06x", alias, h, lc.TrueColor, gLow)
 					}
-				} else if uint16(wantIdx) != lc.index {
-					t.Errorf("[%s] LAYER h=%d 索引: got %d want %d", alias, h, lc.index, int(wantIdx))
+				} else if uint16(wantIdx) != lc.Index {
+					t.Errorf("[%s] LAYER h=%d 索引: got %d want %d", alias, h, lc.Index, int(wantIdx))
 				}
 			} else {
-				if lc.hasTrue {
+				if lc.HasTrue {
 					t.Errorf("[%s] LAYER h=%d 不应出现真彩（R2000- 标量索引）", alias, h)
-				} else if uint16(wantIdx) != lc.index {
-					t.Errorf("[%s] LAYER h=%d 索引: got %d want %d", alias, h, lc.index, int(wantIdx))
+				} else if uint16(wantIdx) != lc.Index {
+					t.Errorf("[%s] LAYER h=%d 索引: got %d want %d", alias, h, lc.Index, int(wantIdx))
 				}
 			}
 		}

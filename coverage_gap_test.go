@@ -7,6 +7,7 @@ package cad
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"strings"
 	"testing"
@@ -33,19 +34,19 @@ func TestAciHSVToRGB(t *testing.T) {
 		{2.0 / 3.0, 0, 0, 255},
 	}
 	for _, c := range cases {
-		r, g, b := hsvTint(c.h, 1, 1)
+		r, g, b := drawing.HsvTint(c.h, 1, 1)
 		if r != c.r || g != c.g || b != c.b {
 			t.Errorf("hsvTint(%.3f,1,1)=(%d,%d,%d)，期望 (%d,%d,%d)", c.h, r, g, b, c.r, c.g, c.b)
 		}
 	}
-	if r, g, b := hsvTint(0.3, 0, 0.502); r != 128 || g != 128 || b != 128 {
+	if r, g, b := drawing.HsvTint(0.3, 0, 0.502); r != 128 || g != 128 || b != 128 {
 		t.Errorf("hsvTint 灰色期望 128，得到 (%d,%d,%d)", r, g, b)
 	}
 }
 
 // TestAciColorHex hexColor 十六进制串格式。
 func TestAciColorHex(t *testing.T) {
-	if got := hexColor(0x0A, 0xB2, 0x3C); got != "#0AB23C" {
+	if got := drawing.HexColor(0x0A, 0xB2, 0x3C); got != "#0AB23C" {
 		t.Errorf("hexColor = %s", got)
 	}
 }
@@ -401,7 +402,7 @@ func TestDecodeSolidTolerant(t *testing.T) {
 // 批次 T 起 assemblePolylineChildren 为生产实现（decodeObjects 收尾调用），
 // VERTEX 按 owner 聚合到宿主 POLYLINE 的 ownedHandles。
 func TestAssemblePolylineChildren(t *testing.T) {
-	d := &Document{blocks: map[uint64][]any{}}
+	d := &Document{Blocks: map[uint64][]any{}}
 	pl2 := &entity.EntPolyline2d{}
 	pl2.Handle = 100
 	pl3 := &entity.EntPolyline3d{}
@@ -409,9 +410,9 @@ func TestAssemblePolylineChildren(t *testing.T) {
 	v := &entity.EntVertex2d{}
 	v.Handle = 101
 	v.Owner = 100
-	d.modelSpace = []any{pl2, pl3, v}
-	d.blocks[900] = []any{}
-	d.assemblePolylineChildren()
+	d.ModelSpace = []any{pl2, pl3, v}
+	d.Blocks[900] = []any{}
+	d.AssemblePolylineChildren()
 	if len(pl2.OwnedHandles) != 1 || pl2.OwnedHandles[0] != 101 {
 		t.Errorf("VERTEX 应按 owner 聚合到宿主 POLYLINE: %v", pl2.OwnedHandles)
 	}
@@ -620,7 +621,7 @@ func TestEntityAuditFieldHelpers(t *testing.T) {
 		t.Error("未知键应返回 nil")
 	}
 
-	mp := &entity.EntMpolygon{Style: 1, StyleTail: 2, XDir: entity.Point2{3, 4},
+	mp := &entity.EntMpolygon{Style: 1, StyleTail: 2, XDir: entity.Point2{X: 3, Y: 4},
 		Hatch: &entity.EntHatch{Paths: []entity.HatchPath{{Flag: 5}}}}
 	if entity.MpolygonAuditField(mp, "style") != int64(1) ||
 		entity.MpolygonAuditField(mp, "style_tail") != int64(2) ||
@@ -669,7 +670,7 @@ func TestEntityAuditFieldHelpers(t *testing.T) {
 		t.Error("center 应导出坐标数组")
 	}
 
-	if got := entity.Vec3Arr(entity.Point3{1, 2, 3}); got[0] != 1 || got[2] != 3 {
+	if got := entity.Vec3Arr(entity.Point3{X: 1, Y: 2, Z: 3}); got[0] != 1 || got[2] != 3 {
 		t.Errorf("vec3Arr = %v", got)
 	}
 	if got := entity.Pt2Arr([]entity.Point2{{1, 2}, {3, 4}}); len(got) != 4 || got[3] != 4 {
@@ -678,7 +679,7 @@ func TestEntityAuditFieldHelpers(t *testing.T) {
 	if got := entity.F64Arr([]float64{9, 8}); len(got) != 2 || got[0] != 9 {
 		t.Errorf("f64Arr = %v", got)
 	}
-	if got := entity.Point2Arr(entity.Point2{5, 6}); got[1] != 6 {
+	if got := entity.Point2Arr(entity.Point2{X: 5, Y: 6}); got[1] != 6 {
 		t.Errorf("point2Arr = %v", got)
 	}
 }

@@ -5,6 +5,7 @@ package cad
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
@@ -152,57 +153,57 @@ func TestDecodeInsertWithHandleStream(t *testing.T) {
 
 func TestClassifyEntityModes(t *testing.T) {
 	d := &Document{
-		blocks:  map[uint64][]any{},
-		attribs: map[uint64]*entity.EntAttrib{},
+		Blocks:  map[uint64][]any{},
+		Attribs: map[uint64]*entity.EntAttrib{},
 	}
 	// mode=2 → 模型空间
 	line := &entity.EntLine{BaseEntity: entity.BaseEntity{Handle: 1, Mode: 2}}
-	d.classify(line)
-	if len(d.modelSpace) != 1 {
-		t.Fatalf("mode2 应进模型空间: %d", len(d.modelSpace))
+	d.Classify(line)
+	if len(d.ModelSpace) != 1 {
+		t.Fatalf("mode2 应进模型空间: %d", len(d.ModelSpace))
 	}
 	// mode=0 + owner → 块定义
 	line2 := &entity.EntLine{BaseEntity: entity.BaseEntity{Handle: 2, Mode: 0, Owner: 77}}
-	d.classify(line2)
-	if len(d.blocks[77]) != 1 {
-		t.Fatalf("mode0+owner 应进块定义: %v", d.blocks[77])
+	d.Classify(line2)
+	if len(d.Blocks[77]) != 1 {
+		t.Fatalf("mode0+owner 应进块定义: %v", d.Blocks[77])
 	}
 	// mode=1 → 图纸空间，不进任何容器
 	line3 := &entity.EntLine{BaseEntity: entity.BaseEntity{Handle: 3, Mode: 1}}
-	d.classify(line3)
-	if len(d.modelSpace) != 1 || len(d.blocks[77]) != 1 {
+	d.Classify(line3)
+	if len(d.ModelSpace) != 1 || len(d.Blocks[77]) != 1 {
 		t.Fatal("mode1 不应进模型空间或块")
 	}
 	// mode=3 → 模型空间（对齐参考实现）
 	line4 := &entity.EntLine{BaseEntity: entity.BaseEntity{Handle: 4, Mode: 3}}
-	d.classify(line4)
-	if len(d.modelSpace) != 2 {
-		t.Fatalf("mode3 应进模型空间: %d", len(d.modelSpace))
+	d.Classify(line4)
+	if len(d.ModelSpace) != 2 {
+		t.Fatalf("mode3 应进模型空间: %d", len(d.ModelSpace))
 	}
 	// ATTRIB 注册
 	attrib := &entity.EntAttrib{BaseEntity: entity.BaseEntity{Handle: 5, Mode: 2}}
-	d.classify(attrib)
-	if d.attribs[5] != attrib {
+	d.Classify(attrib)
+	if d.Attribs[5] != attrib {
 		t.Fatal("ATTRIB 应注册到 attribs")
 	}
 }
 
 func TestDocumentTextsDedupAndBlocks(t *testing.T) {
 	d := &Document{
-		blocks:  map[uint64][]any{},
-		attribs: map[uint64]*entity.EntAttrib{},
+		Blocks:  map[uint64][]any{},
+		Attribs: map[uint64]*entity.EntAttrib{},
 	}
 	// 块内文本 + 引用它的 INSERT
-	d.blocks[77] = []any{
-		&entity.EntText{BaseEntity: entity.BaseEntity{Handle: 2}, Text: "BLOCK-TEXT", Insertion: entity.Point3{1, 1, 0}},
+	d.Blocks[77] = []any{
+		&entity.EntText{BaseEntity: entity.BaseEntity{Handle: 2}, Text: "BLOCK-TEXT", Insertion: entity.Point3{X: 1, Y: 1, Z: 0}},
 	}
 	ins := &entity.EntInsert{
 		BaseEntity:  entity.BaseEntity{Handle: 3, Mode: 2},
 		BlockHeader: 77,
 		Attribs:     []uint64{9},
 	}
-	d.modelSpace = []any{ins, &entity.EntAttrib{BaseEntity: entity.BaseEntity{Handle: 9, Mode: 2}, Text: "ATTRIB-TEXT"}}
-	d.classify(d.modelSpace[1]) // 注册 attrib
+	d.ModelSpace = []any{ins, &entity.EntAttrib{BaseEntity: entity.BaseEntity{Handle: 9, Mode: 2}, Text: "ATTRIB-TEXT"}}
+	d.Classify(d.ModelSpace[1]) // 注册 attrib
 
 	texts := d.Texts()
 	joined := ""
@@ -235,17 +236,17 @@ func TestStripMTextFormatMore(t *testing.T) {
 		"\\~x":      " x", // \~ 空格
 	}
 	for in, want := range cases {
-		if got := stripMTextFormat(in); got != want {
+		if got := drawing.StripMTextFormat(in); got != want {
 			t.Errorf("strip(%q)=%q 期望 %q", in, got, want)
 		}
 	}
 }
 
 func TestRad2Deg(t *testing.T) {
-	if math.Abs(rad2deg(math.Pi)-180) > 1e-9 {
+	if math.Abs(drawing.Rad2deg(math.Pi)-180) > 1e-9 {
 		t.Fatal("rad2deg(π) 应为 180")
 	}
-	if rad2deg(0) != 0 {
+	if drawing.Rad2deg(0) != 0 {
 		t.Fatal("rad2deg(0) 应为 0")
 	}
 }

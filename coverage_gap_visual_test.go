@@ -7,6 +7,7 @@ package cad
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/object"
 	"os"
@@ -19,40 +20,40 @@ import (
 // TestAciRGBFullIndex aciColor 全索引域：标准色表、24 色相段、灰阶、
 // ByBlock/ByLayer/未知与 7 号白底反色。
 func TestAciRGBFullIndex(t *testing.T) {
-	if r, g, b, ok := aciColor(1, true); !ok || r != 255 || g != 0 || b != 0 {
+	if r, g, b, ok := drawing.AciColor(1, true); !ok || r != 255 || g != 0 || b != 0 {
 		t.Errorf("ACI 1 = (%d,%d,%d,%v)", r, g, b, ok)
 	}
-	if r, _, _, ok := aciColor(7, true); !ok || r != 0 {
+	if r, _, _, ok := drawing.AciColor(7, true); !ok || r != 0 {
 		t.Error("白底 ACI 7 应输出黑色")
 	}
-	if r, _, _, ok := aciColor(7, false); !ok || r != 255 {
+	if r, _, _, ok := drawing.AciColor(7, false); !ok || r != 255 {
 		t.Error("非白底 ACI 7 应输出白色")
 	}
-	if r, g, b, ok := aciColor(8, true); !ok || r != 128 || g != 128 || b != 128 {
+	if r, g, b, ok := drawing.AciColor(8, true); !ok || r != 128 || g != 128 || b != 128 {
 		t.Errorf("ACI 8 = (%d,%d,%d,%v)", r, g, b, ok)
 	}
 	for idx := 10; idx <= 249; idx++ {
-		_, _, _, ok := aciColor(uint16(idx), true)
+		_, _, _, ok := drawing.AciColor(uint16(idx), true)
 		if !ok {
 			t.Fatalf("ACI %d 应有颜色", idx)
 		}
 	}
 	for idx := 250; idx <= 255; idx++ {
-		r, g, b, ok := aciColor(uint16(idx), true)
+		r, g, b, ok := drawing.AciColor(uint16(idx), true)
 		if !ok || r != g || g != b {
 			t.Errorf("ACI %d 应为灰阶 (%d,%d,%d,%v)", idx, r, g, b, ok)
 		}
 	}
-	if _, _, _, ok := aciColor(0, true); ok {
+	if _, _, _, ok := drawing.AciColor(0, true); ok {
 		t.Error("ACI 0（ByBlock）应无颜色")
 	}
-	if _, _, _, ok := aciColor(256, true); ok {
+	if _, _, _, ok := drawing.AciColor(256, true); ok {
 		t.Error("ACI 256（ByLayer）应无颜色")
 	}
-	if _, _, _, ok := aciColor(257, true); ok {
+	if _, _, _, ok := drawing.AciColor(257, true); ok {
 		t.Error("ACI 257 应无颜色")
 	}
-	if _, _, _, ok := aciColor(999, true); ok {
+	if _, _, _, ok := drawing.AciColor(999, true); ok {
 		t.Error("未知索引应无颜色")
 	}
 }
@@ -111,8 +112,8 @@ func TestDimScores(t *testing.T) {
 	if entity.DimValueScore(1e-40) != 5000 {
 		t.Error("dimValueScore denormal 应重罚")
 	}
-	if entity.DimPointScore(entity.Point3{1, 1e7, 1e-40}) != 5010 {
-		t.Errorf("dimPointScore = %d", entity.DimPointScore(entity.Point3{1, 1e7, 1e-40}))
+	if entity.DimPointScore(entity.Point3{X: 1, Y: 1e7, Z: 1e-40}) != 5010 {
+		t.Errorf("dimPointScore = %d", entity.DimPointScore(entity.Point3{X: 1, Y: 1e7, Z: 1e-40}))
 	}
 }
 
@@ -525,11 +526,11 @@ func TestDecodeGenericTABLECONTENT(t *testing.T) {
 
 // TestTessSpline 拟合点模式、控制点 De Boor 模式与退化折线三分支。
 func TestTessSpline(t *testing.T) {
-	xf := identityXform()
+	xf := drawing.IdentityXform()
 
 	// fit 模式（scenario=2）
 	spFit := &entity.EntSpline{Scenario: 2, Degree: 3, FitPoints: []entity.Point3{{0, 0, 0}, {5, 5, 0}, {10, 0, 0}}}
-	st1 := tessSpline(spFit, xf)
+	st1 := drawing.TessSpline(spFit, xf)
 	if len(st1) == 0 {
 		t.Fatal("fit 模式应产生描边")
 	}
@@ -540,20 +541,20 @@ func TestTessSpline(t *testing.T) {
 		ControlPoints: []entity.Point3{{0, 0, 0}, {1, 1, 0}, {2, 0, 0}, {3, 1, 0}},
 		Knots:         []float64{0, 0, 0, 1, 2, 3, 3, 3},
 	}
-	st2 := tessSpline(spCtrl, xf)
+	st2 := drawing.TessSpline(spCtrl, xf)
 	if len(st2) == 0 {
 		t.Fatal("控制点模式应产生描边")
 	}
 
 	// 退化：度数非法 → 控制点折线
 	spDeg := &entity.EntSpline{Scenario: 1, Degree: 9, ControlPoints: []entity.Point3{{0, 0, 0}, {1, 1, 0}}}
-	st3 := tessSpline(spDeg, xf)
+	st3 := drawing.TessSpline(spDeg, xf)
 	if len(st3) == 0 {
 		t.Fatal("退化折线应产生描边")
 	}
 
 	// 控制点不足 → nil
-	if got := tessSpline(&entity.EntSpline{Scenario: 1, ControlPoints: nil}, xf); got != nil {
+	if got := drawing.TessSpline(&entity.EntSpline{Scenario: 1, ControlPoints: nil}, xf); got != nil {
 		t.Error("控制点不足应返回 nil")
 	}
 }

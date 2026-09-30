@@ -7,6 +7,7 @@ package cad
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/object"
 	"github.com/unitedrhino/go-cad/internal/objrec"
@@ -262,7 +263,7 @@ func TestMustHandles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b := mustHandles(data); len(b) == 0 {
+	if b := drawing.MustHandles(data); len(b) == 0 {
 		t.Error("mustHandles 应返回 AcDb:Handles 段数据")
 	}
 }
@@ -271,20 +272,20 @@ func TestMustHandles(t *testing.T) {
 
 // TestDropOversizeStrokes 超长线段剔除与全剔图元丢弃。
 func TestDropOversizeStrokes(t *testing.T) {
-	bbox := box2{0, 0, 10, 10} // 对角线≈14.14，limit≈21.2
-	prims := []primitive{
-		{kind: 0, strokes: []stroke{{0, 0, 1, 0}, {0, 0, 100, 0}}},
-		{kind: 0, strokes: []stroke{{0, 0, 100, 0}}},
-		{kind: 1, lb: label{x: 1, y: 1, w: 2, h: 2}},
+	bbox := drawing.Box2{0, 0, 10, 10} // 对角线≈14.14，limit≈21.2
+	prims := []drawing.Primitive{
+		{Kind: 0, Strokes: []drawing.Stroke{{0, 0, 1, 0}, {0, 0, 100, 0}}},
+		{Kind: 0, Strokes: []drawing.Stroke{{0, 0, 100, 0}}},
+		{Kind: 1, Lb: drawing.Label{X: 1, Y: 1, W: 2, H: 2}},
 	}
 	out := dropOversizeStrokes(prims, bbox)
 	if len(out) != 2 {
 		t.Fatalf("输出图元数 = %d, 期望 2", len(out))
 	}
-	if len(out[0].strokes) != 1 || out[0].strokes[0].x2 != 1 {
-		t.Errorf("超长段未剔除: %+v", out[0].strokes)
+	if len(out[0].Strokes) != 1 || out[0].Strokes[0].X2 != 1 {
+		t.Errorf("超长段未剔除: %+v", out[0].Strokes)
 	}
-	if out[1].kind != 1 {
+	if out[1].Kind != 1 {
 		t.Errorf("label 图元应保留: %+v", out[1])
 	}
 }

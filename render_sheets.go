@@ -30,6 +30,7 @@ package cad
 import (
 	"bytes"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"image"
 	"image/color"
@@ -204,7 +205,7 @@ func DetectSheets(doc *Document) []Sheet {
 		return sd.fallbackWhole()
 	}
 	sheets := make([]Sheet, 0, len(kept)+2)
-	covered := make([]box2, 0, len(kept))
+	covered := make([]drawing.Box2, 0, len(kept))
 	for i, c := range kept {
 		name := sd.sheetTitle(c)
 		if name == "" {
@@ -215,7 +216,7 @@ func DetectSheets(doc *Document) []Sheet {
 		}
 		sheets = append(sheets, Sheet{
 			Name: name,
-			Box:  [4]float64{c.box.minX, c.box.minY, c.box.maxX, c.box.maxY},
+			Box:  [4]float64{c.box.MinX, c.box.MinY, c.box.MaxX, c.box.MaxY},
 		})
 		covered = append(covered, c.box)
 	}
@@ -233,29 +234,29 @@ type sheetTextLike struct {
 // 结果按块句柄缓存（同一符号块被引用多次只展开一次）。
 type sheetDetector struct {
 	doc         *Document
-	ts          *tessellator                      // 共享顶点索引 + 展开预算
-	blockPrimsC map[uint64][]primitive            // 块句柄 → 块定义局部展开图元（缓存）
-	blockBox    map[uint64]box2                   // 块句柄 → 块定义局部包围盒（缓存）
-	insertPrims map[*entity.EntInsert][]primitive // 候选 INSERT → 世界展开图元（缓存）
-	modelTexts  []sheetTextLike                   // 模型空间直属文本（图名提取第二来源）
-	dots        [][2]float64                      // 模型空间直属实体代表点（内容密度与残余聚类共用）
-	dotText     map[[2]float64]struct{}           // dots 中文本插入点集合（文字页/符号区判别）
+	ts          *drawing.Tessellator                      // 共享顶点索引 + 展开预算
+	blockPrimsC map[uint64][]drawing.Primitive            // 块句柄 → 块定义局部展开图元（缓存）
+	blockBox    map[uint64]drawing.Box2                   // 块句柄 → 块定义局部包围盒（缓存）
+	insertPrims map[*entity.EntInsert][]drawing.Primitive // 候选 INSERT → 世界展开图元（缓存）
+	modelTexts  []sheetTextLike                           // 模型空间直属文本（图名提取第二来源）
+	dots        [][2]float64                              // 模型空间直属实体代表点（内容密度与残余聚类共用）
+	dotText     map[[2]float64]struct{}                   // dots 中文本插入点集合（文字页/符号区判别）
 }
 
 // newSheetDetector 构造检测器：buildVertexIndex 一次供全部块展开共用
 // （POLYLINE 顶点聚合），预算放宽防大块展开中途截断；直属文本清单
 // 供标题栏图名提取。
 func newSheetDetector(doc *Document) *sheetDetector {
-	ts := newTessellator(doc)
-	ts.buildVertexIndex()
-	ts.budget = sheetDetectorBudget
+	ts := drawing.NewTessellator(doc)
+	ts.BuildVertexIndex()
+	ts.Budget = sheetDetectorBudget
 	dots := contentDots(doc)
 	return &sheetDetector{
 		doc:         doc,
 		ts:          ts,
-		blockPrimsC: make(map[uint64][]primitive, 64),
-		blockBox:    make(map[uint64]box2, 64),
-		insertPrims: make(map[*entity.EntInsert][]primitive, 16),
+		blockPrimsC: make(map[uint64][]drawing.Primitive, 64),
+		blockBox:    make(map[uint64]drawing.Box2, 64),
+		insertPrims: make(map[*entity.EntInsert][]drawing.Primitive, 16),
 		modelTexts:  collectModelTexts(doc),
 		dots:        dots,
 		dotText:     textDotSet(doc),
@@ -266,18 +267,18 @@ func newSheetDetector(doc *Document) *sheetDetector {
 // 匹配），供残余聚类判别分量是文字页还是符号图块区。
 func textDotSet(doc *Document) map[[2]float64]struct{} {
 	set := make(map[[2]float64]struct{}, 1024)
-	for _, ent := range doc.modelSpace {
+	for _, ent := range doc.ModelSpace {
 		switch e := ent.(type) {
 		case *entity.EntText:
-			if plausible(e.Insertion.X, e.Insertion.Y) {
+			if drawing.Plausible(e.Insertion.X, e.Insertion.Y) {
 				set[[2]float64{e.Insertion.X, e.Insertion.Y}] = struct{}{}
 			}
 		case *entity.EntMText:
-			if plausible(e.Insertion.X, e.Insertion.Y) {
+			if drawing.Plausible(e.Insertion.X, e.Insertion.Y) {
 				set[[2]float64{e.Insertion.X, e.Insertion.Y}] = struct{}{}
 			}
 		case *entity.EntAttrib:
-			if plausible(e.Insertion.X, e.Insertion.Y) {
+			if drawing.Plausible(e.Insertion.X, e.Insertion.Y) {
 				set[[2]float64{e.Insertion.X, e.Insertion.Y}] = struct{}{}
 			}
 		}
@@ -288,7 +289,7 @@ func textDotSet(doc *Document) map[[2]float64]struct{} {
 // sheetCand 通过粗筛的图框候选。
 type sheetCand struct {
 	ins *entity.EntInsert // 图框块参照
-	box box2              // 精确世界包围盒（AABB，含旋转外扩）
+	box drawing.Box2      // 精确世界包围盒（AABB，含旋转外扩）
 }
 
 // contentDots 模型空间直属实体的代表点样本（内容密度判定用）：
@@ -297,11 +298,11 @@ type sheetCand struct {
 func contentDots(doc *Document) [][2]float64 {
 	var dots [][2]float64
 	add := func(x, y float64) {
-		if plausible(x, y) {
+		if drawing.Plausible(x, y) {
 			dots = append(dots, [2]float64{x, y})
 		}
 	}
-	for _, ent := range doc.modelSpace {
+	for _, ent := range doc.ModelSpace {
 		switch e := ent.(type) {
 		case *entity.EntLine:
 			add(e.Start.X, e.Start.Y)
@@ -345,24 +346,24 @@ func (sd *sheetDetector) candidates() []sheetCand {
 	// 块序保持首次出现顺序保证候选输出顺序确定
 	type insts struct {
 		list  []*entity.EntInsert
-		boxes []box2 // 角点外接近似世界包围盒（网格判定用）
+		boxes []drawing.Box2 // 角点外接近似世界包围盒（网格判定用）
 	}
 	var blockOrder []uint64
 	byBlock := map[uint64]*insts{}
-	for _, ent := range sd.doc.modelSpace {
+	for _, ent := range sd.doc.ModelSpace {
 		ins, ok := ent.(*entity.EntInsert)
 		if !ok {
 			continue
 		}
-		if n := len(sd.doc.blocks[ins.BlockHeader]); n == 0 || n > sheetMaxBlockEnts {
+		if n := len(sd.doc.Blocks[ins.BlockHeader]); n == 0 || n > sheetMaxBlockEnts {
 			continue
 		}
 		lb := sd.blockLocalBox(ins.BlockHeader)
-		if lb.invalid() {
+		if lb.Invalid() {
 			continue
 		}
-		w := (lb.maxX - lb.minX) * math.Abs(ins.Scale.X)
-		h := (lb.maxY - lb.minY) * math.Abs(ins.Scale.Y)
+		w := (lb.MaxX - lb.MinX) * math.Abs(ins.Scale.X)
+		h := (lb.MaxY - lb.MinY) * math.Abs(ins.Scale.Y)
 		if w <= 0 || h <= 0 {
 			continue
 		}
@@ -384,16 +385,16 @@ func (sd *sheetDetector) candidates() []sheetCand {
 			blockOrder = append(blockOrder, ins.BlockHeader)
 		}
 		g.list = append(g.list, ins)
-		g.boxes = append(g.boxes, cornerBox(lb, insertXform(ins)))
+		g.boxes = append(g.boxes, cornerBox(lb, drawing.InsertXform(ins)))
 	}
 	dots := sd.dots
 	var cands []sheetCand
 	for _, h := range blockOrder {
 		g := byBlock[h]
 		ratioOKA := false
-		if lb := sd.blockLocalBox(h); !lb.invalid() {
-			w := (lb.maxX - lb.minX) * math.Abs(g.list[0].Scale.X)
-			hh := (lb.maxY - lb.minY) * math.Abs(g.list[0].Scale.Y)
+		if lb := sd.blockLocalBox(h); !lb.Invalid() {
+			w := (lb.MaxX - lb.MinX) * math.Abs(g.list[0].Scale.X)
+			hh := (lb.MaxY - lb.MinY) * math.Abs(g.list[0].Scale.Y)
 			ratio := math.Max(w, hh) / math.Min(w, hh)
 			ratioOKA = ratio <= sheetRatioMax
 		}
@@ -405,11 +406,11 @@ func (sd *sheetDetector) candidates() []sheetCand {
 		// 内容密度（块级通过率）：图框每一张都容纳图内容；设备外形框
 		// 只有个别实例碰巧落在标注密集区（如 28 个实例仅 2 个框内有点），
 		// 通过率低于 sheetContentPassRate 的整块排除
-		boxes := make([]box2, len(g.list))
+		boxes := make([]drawing.Box2, len(g.list))
 		counts := make([]int, len(g.list))
 		pass := 0
 		for i, ins := range g.list {
-			boxes[i] = primitivesBounds(sd.expandInsert(ins))
+			boxes[i] = drawing.PrimitivesBounds(sd.expandInsert(ins))
 			counts[i] = countDotsIn(dots, boxes[i])
 			if counts[i] >= sheetMinContentDots {
 				pass++
@@ -419,7 +420,7 @@ func (sd *sheetDetector) candidates() []sheetCand {
 			continue
 		}
 		for i, ins := range g.list {
-			if boxes[i].invalid() || counts[i] < sheetMinContentDots {
+			if boxes[i].Invalid() || counts[i] < sheetMinContentDots {
 				continue
 			}
 			cands = append(cands, sheetCand{ins: ins, box: boxes[i]})
@@ -430,10 +431,10 @@ func (sd *sheetDetector) candidates() []sheetCand {
 
 // countDotsIn 统计落在框内的代表点数（线性扫描；候选数量有限，
 // 点样本量级 1e4~1e5，总开销可控）。
-func countDotsIn(dots [][2]float64, b box2) int {
+func countDotsIn(dots [][2]float64, b drawing.Box2) int {
 	n := 0
 	for _, d := range dots {
-		if d[0] >= b.minX && d[0] <= b.maxX && d[1] >= b.minY && d[1] <= b.maxY {
+		if d[0] >= b.MinX && d[0] <= b.MaxX && d[1] >= b.MinY && d[1] <= b.MaxY {
 			n++
 		}
 	}
@@ -442,11 +443,11 @@ func countDotsIn(dots [][2]float64, b box2) int {
 
 // cornerBox 局部包围盒经仿射变换后的角点外接近似世界包围盒（旋转非
 // 90° 倍数时高估，仅网格判定粗用；候选最终 bbox 走精确展开）。
-func cornerBox(b box2, t xform) box2 {
-	out := box2{minX: math.Inf(1), minY: math.Inf(1), maxX: math.Inf(-1), maxY: math.Inf(-1)}
-	for _, p := range [4]entity.Point2{{b.minX, b.minY}, {b.maxX, b.minY}, {b.minX, b.maxY}, {b.maxX, b.maxY}} {
-		q := t.apply(p)
-		out.extend(q.X, q.Y)
+func cornerBox(b drawing.Box2, t drawing.Xform) drawing.Box2 {
+	out := drawing.Box2{MinX: math.Inf(1), MinY: math.Inf(1), MaxX: math.Inf(-1), MaxY: math.Inf(-1)}
+	for _, p := range [4]entity.Point2{{b.MinX, b.MinY}, {b.MaxX, b.MinY}, {b.MinX, b.MaxY}, {b.MaxX, b.MaxY}} {
+		q := t.Apply(p)
+		out.Extend(q.X, q.Y)
 	}
 	return out
 }
@@ -461,11 +462,11 @@ func cornerBox(b box2, t xform) box2 {
 //     缺失，stroke 级会漏判）。
 //
 // GB 图框必有矩形外框，设备/符号块无此特征，是图框与内容块的本质区分。
-func frameRect(doc *Document, h uint64, prims []primitive, b box2) bool {
+func frameRect(doc *Document, h uint64, prims []drawing.Primitive, b drawing.Box2) bool {
 	if rectStrokeFrame(prims, b) {
 		return true
 	}
-	for _, e := range doc.blocks[h] {
+	for _, e := range doc.Blocks[h] {
 		p, ok := e.(*entity.EntLwPolyline)
 		if !ok || len(p.Vertices) < 4 || len(p.Vertices) > 5 {
 			continue
@@ -496,7 +497,7 @@ func frameRect(doc *Document, h uint64, prims []primitive, b box2) bool {
 				break
 			}
 		}
-		if isRect && (xs[1]-xs[0])*(ys[1]-ys[0]) >= (b.maxX-b.minX)*(b.maxY-b.minY)*frameEdgeFrac {
+		if isRect && (xs[1]-xs[0])*(ys[1]-ys[0]) >= (b.MaxX-b.MinX)*(b.MaxY-b.MinY)*frameEdgeFrac {
 			return true
 		}
 	}
@@ -504,37 +505,37 @@ func frameRect(doc *Document, h uint64, prims []primitive, b box2) bool {
 }
 
 // rectStrokeFrame stroke 级四边框线判定（每边至少一条容差带内的长平行线段）。
-func rectStrokeFrame(prims []primitive, b box2) bool {
-	w := b.maxX - b.minX
-	h := b.maxY - b.minY
+func rectStrokeFrame(prims []drawing.Primitive, b drawing.Box2) bool {
+	w := b.MaxX - b.MinX
+	h := b.MaxY - b.MinY
 	if w <= 0 || h <= 0 {
 		return false
 	}
 	tol := math.Max(w, h) * frameTolFrac
 	top, bottom, left, right := false, false, false, false
 	for _, p := range prims {
-		if p.kind != 0 {
+		if p.Kind != 0 {
 			continue
 		}
-		for _, s := range p.strokes {
-			if !plausible(s.x1, s.y1) || !plausible(s.x2, s.y2) {
+		for _, s := range p.Strokes {
+			if !drawing.Plausible(s.X1, s.Y1) || !drawing.Plausible(s.X2, s.Y2) {
 				continue
 			}
-			dx := math.Abs(s.x2 - s.x1)
-			dy := math.Abs(s.y2 - s.y1)
+			dx := math.Abs(s.X2 - s.X1)
+			dy := math.Abs(s.Y2 - s.Y1)
 			if dy <= tol && dx >= w*frameEdgeFrac {
-				if math.Abs(s.y1-b.minY) <= tol {
+				if math.Abs(s.Y1-b.MinY) <= tol {
 					bottom = true
 				}
-				if math.Abs(s.y1-b.maxY) <= tol {
+				if math.Abs(s.Y1-b.MaxY) <= tol {
 					top = true
 				}
 			}
 			if dx <= tol && dy >= h*frameEdgeFrac {
-				if math.Abs(s.x1-b.minX) <= tol {
+				if math.Abs(s.X1-b.MinX) <= tol {
 					left = true
 				}
-				if math.Abs(s.x1-b.maxX) <= tol {
+				if math.Abs(s.X1-b.MaxX) <= tol {
 					right = true
 				}
 			}
@@ -550,31 +551,31 @@ func rectStrokeFrame(prims []primitive, b box2) bool {
 // 尺寸一致（±gridSizeTol）且满足列对齐 / 行对齐 / 网格填充之一。
 // 列/行对齐覆盖单列/单行平铺；网格填充覆盖多行多列（去重容差聚类，
 // 要求两维相邻间距 ≥ 半个尺寸防密集符号块误判）。
-func gridAligned(boxes []box2) bool {
+func gridAligned(boxes []drawing.Box2) bool {
 	if len(boxes) < 2 {
 		return false
 	}
-	w := boxes[0].maxX - boxes[0].minX
-	h := boxes[0].maxY - boxes[0].minY
+	w := boxes[0].MaxX - boxes[0].MinX
+	h := boxes[0].MaxY - boxes[0].MinY
 	for _, b := range boxes[1:] {
-		if math.Abs((b.maxX-b.minX)-w) > w*gridSizeTol || math.Abs((b.maxY-b.minY)-h) > h*gridSizeTol {
+		if math.Abs((b.MaxX-b.MinX)-w) > w*gridSizeTol || math.Abs((b.MaxY-b.MinY)-h) > h*gridSizeTol {
 			return false
 		}
 	}
 	colAlign, rowAlign := true, true
 	for _, b := range boxes[1:] {
-		if math.Abs(b.minX-boxes[0].minX) > w*gridPosTol {
+		if math.Abs(b.MinX-boxes[0].MinX) > w*gridPosTol {
 			colAlign = false
 		}
-		if math.Abs(b.minY-boxes[0].minY) > h*gridPosTol {
+		if math.Abs(b.MinY-boxes[0].MinY) > h*gridPosTol {
 			rowAlign = false
 		}
 	}
 	if colAlign || rowAlign {
 		return true
 	}
-	xs := gridCluster(boxes, gridSizeTol, func(b box2) float64 { return (b.minX + b.maxX) / 2 })
-	ys := gridCluster(boxes, gridSizeTol, func(b box2) float64 { return (b.minY + b.maxY) / 2 })
+	xs := gridCluster(boxes, gridSizeTol, func(b drawing.Box2) float64 { return (b.MinX + b.MaxX) / 2 })
+	ys := gridCluster(boxes, gridSizeTol, func(b drawing.Box2) float64 { return (b.MinY + b.MaxY) / 2 })
 	if len(xs)*len(ys) < len(boxes) {
 		return false
 	}
@@ -582,7 +583,7 @@ func gridAligned(boxes []box2) bool {
 }
 
 // gridCluster 按容差聚类一维坐标（返回各簇均值，升序）。
-func gridCluster(boxes []box2, tol float64, key func(box2) float64) []float64 {
+func gridCluster(boxes []drawing.Box2, tol float64, key func(drawing.Box2) float64) []float64 {
 	vals := make([]float64, 0, len(boxes))
 	for _, b := range boxes {
 		vals = append(vals, key(b))
@@ -615,45 +616,45 @@ func spaced(centers []float64, size float64) bool {
 // blockPrims 块定义局部展开图元（identity 变换，缓存）。
 // 展开中的递归环用占位短路；每块独立预算（保存/恢复），防超大块把
 // 共享预算耗尽导致后续块缓存被截断污染。
-func (sd *sheetDetector) blockPrims(h uint64) []primitive {
+func (sd *sheetDetector) blockPrims(h uint64) []drawing.Primitive {
 	if p, ok := sd.blockPrimsC[h]; ok {
 		return p
 	}
 	// 占位空展开：同块递归引用（自包含环）短路，budget 不被环消耗
 	sd.blockPrimsC[h] = nil
-	sd.blockBox[h] = box2{minX: math.Inf(1), maxX: math.Inf(-1)}
-	saved := sd.ts.budget
-	sd.ts.budget = sheetDetectorBudget
-	prims := make([]primitive, 0, 64)
-	for _, inner := range sd.doc.blocks[h] {
-		prims = sd.ts.appendEntity(prims, inner, identityXform(), 0)
+	sd.blockBox[h] = drawing.Box2{MinX: math.Inf(1), MaxX: math.Inf(-1)}
+	saved := sd.ts.Budget
+	sd.ts.Budget = sheetDetectorBudget
+	prims := make([]drawing.Primitive, 0, 64)
+	for _, inner := range sd.doc.Blocks[h] {
+		prims = sd.ts.AppendEntity(prims, inner, drawing.IdentityXform(), 0)
 	}
-	sd.ts.budget = saved
+	sd.ts.Budget = saved
 	sd.blockPrimsC[h] = prims
-	sd.blockBox[h] = primitivesBounds(prims)
+	sd.blockBox[h] = drawing.PrimitivesBounds(prims)
 	return prims
 }
 
 // blockLocalBox 块定义局部坐标包围盒（blockPrims 缓存派生）。
-func (sd *sheetDetector) blockLocalBox(h uint64) box2 {
+func (sd *sheetDetector) blockLocalBox(h uint64) drawing.Box2 {
 	sd.blockPrims(h)
 	return sd.blockBox[h]
 }
 
 // expandInsert 图框候选的完整世界展开：块内图元经插入变换展开，
 // 关联 ATTRIB 文字一并展开（标题栏图名常为属性文本）。
-func (sd *sheetDetector) expandInsert(ins *entity.EntInsert) []primitive {
+func (sd *sheetDetector) expandInsert(ins *entity.EntInsert) []drawing.Primitive {
 	if p, ok := sd.insertPrims[ins]; ok {
 		return p
 	}
-	child := insertXform(ins)
-	out := make([]primitive, 0, 64)
-	for _, inner := range sd.doc.blocks[ins.BlockHeader] {
-		out = sd.ts.appendEntity(out, inner, child, 0)
+	child := drawing.InsertXform(ins)
+	out := make([]drawing.Primitive, 0, 64)
+	for _, inner := range sd.doc.Blocks[ins.BlockHeader] {
+		out = sd.ts.AppendEntity(out, inner, child, 0)
 	}
 	for _, ah := range ins.Attribs {
-		if a, ok := sd.doc.attribs[ah]; ok {
-			out = sd.ts.appendEntity(out, a, child, 0)
+		if a, ok := sd.doc.Attribs[ah]; ok {
+			out = sd.ts.AppendEntity(out, a, child, 0)
 		}
 	}
 	sd.insertPrims[ins] = out
@@ -684,14 +685,14 @@ func dedupSheets(cands []sheetCand) []sheetCand {
 }
 
 // sheetArea 框面积。
-func sheetArea(b box2) float64 {
-	return (b.maxX - b.minX) * (b.maxY - b.minY)
+func sheetArea(b drawing.Box2) float64 {
+	return (b.MaxX - b.MinX) * (b.MaxY - b.MinY)
 }
 
 // sheetOverlapArea 两框相交面积（不相交为 0）。
-func sheetOverlapArea(a, b box2) float64 {
-	w := math.Min(a.maxX, b.maxX) - math.Max(a.minX, b.minX)
-	h := math.Min(a.maxY, b.maxY) - math.Max(a.minY, b.minY)
+func sheetOverlapArea(a, b drawing.Box2) float64 {
+	w := math.Min(a.MaxX, b.MaxX) - math.Max(a.MinX, b.MinX)
+	h := math.Min(a.MaxY, b.MaxY) - math.Max(a.MinY, b.MinY)
 	if w <= 0 || h <= 0 {
 		return 0
 	}
@@ -713,13 +714,13 @@ func sheetOverlapArea(a, b box2) float64 {
 // 处理。世界字高 = 展开推进基向量长度 × 字高（块内局部），跨嵌套块可比。
 func (sd *sheetDetector) sheetTitle(c sheetCand) string {
 	prims := sd.expandInsert(c.ins)
-	tw := (c.box.maxX - c.box.minX) * 0.25
-	th := (c.box.maxY - c.box.minY) / 6
-	x0 := c.box.maxX - tw
-	y0 := c.box.minY
-	y1 := c.box.minY + th
+	tw := (c.box.MaxX - c.box.MinX) * 0.25
+	th := (c.box.MaxY - c.box.MinY) / 6
+	x0 := c.box.MaxX - tw
+	y0 := c.box.MinY
+	y1 := c.box.MinY + th
 	inTitle := func(x, y float64) bool {
-		return plausible(x, y) && x >= x0 && x <= c.box.maxX && y >= y0 && y <= y1
+		return drawing.Plausible(x, y) && x >= x0 && x <= c.box.MaxX && y >= y0 && y <= y1
 	}
 	var inTexts, allTexts []sheetTextLike
 	add := func(x, y, hWorld float64, text string) {
@@ -730,14 +731,14 @@ func (sd *sheetDetector) sheetTitle(c sheetCand) string {
 		}
 	}
 	for _, p := range prims {
-		if p.kind != 1 || p.lb.tx == nil || !plausible(p.lb.x, p.lb.y) {
+		if p.Kind != 1 || p.Lb.Tx == nil || !drawing.Plausible(p.Lb.X, p.Lb.Y) {
 			continue
 		}
-		text := strings.TrimSpace(strings.Join(p.lb.tx.lines, " "))
+		text := strings.TrimSpace(strings.Join(p.Lb.Tx.Lines, " "))
 		if text == "" {
 			continue
 		}
-		add(p.lb.x, p.lb.y, math.Hypot(p.lb.tx.ux, p.lb.tx.uy)*p.lb.tx.hWorld, text)
+		add(p.Lb.X, p.Lb.Y, math.Hypot(p.Lb.Tx.Ux, p.Lb.Tx.Uy)*p.Lb.Tx.HWorld, text)
 	}
 	for _, t := range sd.modelTexts {
 		add(t.x, t.y, t.hWorld, t.text)
@@ -764,10 +765,10 @@ var sheetNoRe = regexp.MustCompile(`^[A-Z]{1,6}(?:\([A-Z]{1,4}\))?-\d{1,3}$`)
 
 // pickSheetNo 从标题栏区文本中挑选图号：匹配 sheetNoRe 者，世界字高大者
 // 优先，同级取距图框中心最近者（标题栏居中一格为正式图号栏）。
-func pickSheetNo(texts []sheetTextLike, b box2) *sheetTextLike {
+func pickSheetNo(texts []sheetTextLike, b drawing.Box2) *sheetTextLike {
 	var best *sheetTextLike
 	bestD := 0.0
-	cx, cy := (b.minX+b.maxX)/2, (b.minY+b.maxY)/2
+	cx, cy := (b.MinX+b.MaxX)/2, (b.MinY+b.MaxY)/2
 	for i := range texts {
 		t := &texts[i]
 		if !sheetNoRe.MatchString(t.text) {
@@ -856,7 +857,7 @@ func estTextWidth(text string, h float64) float64 {
 // blockName 块定义句柄 → BLOCK_HEADER 真名（internalObjects 登记值），
 // 匿名块名（"*Model_Space" 等 * 前缀）返回空串避免误作图名。
 func (sd *sheetDetector) blockName(h uint64) string {
-	g := sd.doc.internalObjects[h]
+	g := sd.doc.InternalObjs[h]
 	if g == nil {
 		return ""
 	}
@@ -871,15 +872,15 @@ func (sd *sheetDetector) blockName(h uint64) string {
 // 返回整图视口，包围盒用稳健分位口径（quantileSheetBounds），保证
 // 离群实体不把视口撑爆、主体内容铺满画布。
 func (sd *sheetDetector) fallbackWhole() []Sheet {
-	prim := newTessellator(sd.doc)
-	prims := prim.expandAll()
+	prim := drawing.NewTessellator(sd.doc)
+	prims := prim.ExpandAll()
 	bbox := quantileSheetBounds(prims)
-	if bbox.invalid() {
-		bbox = box2{0, 0, 1, 1}
+	if bbox.Invalid() {
+		bbox = drawing.Box2{0, 0, 1, 1}
 	}
 	return []Sheet{{
 		Name: "整图",
-		Box:  [4]float64{bbox.minX, bbox.minY, bbox.maxX, bbox.maxY},
+		Box:  [4]float64{bbox.MinX, bbox.MinY, bbox.MaxX, bbox.MaxY},
 	}}
 }
 
@@ -887,7 +888,7 @@ func (sd *sheetDetector) fallbackWhole() []Sheet {
 // 切片底层）、分量内点精确包围盒与点数。
 type residualComp struct {
 	pts  [][2]float64
-	box  box2
+	box  drawing.Box2
 	dots int
 }
 
@@ -916,7 +917,7 @@ type residualGridParams struct {
 // （一）"），无可读文本用"补充区域 N"（N 为产出顺序号）；Box 为分量点
 // 包围盒每边外扩 sheetResidualMarginFrac。参数保守（点数/密度阈值 +
 // 重叠剔除 + 产出上限），宁可漏识别不可把整图切成碎片。
-func (sd *sheetDetector) residualSheets(covered []box2) []Sheet {
+func (sd *sheetDetector) residualSheets(covered []drawing.Box2) []Sheet {
 	residual := make([][2]float64, 0, len(sd.dots))
 	for _, d := range sd.dots {
 		inFrame := false
@@ -959,7 +960,7 @@ func (sd *sheetDetector) residualSheets(covered []box2) []Sheet {
 		// 文字页独立成块，符号图块区（文本占比低，细分只会长出符号列
 		// 碎片）合并为整块
 		var symbol residualComp
-		symbol.box = box2{minX: math.Inf(1), minY: math.Inf(1), maxX: math.Inf(-1), maxY: math.Inf(-1)}
+		symbol.box = drawing.Box2{MinX: math.Inf(1), MinY: math.Inf(1), MaxX: math.Inf(-1), MaxY: math.Inf(-1)}
 		for _, mc := range merged {
 			if sd.textFrac(mc) >= sheetResidualMinTextFrac {
 				finals = append(finals, mc)
@@ -967,7 +968,7 @@ func (sd *sheetDetector) residualSheets(covered []box2) []Sheet {
 			}
 			symbol.pts = append(symbol.pts, mc.pts...)
 			for _, d := range mc.pts {
-				symbol.box.extend(d[0], d[1])
+				symbol.box.Extend(d[0], d[1])
 			}
 			symbol.dots += mc.dots
 		}
@@ -978,7 +979,7 @@ func (sd *sheetDetector) residualSheets(covered []box2) []Sheet {
 	// 密度下限（轴号标注带剔除）+ 产出上限（按点数保留前 N，顺序确定）
 	dense := finals[:0]
 	for _, c := range finals {
-		area := (c.box.maxX - c.box.minX) * (c.box.maxY - c.box.minY)
+		area := (c.box.MaxX - c.box.MinX) * (c.box.MaxY - c.box.MinY)
 		if area > 0 && float64(c.dots)/area*1e10 >= sheetResidualMinDensity {
 			dense = append(dense, c)
 		}
@@ -1003,8 +1004,8 @@ func (sd *sheetDetector) residualSheets(covered []box2) []Sheet {
 			continue
 		}
 		n++
-		mx := (comp.box.maxX - comp.box.minX) * sheetResidualMarginFrac
-		my := (comp.box.maxY - comp.box.minY) * sheetResidualMarginFrac
+		mx := (comp.box.MaxX - comp.box.MinX) * sheetResidualMarginFrac
+		my := (comp.box.MaxY - comp.box.MinY) * sheetResidualMarginFrac
 		if mx == 0 && my == 0 {
 			mx, my = 1, 1
 		} else if mx == 0 {
@@ -1012,10 +1013,10 @@ func (sd *sheetDetector) residualSheets(covered []box2) []Sheet {
 		} else if my == 0 {
 			my = mx
 		}
-		box := [4]float64{comp.box.minX - mx, comp.box.minY - my, comp.box.maxX + mx, comp.box.maxY + my}
+		box := [4]float64{comp.box.MinX - mx, comp.box.MinY - my, comp.box.MaxX + mx, comp.box.MaxY + my}
 		// 命名用外扩后的框：页面标题基线可能高于点云上缘（页顶框线
 		// 端点少、聚类后不在分量内，实测说明页标题高于点云 2000+ 单位）
-		name := sd.residualTitle(box2{minX: box[0], minY: box[1], maxX: box[2], maxY: box[3]})
+		name := sd.residualTitle(drawing.Box2{MinX: box[0], MinY: box[1], MaxX: box[2], MaxY: box[3]})
 		if name == "" {
 			name = fmt.Sprintf("补充区域 %d", n)
 		}
@@ -1026,9 +1027,9 @@ func (sd *sheetDetector) residualSheets(covered []box2) []Sheet {
 
 // boxGap 两包围盒的最近间距（AABB 分离距离：x/y 方向间隙的较大者，
 // 相交或接触为 0）。残余细分子分量的粘连判定用。
-func boxGap(a, b box2) float64 {
-	dx := math.Max(a.minX-b.maxX, b.minX-a.maxX)
-	dy := math.Max(a.minY-b.maxY, b.minY-a.maxY)
+func boxGap(a, b drawing.Box2) float64 {
+	dx := math.Max(a.MinX-b.MaxX, b.MinX-a.MaxX)
+	dy := math.Max(a.MinY-b.MaxY, b.MinY-a.MaxY)
 	if dx < 0 {
 		dx = 0
 	}
@@ -1040,8 +1041,8 @@ func boxGap(a, b box2) float64 {
 
 // compMinSide 分量包围盒较小边长（粘连判定的相对基准：页面自己的
 // 尺寸，替代绝对世界单位阈值）。
-func compMinSide(b box2) float64 {
-	return math.Min(b.maxX-b.minX, b.maxY-b.minY)
+func compMinSide(b drawing.Box2) float64 {
+	return math.Min(b.MaxX-b.MinX, b.MaxY-b.MinY)
 }
 
 // mergeCloseComps 残余细分产物的间距合并（并查集）：两分量间距小于
@@ -1083,14 +1084,14 @@ func mergeCloseComps(comps []residualComp, gapFrac float64) []residualComp {
 		r := find(i)
 		if idx[r] < 0 {
 			idx[r] = len(out)
-			out = append(out, residualComp{box: box2{
-				minX: math.Inf(1), minY: math.Inf(1), maxX: math.Inf(-1), maxY: math.Inf(-1),
+			out = append(out, residualComp{box: drawing.Box2{
+				MinX: math.Inf(1), MinY: math.Inf(1), MaxX: math.Inf(-1), MaxY: math.Inf(-1),
 			}})
 		}
 		m := &out[idx[r]]
 		m.pts = append(m.pts, c.pts...)
-		m.box.extend(c.box.minX, c.box.minY)
-		m.box.extend(c.box.maxX, c.box.maxY)
+		m.box.Extend(c.box.MinX, c.box.MinY)
+		m.box.Extend(c.box.MaxX, c.box.MaxY)
 		m.dots += c.dots
 	}
 	return out
@@ -1138,18 +1139,18 @@ func gridDensityComponents(dots [][2]float64, p residualGridParams) []residualCo
 	if p.res <= 0 || p.minDots <= 0 || len(dots) == 0 {
 		return nil
 	}
-	var bb box2
-	bb.minX, bb.minY = math.Inf(1), math.Inf(1)
-	bb.maxX, bb.maxY = math.Inf(-1), math.Inf(-1)
+	var bb drawing.Box2
+	bb.MinX, bb.MinY = math.Inf(1), math.Inf(1)
+	bb.MaxX, bb.MaxY = math.Inf(-1), math.Inf(-1)
 	for _, d := range dots {
-		bb.extend(d[0], d[1])
+		bb.Extend(d[0], d[1])
 	}
-	if bb.invalid() {
+	if bb.Invalid() {
 		return nil
 	}
 	// 格宽：固定世界格宽（细分拆页口径，空隙分离不随粘连体跨度变粗）
 	// 或包围盒均分（粗聚类口径）；两轴格数各自钳制到 res 上限
-	spanX, spanY := bb.maxX-bb.minX, bb.maxY-bb.minY
+	spanX, spanY := bb.MaxX-bb.MinX, bb.MaxY-bb.MinY
 	cw, ch := spanX/float64(p.res), spanY/float64(p.res)
 	nx, ny := p.res, p.res
 	if p.cell > 0 {
@@ -1170,11 +1171,11 @@ func gridDensityComponents(dots [][2]float64, p residualGridParams) []residualCo
 		ch = 1
 	}
 	cellOf := func(x, y float64) int {
-		i := int((x - bb.minX) / cw)
+		i := int((x - bb.MinX) / cw)
 		if i >= nx {
 			i = nx - 1
 		}
-		j := int((y - bb.minY) / ch)
+		j := int((y - bb.MinY) / ch)
 		if j >= ny {
 			j = ny - 1
 		}
@@ -1214,8 +1215,8 @@ func gridDensityComponents(dots [][2]float64, p residualGridParams) []residualCo
 		id := len(comps)
 		// 包围盒初始化为 ±Inf：零值 box2{0,0,0,0} 会让全正象限分量的
 		// minX/minY 停留在原点，bbox 被撑到 (0,0) 造成虚假大跨度
-		comps = append(comps, residualComp{box: box2{
-			minX: math.Inf(1), minY: math.Inf(1), maxX: math.Inf(-1), maxY: math.Inf(-1),
+		comps = append(comps, residualComp{box: drawing.Box2{
+			MinX: math.Inf(1), MinY: math.Inf(1), MaxX: math.Inf(-1), MaxY: math.Inf(-1),
 		}})
 		cells := []int{start}
 		compID[start] = id
@@ -1263,7 +1264,7 @@ func gridDensityComponents(dots [][2]float64, p residualGridParams) []residualCo
 	for _, d := range dots {
 		if id := compID[cellOf(d[0], d[1])]; id >= 0 {
 			comps[id].pts = append(comps[id].pts, d)
-			comps[id].box.extend(d[0], d[1])
+			comps[id].box.Extend(d[0], d[1])
 			comps[id].dots++
 		}
 	}
@@ -1296,7 +1297,7 @@ func (sd *sheetDetector) textFrac(c residualComp) float64 {
 // 页面标题水平居中，轴号/页码等同字号文本贴左右缘或角落（实测说明页
 // 标题"弱电设计说明（一）"会被轴号"1"/页码"2"抢占）。无可读文本
 // 返回空串由调用方回退"补充区域 N"。
-func (sd *sheetDetector) residualTitle(b box2) string {
+func (sd *sheetDetector) residualTitle(b drawing.Box2) string {
 	bestH := 0.0
 	for _, t := range sd.modelTexts {
 		if t.hWorld > bestH && pointInBox(t.x, t.y, b) && sheetReadableText(t.text) {
@@ -1304,7 +1305,7 @@ func (sd *sheetDetector) residualTitle(b box2) string {
 		}
 	}
 	best, bestD := "", math.Inf(1)
-	cx := (b.minX + b.maxX) / 2
+	cx := (b.MinX + b.MaxX) / 2
 	for _, t := range sd.modelTexts {
 		if t.hWorld < bestH*0.9 || !pointInBox(t.x, t.y, b) || !sheetReadableText(t.text) {
 			continue
@@ -1335,60 +1336,60 @@ func sheetReadableText(s string) bool {
 // 之上再做主分量收紧（principalRange）：脱离主体的孤立小簇在整图视口
 // 下只占数个像素、却把画布拉宽数倍稀释主体内容，裁出视口。样本过少
 // 或分位窗口零宽（≥99% 坐标重合）时回退旧口径。
-func quantileSheetBounds(prims []primitive) box2 {
+func quantileSheetBounds(prims []drawing.Primitive) drawing.Box2 {
 	var n int
 	for _, p := range prims {
-		switch p.kind {
+		switch p.Kind {
 		case 0:
-			n += len(p.strokes) * 2
+			n += len(p.Strokes) * 2
 		case 1:
-			if plausible(p.lb.x, p.lb.y) {
+			if drawing.Plausible(p.Lb.X, p.Lb.Y) {
 				n++
 			}
 		}
 	}
 	if n < 4 {
-		return primitivesBounds(prims)
+		return drawing.PrimitivesBounds(prims)
 	}
 	xs := make([]float64, 0, n)
 	ys := make([]float64, 0, n)
 	for _, p := range prims {
-		switch p.kind {
+		switch p.Kind {
 		case 0:
-			for _, s := range p.strokes {
-				if plausible(s.x1, s.y1) {
-					xs = append(xs, s.x1)
-					ys = append(ys, s.y1)
+			for _, s := range p.Strokes {
+				if drawing.Plausible(s.X1, s.Y1) {
+					xs = append(xs, s.X1)
+					ys = append(ys, s.Y1)
 				}
-				if plausible(s.x2, s.y2) {
-					xs = append(xs, s.x2)
-					ys = append(ys, s.y2)
+				if drawing.Plausible(s.X2, s.Y2) {
+					xs = append(xs, s.X2)
+					ys = append(ys, s.Y2)
 				}
 			}
 		case 1:
-			if plausible(p.lb.x, p.lb.y) {
-				xs = append(xs, p.lb.x)
-				ys = append(ys, p.lb.y)
+			if drawing.Plausible(p.Lb.X, p.Lb.Y) {
+				xs = append(xs, p.Lb.X)
+				ys = append(ys, p.Lb.Y)
 			}
 		}
 	}
 	if len(xs) < 4 {
-		return primitivesBounds(prims)
+		return drawing.PrimitivesBounds(prims)
 	}
 	sort.Float64s(xs)
 	sort.Float64s(ys)
 	at := func(sorted []float64, q float64) float64 {
 		return sorted[int(float64(len(sorted)-1)*q)]
 	}
-	b := box2{
-		minX: at(xs, 0.005), minY: at(ys, 0.005),
-		maxX: at(xs, 0.995), maxY: at(ys, 0.995),
+	b := drawing.Box2{
+		MinX: at(xs, 0.005), MinY: at(ys, 0.005),
+		MaxX: at(xs, 0.995), MaxY: at(ys, 0.995),
 	}
-	if b.maxX-b.minX <= 0 || b.maxY-b.minY <= 0 {
-		return robustBounds(prims)
+	if b.MaxX-b.MinX <= 0 || b.MaxY-b.MinY <= 0 {
+		return drawing.RobustBounds(prims)
 	}
-	b.minX, b.maxX = principalRange(xs, b.minX, b.maxX)
-	b.minY, b.maxY = principalRange(ys, b.minY, b.maxY)
+	b.MinX, b.MaxX = principalRange(xs, b.MinX, b.MaxX)
+	b.MinY, b.MaxY = principalRange(ys, b.MinY, b.MaxY)
 	return b
 }
 
@@ -1459,10 +1460,10 @@ func principalRange(sorted []float64, lo, hi float64) (float64, float64) {
 
 // sheetViewport 图框包围盒 → 渲染视口：外扩 sheetViewportMargin 边距，
 // 零尺寸退化兜底（与 RenderPNG 的边距口径一致）。
-func sheetViewport(b [4]float64) box2 {
-	bb := box2{minX: b[0], minY: b[1], maxX: b[2], maxY: b[3]}
-	marginX := (bb.maxX - bb.minX) * sheetViewportMargin
-	marginY := (bb.maxY - bb.minY) * sheetViewportMargin
+func sheetViewport(b [4]float64) drawing.Box2 {
+	bb := drawing.Box2{MinX: b[0], MinY: b[1], MaxX: b[2], MaxY: b[3]}
+	marginX := (bb.MaxX - bb.MinX) * sheetViewportMargin
+	marginY := (bb.MaxY - bb.MinY) * sheetViewportMargin
 	if marginX == 0 && marginY == 0 {
 		marginX, marginY = 1, 1
 	} else if marginX == 0 {
@@ -1470,26 +1471,26 @@ func sheetViewport(b [4]float64) box2 {
 	} else if marginY == 0 {
 		marginY = marginX
 	}
-	return box2{bb.minX - marginX, bb.minY - marginY, bb.maxX + marginX, bb.maxY + marginY}
+	return drawing.Box2{bb.MinX - marginX, bb.MinY - marginY, bb.MaxX + marginX, bb.MaxY + marginY}
 }
 
 // sheetPipeline 图框切分渲染的共享素材：整图展开与全局过滤一次完成，
 // 逐张复用（多张出图只展开一遍，RenderAllSheets 的性能基础）。
 type sheetPipeline struct {
 	doc        *Document
-	prims      []primitive
+	prims      []drawing.Primitive
 	modelTexts []sheetTextLike // 直属文本（自适应宽度统计用）
 }
 
 // prepareSheets 构建共享渲染管线：展开/放射线过滤/原点锚定剔除与
 // RenderPNG 完全一致（渲染管线全部复用，金标路径不受影响）。
 func prepareSheets(doc *Document) *sheetPipeline {
-	prim := newTessellator(doc)
-	prims := prim.expandAll()
+	prim := drawing.NewTessellator(doc)
+	prims := prim.ExpandAll()
 	prims = filterRadiatingStrokes(prims)
-	bbox := robustBounds(prims)
-	if bbox.invalid() {
-		bbox = box2{0, 0, 1, 1}
+	bbox := drawing.RobustBounds(prims)
+	if bbox.Invalid() {
+		bbox = drawing.Box2{0, 0, 1, 1}
 	}
 	prims = dropOriginAnchored(prims, bbox)
 	return &sheetPipeline{doc: doc, prims: prims, modelTexts: collectModelTexts(doc)}
@@ -1499,18 +1500,18 @@ func prepareSheets(doc *Document) *sheetPipeline {
 func collectModelTexts(doc *Document) []sheetTextLike {
 	var out []sheetTextLike
 	add := func(x, y, h float64, text string) {
-		if plausible(x, y) && h > 0 {
+		if drawing.Plausible(x, y) && h > 0 {
 			if t := strings.TrimSpace(text); t != "" {
 				out = append(out, sheetTextLike{x: x, y: y, hWorld: h, text: t})
 			}
 		}
 	}
-	for _, ent := range doc.modelSpace {
+	for _, ent := range doc.ModelSpace {
 		switch e := ent.(type) {
 		case *entity.EntText:
 			add(e.Insertion.X, e.Insertion.Y, e.Height, e.Text)
 		case *entity.EntMText:
-			add(e.Insertion.X, e.Insertion.Y, e.TextHeight, stripMTextFormat(e.Text))
+			add(e.Insertion.X, e.Insertion.Y, e.TextHeight, drawing.StripMTextFormat(e.Text))
 		case *entity.EntAttrib:
 			add(e.Insertion.X, e.Insertion.Y, e.Height, e.Text)
 		}
@@ -1523,28 +1524,28 @@ func collectModelTexts(doc *Document) []sheetTextLike {
 // [SheetDefaultWidth, SheetMaxAutoWidth]。1:150 等放大图幅的微缩标注
 // （字高 100 世界单位）在固定 4096 宽下仅 ~2px，必须按内容放宽才能
 // 满足"图内文字标注清晰可读"。
-func (sp *sheetPipeline) sheetWidthFor(vp box2, sheet Sheet, width int) int {
+func (sp *sheetPipeline) sheetWidthFor(vp drawing.Box2, sheet Sheet, width int) int {
 	if width > 0 {
 		return width
 	}
 	var hs []float64
 	for i := range sp.prims {
 		p := &sp.prims[i]
-		if p.kind != 1 || p.lb.tx == nil || !primInBox(p, vp) {
+		if p.Kind != 1 || p.Lb.Tx == nil || !primInBox(p, vp) {
 			continue
 		}
-		if h := math.Hypot(p.lb.tx.ux, p.lb.tx.uy) * p.lb.tx.hWorld; h > 0 {
+		if h := math.Hypot(p.Lb.Tx.Ux, p.Lb.Tx.Uy) * p.Lb.Tx.HWorld; h > 0 {
 			hs = append(hs, h)
 		}
 	}
-	b := box2{minX: sheet.Box[0], minY: sheet.Box[1], maxX: sheet.Box[2], maxY: sheet.Box[3]}
+	b := drawing.Box2{MinX: sheet.Box[0], MinY: sheet.Box[1], MaxX: sheet.Box[2], MaxY: sheet.Box[3]}
 	for _, t := range sp.modelTexts {
 		if pointInBox(t.x, t.y, b) {
 			hs = append(hs, t.hWorld)
 		}
 	}
 	const targetPx = sheetTextMinPx
-	vw := vp.maxX - vp.minX
+	vw := vp.MaxX - vp.MinX
 	if len(hs) == 0 || vw <= 0 {
 		return SheetDefaultWidth
 	}
@@ -1574,7 +1575,7 @@ func (sp *sheetPipeline) sheetWidthFor(vp box2, sheet Sheet, width int) int {
 func (sp *sheetPipeline) renderPNG(sheet Sheet, opts RenderOptions) ([]byte, int, float64, int, error) {
 	vp := sheetViewport(sheet.Box)
 	width := sp.sheetWidthFor(vp, sheet, opts.Width)
-	vw := vp.maxX - vp.minX
+	vw := vp.MaxX - vp.MinX
 	data, err := sp.renderPNGAt(vp, width, opts)
 	if err != nil {
 		return nil, width, 0, 0, err
@@ -1590,7 +1591,7 @@ func (sp *sheetPipeline) renderPNG(sheet Sheet, opts RenderOptions) ([]byte, int
 			fmt.Fprintf(sheetStdout,
 				"cad: 警告 图框 %q 文字清晰达标率 %.0f%% 低于 %d%%；%d 宽上档需画布 %d 像素超内存上限 %g，保留 %d 宽结果\n",
 				sheet.Name, rate*100, int(sheetPassRateMin*100), next,
-				int(float64(next)*(vp.maxY-vp.minY)/vw), sheetMaxPixels, width)
+				int(float64(next)*(vp.MaxY-vp.MinY)/vw), sheetMaxPixels, width)
 			break
 		}
 		var d2 []byte
@@ -1611,10 +1612,10 @@ func (sp *sheetPipeline) renderPNG(sheet Sheet, opts RenderOptions) ([]byte, int
 }
 
 // renderPNGAt 按指定宽度渲染一档 PNG（不含自适应与重渲决策）。
-func (sp *sheetPipeline) renderPNGAt(vp box2, width int, opts RenderOptions) ([]byte, error) {
-	vw := vp.maxX - vp.minX
+func (sp *sheetPipeline) renderPNGAt(vp drawing.Box2, width int, opts RenderOptions) ([]byte, error) {
+	vw := vp.MaxX - vp.MinX
 	scale := float64(width) / vw
-	height := int((vp.maxY-vp.minY)*scale + 0.5)
+	height := int((vp.MaxY-vp.MinY)*scale + 0.5)
 	if height < 1 {
 		height = 1
 	}
@@ -1639,14 +1640,14 @@ func (sp *sheetPipeline) renderPNGAt(vp box2, width int, opts RenderOptions) ([]
 // sheetTextPassRate 渲染后清晰度自检：统计视口内全部文本 label 的
 // 渲染像素高（世界字高 × scale，label 基向量模长已含块变换比例）达
 // sheetTextMinPx 的占比。无文本的图框无清晰度问题，视为达标 1。
-func sheetTextPassRate(prims []primitive, vp box2, scale float64) float64 {
+func sheetTextPassRate(prims []drawing.Primitive, vp drawing.Box2, scale float64) float64 {
 	total, ok := 0, 0
 	for i := range prims {
 		p := &prims[i]
-		if p.kind != 1 || p.lb.tx == nil || !primInBox(p, vp) {
+		if p.Kind != 1 || p.Lb.Tx == nil || !primInBox(p, vp) {
 			continue
 		}
-		h := math.Hypot(p.lb.tx.ux, p.lb.tx.uy) * p.lb.tx.hWorld
+		h := math.Hypot(p.Lb.Tx.Ux, p.Lb.Tx.Uy) * p.Lb.Tx.HWorld
 		if h <= 0 {
 			continue
 		}
@@ -1664,12 +1665,12 @@ func sheetTextPassRate(prims []primitive, vp box2, scale float64) float64 {
 // sheetPixelsOK 指定宽度的画布像素量是否在内存上限内（宽×高 ≤
 // sheetMaxPixels，RGBA 每像素 4 字节）：超过即拒绝该档重渲，防 32768
 // 宽 × 竖版高把内存推到 OOM。
-func sheetPixelsOK(vp box2, width int) bool {
-	vw := vp.maxX - vp.minX
+func sheetPixelsOK(vp drawing.Box2, width int) bool {
+	vw := vp.MaxX - vp.MinX
 	if vw <= 0 || width <= 0 {
 		return true
 	}
-	h := (vp.maxY - vp.minY) * (float64(width) / vw)
+	h := (vp.MaxY - vp.MinY) * (float64(width) / vw)
 	return float64(width)*h <= sheetMaxPixels
 }
 
@@ -1679,8 +1680,8 @@ func sheetPixelsOK(vp box2, width int) bool {
 func (sp *sheetPipeline) renderSVG(sheet Sheet, opts RenderOptions) ([]byte, int, error) {
 	vp := sheetViewport(sheet.Box)
 	width := sp.sheetWidthFor(vp, sheet, opts.Width)
-	vw := vp.maxX - vp.minX
-	vh := vp.maxY - vp.minY
+	vw := vp.MaxX - vp.MinX
+	vh := vp.MaxY - vp.MinY
 	wf := float64(width)
 	height := int(vh/vw*wf + 0.5)
 	if height < 1 {
@@ -1706,39 +1707,39 @@ func (sp *sheetPipeline) renderSVG(sheet Sheet, opts RenderOptions) ([]byte, int
 // primInBox 图元与视口粗相交判定（框外图元剔除）：stroke 图元任一段
 // 与视口 AABB 相交即保留（整段绘制由画布参数化裁剪兜底）；label 图元
 // 按基线起点或终点落在视口内判定。
-func primInBox(p *primitive, b box2) bool {
-	switch p.kind {
+func primInBox(p *drawing.Primitive, b drawing.Box2) bool {
+	switch p.Kind {
 	case 0:
-		for _, s := range p.strokes {
-			ok1, ok2 := plausible(s.x1, s.y1), plausible(s.x2, s.y2)
+		for _, s := range p.Strokes {
+			ok1, ok2 := drawing.Plausible(s.X1, s.Y1), drawing.Plausible(s.X2, s.Y2)
 			if !ok1 && !ok2 {
 				continue
 			}
 			if !ok1 {
-				s.x1, s.y1 = s.x2, s.y2
+				s.X1, s.Y1 = s.X2, s.Y2
 			} else if !ok2 {
-				s.x2, s.y2 = s.x1, s.y1
+				s.X2, s.Y2 = s.X1, s.Y1
 			}
-			if math.Max(s.x1, s.x2) >= b.minX && math.Min(s.x1, s.x2) <= b.maxX &&
-				math.Max(s.y1, s.y2) >= b.minY && math.Min(s.y1, s.y2) <= b.maxY {
+			if math.Max(s.X1, s.X2) >= b.MinX && math.Min(s.X1, s.X2) <= b.MaxX &&
+				math.Max(s.Y1, s.Y2) >= b.MinY && math.Min(s.Y1, s.Y2) <= b.MaxY {
 				return true
 			}
 		}
 		return false
 	case 1:
-		if !plausible(p.lb.x, p.lb.y) {
+		if !drawing.Plausible(p.Lb.X, p.Lb.Y) {
 			return false
 		}
-		ex := p.lb.x + p.lb.w*math.Cos(p.lb.rot)
-		ey := p.lb.y + p.lb.w*math.Sin(p.lb.rot)
-		return pointInBox(p.lb.x, p.lb.y, b) || pointInBox(ex, ey, b)
+		ex := p.Lb.X + p.Lb.W*math.Cos(p.Lb.Rot)
+		ey := p.Lb.Y + p.Lb.W*math.Sin(p.Lb.Rot)
+		return pointInBox(p.Lb.X, p.Lb.Y, b) || pointInBox(ex, ey, b)
 	}
 	return false
 }
 
 // pointInBox 点是否在框内。
-func pointInBox(x, y float64, b box2) bool {
-	return x >= b.minX && x <= b.maxX && y >= b.minY && y <= b.maxY
+func pointInBox(x, y float64, b drawing.Box2) bool {
+	return x >= b.MinX && x <= b.MaxX && y >= b.MinY && y <= b.MaxY
 }
 
 // normalizeSheetOptions 渲染选项归一化：白底默认；宽度 <=0 保留给
@@ -1790,8 +1791,8 @@ func RenderAllSheets(doc *Document, opts RenderOptions, format string) ([]SheetR
 	sheets := DetectSheets(doc)
 	sp := prepareSheets(doc)
 	if len(sheets) != 1 || sheets[0].Name != "整图" {
-		if b := quantileSheetBounds(sp.prims); !b.invalid() {
-			sheets = append([]Sheet{{Name: "整图全览", Box: [4]float64{b.minX, b.minY, b.maxX, b.maxY}}}, sheets...)
+		if b := quantileSheetBounds(sp.prims); !b.Invalid() {
+			sheets = append([]Sheet{{Name: "整图全览", Box: [4]float64{b.MinX, b.MinY, b.MaxX, b.MaxY}}}, sheets...)
 		}
 	}
 	results := make([]SheetResult, 0, len(sheets))

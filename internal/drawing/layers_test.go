@@ -1,6 +1,6 @@
 // layers_test.go container/objects/classes/layer 层的单元测试：
 // 用测试位流构造器验证各解析函数的字段语义。
-package cad
+package drawing
 
 import (
 	"encoding/binary"

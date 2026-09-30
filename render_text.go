@@ -20,6 +20,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"image"
 	"image/color"
@@ -61,7 +62,6 @@ const (
 	glyphCacheLimit = 8192    // rune 位图缓存条目上限（防异常海量字符撑爆内存）
 	glyphAreaLimit  = 2 << 20 // 单字形目标面积上限（像素，超出按步长抽稀防病态大字卡死）
 	minTextPx       = 0.75    // 低于该像素高的文字视为亚像素，跳过绘制
-	mtextLineFactor = 1.66    // MTEXT 缺省行距（linespace_factor 未存储时的历史默认口径）
 	basicBucket     = 13      // basicfont 固定位图字号
 )
 
@@ -335,31 +335,31 @@ type textLayout struct {
 // 方向基向量在离散阶段按实体变换差分获得（INSERT 负缩放镜像精确成立），
 // 世界→像素为等比缩放 + Y 翻转，基向量直接线性映射。
 // 返回 false 表示几何退化（零向量）或亚像素文字，调用方回退占位条/跳过。
-func textLayoutOf(c *canvas, lb *label, tx *textInfo) (textLayout, bool) {
-	upx, upy := tx.ux*c.scale, -tx.uy*c.scale
-	vpx, vpy := tx.vx*c.scale, -tx.vy*c.scale
+func textLayoutOf(c *canvas, lb *drawing.Label, tx *drawing.GlyphTextInfo) (textLayout, bool) {
+	upx, upy := tx.Ux*c.scale, -tx.Uy*c.scale
+	vpx, vpy := tx.Vx*c.scale, -tx.Vy*c.scale
 	uLen := math.Hypot(upx, upy)
 	vLen := math.Hypot(vpx, vpy)
 	if uLen < 1e-9 || vLen < 1e-9 {
 		return textLayout{}, false
 	}
-	emPx := uLen * tx.hWorld
+	emPx := uLen * tx.HWorld
 	if emPx < minTextPx {
 		return textLayout{}, false
 	}
-	px, py := c.toPixel(entity.Point2{lb.x, lb.y})
+	px, py := c.toPixel(entity.Point2{X: lb.X, Y: lb.Y})
 	return textLayout{
 		px: px, py: py,
 		upx: upx, upy: upy,
 		vpx: vpx, vpy: vpy,
 		emPx:        emPx,
-		hWorld:      tx.hWorld,
-		widthFactor: tx.widthFactor,
-		obliqueRad:  tx.oblique,
-		mirrorX:     tx.gen&0x2 != 0,
-		mirrorY:     tx.gen&0x4 != 0,
-		hAlign:      tx.hAlign,
-		vAlign:      tx.vAlign,
+		hWorld:      tx.HWorld,
+		widthFactor: tx.WidthFactor,
+		obliqueRad:  tx.Oblique,
+		mirrorX:     tx.Gen&0x2 != 0,
+		mirrorY:     tx.Gen&0x4 != 0,
+		hAlign:      tx.HAlign,
+		vAlign:      tx.VAlign,
 	}, true
 }
 
@@ -560,11 +560,11 @@ func blendCoverage(img *image.RGBA, x, y int, col color.RGBA, cov float64) {
 // drawMText 绘制 MTEXT：rect_width 贪心换行 → attachment 1-9 计算块内
 // 各行基线偏移（行距 = linespace_factor×字高，实测 AutoCAD extents 口径；
 // factor 未存时按旧 1.66 兜底）→ 逐行按块宽对齐落笔。
-func (tr *textRenderer) drawMText(l textLayout, tx *textInfo, col color.RGBA) {
+func (tr *textRenderer) drawMText(l textLayout, tx *drawing.GlyphTextInfo, col color.RGBA) {
 	sf := tr.faceFor(l.emPx)
-	lines := tx.lines
-	if tx.rectWidth > 0 {
-		lines = tr.wrapLines(lines, tx.rectWidth/l.hWorld, sf, l.widthFactor)
+	lines := tx.Lines
+	if tx.RectWidth > 0 {
+		lines = tr.wrapLines(lines, tx.RectWidth/l.hWorld, sf, l.widthFactor)
 	}
 	if len(lines) == 0 {
 		return
@@ -582,13 +582,13 @@ func (tr *textRenderer) drawMText(l textLayout, tx *textInfo, col color.RGBA) {
 	// gold extents 实证虚高 66%（设计说明 11 行块底压进签名栏，extents_height
 	// 3566.7 仅容 factor×h 口径）；factor 未存储（pre-R2000/JSON·DXF 未带）
 	// 时保留 1.66 兜底（AutoCAD 历史默认单倍行距语义）
-	lh := mtextLineFactor * l.hWorld
-	if tx.lineFactor > 0 {
-		lh = tx.lineFactor * l.hWorld
+	lh := drawing.MtextLineFactor * l.hWorld
+	if tx.LineFactor > 0 {
+		lh = tx.LineFactor * l.hWorld
 	}
 	ascWorld := sf.asc / sf.px * l.hWorld         // 首行上延（世界单位）
 	blockH := float64(len(lines)-1)*lh + l.hWorld // 块高：末行基线 + 名义字高
-	att := tx.attachment                          // 附着点 1-9，越界按左上
+	att := tx.Attachment                          // 附着点 1-9，越界按左上
 	if att < 1 || att > 9 {
 		att = 1
 	}
@@ -658,7 +658,7 @@ func (tr *textRenderer) wrapLines(lines []string, limit float64, sf sizedFace, w
 
 // drawLabelText canvas 侧文本绘制入口：懒初始化渲染器后按单行/MTEXT
 // 分派；无可用字体或版式退化时回退 textLabel 占位条。
-func (c *canvas) drawLabelText(lb label, tx *textInfo, col color.RGBA) {
+func (c *canvas) drawLabelText(lb drawing.Label, tx *drawing.GlyphTextInfo, col color.RGBA) {
 	if c.tr == nil {
 		c.tr = newTextRenderer(c)
 	}
@@ -668,13 +668,13 @@ func (c *canvas) drawLabelText(lb label, tx *textInfo, col color.RGBA) {
 		c.drawLabel(lb, col)
 		return
 	}
-	if tx.attachment != 0 {
+	if tx.Attachment != 0 {
 		tr.drawMText(l, tx, col)
 		return
 	}
 	line := ""
-	if len(tx.lines) > 0 {
-		line = tx.lines[0] // 单行语义（TEXT/ATTRIB），多行内容取首行
+	if len(tx.Lines) > 0 {
+		line = tx.Lines[0] // 单行语义（TEXT/ATTRIB），多行内容取首行
 	}
 	tr.drawSingleLine(l, line, 0, 0, col)
 }

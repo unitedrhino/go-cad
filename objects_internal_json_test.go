@@ -76,7 +76,7 @@ func TestDictionaryXrecordFullJSON(t *testing.T) {
 		switch o["object"] {
 		case "DICTIONARY":
 			h := jsonHandle(o["handle"])
-			dic, ok := doc.dictionaries[h]
+			dic, ok := doc.Dictionaries[h]
 			if !ok {
 				t.Errorf("DICTIONARY h=%d 未解析到", h)
 				nDicFail++
@@ -123,7 +123,7 @@ func TestDictionaryXrecordFullJSON(t *testing.T) {
 			}
 		case "XRECORD":
 			h := jsonHandle(o["handle"])
-			xr, ok := doc.xrecords[h]
+			xr, ok := doc.Xrecs[h]
 			if !ok {
 				t.Errorf("XRECORD h=%d 未解析到", h)
 				nXrFail++

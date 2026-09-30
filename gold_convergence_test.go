@@ -268,8 +268,8 @@ func DebugEntitiesFlat(data []byte) map[uint64][2]string {
 			}
 		}
 	}
-	walk(doc.modelSpace)
-	for _, list := range doc.blocks {
+	walk(doc.ModelSpace)
+	for _, list := range doc.Blocks {
 		walk(list)
 	}
 	return out
@@ -426,19 +426,19 @@ func TestGoldLayerColors(t *testing.T) {
 	}
 	match, total := 0, 0
 	for _, g := range gold {
-		lc, ok := doc.layerColors[g.handle]
+		lc, ok := doc.LayerColors[g.handle]
 		if !ok {
 			t.Logf("MISS h=%d 图层缺失", g.handle)
 			continue
 		}
 		total++
-		okIdx := lc.index == g.idx
-		okTC := lc.hasTrue == g.hasTC && (!g.hasTC || lc.trueColor == g.tc)
+		okIdx := lc.Index == g.idx
+		okTC := lc.HasTrue == g.hasTC && (!g.hasTC || lc.TrueColor == g.tc)
 		if okIdx && okTC {
 			match++
 		} else {
 			t.Logf("FAIL h=%d gold=(idx=%d tc=%v hasTC=%v) got=(idx=%d tc=%#x hasTC=%v)",
-				g.handle, g.idx, g.tc, g.hasTC, lc.index, lc.trueColor, lc.hasTrue)
+				g.handle, g.idx, g.tc, g.hasTC, lc.Index, lc.TrueColor, lc.HasTrue)
 		}
 	}
 	t.Logf("layers: gold=%d compared=%d match=%d (%.1f%%)", len(gold), total, match,

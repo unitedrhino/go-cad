@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/object"
 	"github.com/unitedrhino/go-cad/internal/objrec"
@@ -728,11 +729,11 @@ func TestSynthAssoc2DConstraintGroup(t *testing.T) {
 		}
 	}
 	for _, r2013 := range []bool{false, true} {
-		ver := container.VerR2004
+		Ver := container.VerR2004
 		if r2013 {
-			ver = container.VerR2013
+			Ver = container.VerR2013
 		}
-		g := execClassDecoder(t, "ASSOC2DCONSTRAINTGROUP", ver, build(r2013),
+		g := execClassDecoder(t, "ASSOC2DCONSTRAINTGROUP", Ver, build(r2013),
 			func(w *bitstream.EncWriter) { gap2WriteHandles(w, 5) })
 		if v, _ := g.Field("nodes[0].nodeid").(int64); v != 7 {
 			t.Errorf("r2013=%v nodeid = %v", r2013, g.Field("nodes[0].nodeid"))
@@ -1232,8 +1233,8 @@ func TestSynthGeoData(t *testing.T) {
 // ---- 批次 3：injson 还原器 / DXF 写出辅助 / 调试记录 ----
 
 // gap2JSONBase 构造带公共键的 gold JSON 对象（jsonBase 消费）。
-func gap2JSONBase(entity string) jsonObject {
-	return jsonObject{
+func gap2JSONBase(entity string) drawing.JsonObject {
+	return drawing.JsonObject{
 		"entity": entity, "handle": "2B7", "type": float64(1), "entmode": float64(0),
 		"layer": "1F", "ownerhandle": "2B0", "color": map[string]any{"index": 3},
 	}
@@ -1246,7 +1247,7 @@ func TestJsonBuildLongTail(t *testing.T) {
 	o["annotation_type"] = float64(1)
 	o["path_type"] = float64(2)
 	o["points"] = []any{[]any{1.0, 2.0, 0.0}, []any{3.0, 4.0, 1.0}}
-	l, ok := jsonBuildLeader(o).(*entity.EntLeader)
+	l, ok := drawing.JsonBuildLeader(o).(*entity.EntLeader)
 	if !ok {
 		t.Fatal("jsonBuildLeader 类型错误")
 	}
@@ -1264,7 +1265,7 @@ func TestJsonBuildLongTail(t *testing.T) {
 	o["width_factor"] = 1.2
 	o["oblique_angle"] = 0.1
 	o["thickness"] = 3.0
-	s, ok := jsonBuildShape(o).(*entity.EntShape)
+	s, ok := drawing.JsonBuildShape(o).(*entity.EntShape)
 	if !ok {
 		t.Fatal("jsonBuildShape 类型错误")
 	}
@@ -1278,7 +1279,7 @@ func TestJsonBuildLongTail(t *testing.T) {
 	o["lock_aspect"] = float64(0)
 	o["data_size"] = float64(4)
 	o["data"] = "DEADBEEF"
-	ole2, ok := jsonBuildOle2Frame(o).(*entity.EntOle2Frame)
+	ole2, ok := drawing.JsonBuildOle2Frame(o).(*entity.EntOle2Frame)
 	if !ok {
 		t.Fatal("jsonBuildOle2Frame 类型错误")
 	}
@@ -1291,7 +1292,7 @@ func TestJsonBuildLongTail(t *testing.T) {
 	o["mode"] = float64(0)
 	o["data_size"] = float64(2)
 	o["data"] = "00FF"
-	ole1, ok := jsonBuildOleFrame(o).(*entity.EntOleFrame)
+	ole1, ok := drawing.JsonBuildOleFrame(o).(*entity.EntOleFrame)
 	if !ok {
 		t.Fatal("jsonBuildOleFrame 类型错误")
 	}
@@ -1309,7 +1310,7 @@ func TestJsonBuildLongTail(t *testing.T) {
 	o["num_objids"] = float64(0)
 	o["proxy_data_size"] = float64(3)
 	o["proxy_data"] = "AABB01"
-	p, ok := jsonBuildProxyEntity(o).(*entity.EntProxyEntity)
+	p, ok := drawing.JsonBuildProxyEntity(o).(*entity.EntProxyEntity)
 	if !ok {
 		t.Fatal("jsonBuildProxyEntity 类型错误")
 	}
@@ -1318,10 +1319,10 @@ func TestJsonBuildLongTail(t *testing.T) {
 	}
 
 	// jsonHexBytes：奇数长度与非十六进制字符返回 nil，空串返回 nil
-	if jsonHexBytes("ABC") != nil || jsonHexBytes("ZZ") != nil || jsonHexBytes("") != nil {
+	if drawing.JsonHexBytes("ABC") != nil || drawing.JsonHexBytes("ZZ") != nil || drawing.JsonHexBytes("") != nil {
 		t.Error("jsonHexBytes 非法输入应返回 nil")
 	}
-	if v := jsonHexBytes("00ff"); len(v) != 2 || v[1] != 0xFF {
+	if v := drawing.JsonHexBytes("00ff"); len(v) != 2 || v[1] != 0xFF {
 		t.Errorf("jsonHexBytes = %X", v)
 	}
 }
@@ -1338,7 +1339,7 @@ func TestJsonBuildLightColorForms(t *testing.T) {
 		o["position"] = []any{0.0, 0.0, 1.0}
 		o["target"] = []any{0.0, 0.0, 0.0}
 		o[colorKey] = colorVal
-		return jsonBuildLight(o).(*entity.EntLight)
+		return drawing.JsonBuildLight(o).(*entity.EntLight)
 	}
 	// 标量索引形态（pre-R2004）
 	l := build("light_color", 3.0)
@@ -1395,7 +1396,7 @@ func TestJsonBuildHatchPolyAndSegs(t *testing.T) {
 			},
 		},
 	}
-	h, ok := jsonBuildHatch(o).(*entity.EntHatch)
+	h, ok := drawing.JsonBuildHatch(o).(*entity.EntHatch)
 	if !ok {
 		t.Fatal("jsonBuildHatch 类型错误")
 	}
@@ -1423,21 +1424,21 @@ func TestDedupeByHandleAndDxfFail(t *testing.T) {
 	}
 	prev := []any{mk(1), mk(2)}
 	base := []any{mk(2), mk(3), nil, mk(4)}
-	out := dedupeByHandle(prev, base)
+	out := drawing.DedupeByHandle(prev, base)
 	if len(out) != 2 || entity.EntityBase(out[0]).Handle != 3 || entity.EntityBase(out[1]).Handle != 4 {
 		t.Errorf("dedupe 结果 = %v", out)
 	}
 
 	// fail 写入坏 writer：首个错误保留，后续调用空操作
-	x := &dxfWriter{w: bufio.NewWriter(errWriter{})}
-	x.fail(errWriterErr)
-	if x.err != errWriterErr {
-		t.Errorf("fail 未记录: %v", x.err)
+	x := &drawing.DxfWriter{W: bufio.NewWriter(errWriter{})}
+	x.Fail(errWriterErr)
+	if x.Err != errWriterErr {
+		t.Errorf("fail 未记录: %v", x.Err)
 	}
-	x.code(0) // err 已置位 → 直接返回
-	x.val(1, "x")
-	if x.err != errWriterErr {
-		t.Errorf("后续写不应覆盖首错: %v", x.err)
+	x.Code(0) // err 已置位 → 直接返回
+	x.Val(1, "x")
+	if x.Err != errWriterErr {
+		t.Errorf("后续写不应覆盖首错: %v", x.Err)
 	}
 }
 
@@ -1462,8 +1463,8 @@ func TestDebugFailures(t *testing.T) {
 	if len(d.DebugFailures()) != 0 {
 		t.Fatal("初始 debugFailures 应为空")
 	}
-	d.failBy(objrec.ObjectRef{Handle: 0x30}, errWriterErr)
-	d.failBy(objrec.ObjectRef{Handle: 0x31}, errWriterErr)
+	d.FailBy(objrec.ObjectRef{Handle: 0x30}, errWriterErr)
+	d.FailBy(objrec.ObjectRef{Handle: 0x31}, errWriterErr)
 	got := d.DebugFailures()
 	if len(got) != 2 || got[0x30] != "write failed" {
 		t.Errorf("DebugFailures = %v", got)
@@ -1546,20 +1547,20 @@ func TestSynthPreR13Dimension(t *testing.T) {
 		} else {
 			data = append(common(dimtype), tail...)
 		}
-		h := preR13EntHead{opts: opts}
-		e := decodePreR13Dimension(&preR13Reader{data: data}, h, container.VerR11, 30)
+		h := drawing.PreR13EntHead{Opts: opts}
+		e := drawing.DecodePreR13Dimension(&drawing.PreR13Reader{Data: data}, h, container.VerR11, 30)
 		if e == nil || e.UserText != "abc" {
 			t.Errorf("dimtype %d: userText = %q", dimtype, e.UserText)
 		}
 	}
 	// Ordinate 的 feature/leader 点与 Ang2Ln 的 p16 断言
-	h := preR13EntHead{opts: opts}
-	e := decodePreR13Dimension(&preR13Reader{data: append(common(2), tail...)}, h, container.VerR11, 30)
+	h := drawing.PreR13EntHead{Opts: opts}
+	e := drawing.DecodePreR13Dimension(&drawing.PreR13Reader{Data: append(common(2), tail...)}, h, container.VerR11, 30)
 	if !e.HasPoint16 || e.Point16x != 10 {
 		t.Errorf("Ang2Ln point16 = %v/%v", e.Point16x, e.P16y)
 	}
 	// Diameter 在 R10+ 无 HAS_ELEVATION 时 first_arc_pt 为 3RD
-	e = decodePreR13Dimension(&preR13Reader{data: append(common(3), tailShort...)}, h, container.VerR11, 30)
+	e = drawing.DecodePreR13Dimension(&drawing.PreR13Reader{Data: append(common(3), tailShort...)}, h, container.VerR11, 30)
 	if !e.HasPoint15 || e.Point15.Z != 9 {
 		t.Errorf("Diameter point15 = %v", e.Point15)
 	}
@@ -1571,24 +1572,24 @@ func TestSynthPreR13Polyline(t *testing.T) {
 	build := func(plineFlag byte, opts uint16, tail []byte) any {
 		size := uint16(8 + 1 + len(tail))
 		head := gap2R11Body(
-			[]byte{preR13TypePolyline, 0}, // type + flag（无扩展头字段）
+			[]byte{drawing.PreR13TypePolyline, 0}, // type + flag（无扩展头字段）
 			gap2R11LE(size),
 			gap2R11LE(uint16(0)), // layer
 			gap2R11LE(opts),
 			[]byte{plineFlag}, // 专有区首字节 = pline_flag
 		)
 		data := append(head, tail...)
-		h := preR13EntHead{
-			startOff: 0, rawType: preR13TypePolyline, typ: preR13TypePolyline,
-			flag: 0, size: size, opts: opts,
+		h := drawing.PreR13EntHead{
+			StartOff: 0, RawType: drawing.PreR13TypePolyline, Typ: drawing.PreR13TypePolyline,
+			Flag: 0, Size: size, Opts: opts,
 		}
-		return decodePreR13Polyline(data, h, container.VerR11)
+		return drawing.DecodePreR13Polyline(data, h, container.VerR11)
 	}
 	// 2D：flags + sw + ew + extrusion + m + n + curvetype
-	e2, ok := build(0, preR13OptsPolylineHasFlag|preR13OptsPolylineHasStartWidth|
-		preR13OptsPolylineHasEndWidth|preR13OptsPolylineHasExtrusion|
-		preR13OptsPolylineHasMVerts|preR13OptsPolylineHasNVerts|
-		preR13OptsPolylineHasCurvetype,
+	e2, ok := build(0, drawing.PreR13OptsPolylineHasFlag|drawing.PreR13OptsPolylineHasStartWidth|
+		drawing.PreR13OptsPolylineHasEndWidth|drawing.PreR13OptsPolylineHasExtrusion|
+		drawing.PreR13OptsPolylineHasMVerts|drawing.PreR13OptsPolylineHasNVerts|
+		drawing.PreR13OptsPolylineHasCurvetype,
 		gap2R11Body(rd(1), rd(2), rd(1), rd(0), rd(0),
 			gap2R11LE(uint16(2)), gap2R11LE(uint16(3)), gap2R11LE(uint16(6)))).(*entity.EntPolyline2d)
 	if !ok {
@@ -1598,26 +1599,26 @@ func TestSynthPreR13Polyline(t *testing.T) {
 		t.Errorf("2D curveType/width = %d/%v", e2.CurveType, e2.WidthStart)
 	}
 	// 3D：flags + sw + ew + extrusion(skip) + curvetype
-	e3, ok := build(preR13FlagPolyline3D, preR13OptsPolylineHasFlag|
-		preR13OptsPolylineHasStartWidth|preR13OptsPolylineHasEndWidth|
-		preR13OptsPolylineHasExtrusion|preR13OptsPolylineHasCurvetype,
+	e3, ok := build(drawing.PreR13FlagPolyline3D, drawing.PreR13OptsPolylineHasFlag|
+		drawing.PreR13OptsPolylineHasStartWidth|drawing.PreR13OptsPolylineHasEndWidth|
+		drawing.PreR13OptsPolylineHasExtrusion|drawing.PreR13OptsPolylineHasCurvetype,
 		gap2R11Body(rd(0.5), rd(0.6), rd(1), rd(0), rd(0), gap2R11LE(uint16(7)))).(*entity.EntPolyline3d)
 	if !ok || e3.Flags75 != 7 {
 		t.Errorf("期望 POLYLINE_3D，得到 %T", e3)
 	}
 	// MESH：flags + m + n + md + nd + curvetype
-	em, ok := build(preR13FlagPolylineMesh, preR13OptsPolylineHasFlag|
-		preR13OptsPolylineHasMVerts|preR13OptsPolylineHasNVerts|
-		preR13OptsPolylineHasMDensity|preR13OptsPolylineHasNDensity|
-		preR13OptsPolylineHasCurvetype,
+	em, ok := build(drawing.PreR13FlagPolylineMesh, drawing.PreR13OptsPolylineHasFlag|
+		drawing.PreR13OptsPolylineHasMVerts|drawing.PreR13OptsPolylineHasNVerts|
+		drawing.PreR13OptsPolylineHasMDensity|drawing.PreR13OptsPolylineHasNDensity|
+		drawing.PreR13OptsPolylineHasCurvetype,
 		gap2R11Body(gap2R11LE(uint16(4)), gap2R11LE(uint16(4)),
 			gap2R11LE(uint16(5)), gap2R11LE(uint16(5)), gap2R11LE(uint16(6)))).(*entity.EntPolylineMesh)
 	if !ok || em.MDensity != 5 {
 		t.Errorf("期望 POLYLINE_MESH，得到 %T", em)
 	}
 	// PFACE：flags + numverts + numfaces
-	ep, ok := build(preR13FlagPolylinePfaceMesh, preR13OptsPolylineHasFlag|
-		preR13OptsPolylineHasMVerts|preR13OptsPolylineHasNVerts,
+	ep, ok := build(drawing.PreR13FlagPolylinePfaceMesh, drawing.PreR13OptsPolylineHasFlag|
+		drawing.PreR13OptsPolylineHasMVerts|drawing.PreR13OptsPolylineHasNVerts,
 		gap2R11Body(gap2R11LE(uint16(4)), gap2R11LE(uint16(6)))).(*entity.EntPolylinePface)
 	if !ok || ep.NumVertices != 4 || ep.NumFaces != 6 {
 		t.Errorf("期望 POLYLINE_PFACE，得到 %T", ep)
@@ -1626,13 +1627,13 @@ func TestSynthPreR13Polyline(t *testing.T) {
 
 // TestSynthPreR13Vertex VERTEX 五变体（2D/3D/MESH/PFACE/PFACE_FACE）。
 func TestSynthPreR13Vertex(t *testing.T) {
-	const optsAll = preR13OptsVertexHasStartWidth | preR13OptsVertexHasEndWidth |
-		preR13OptsVertexHasBulge | preR13OptsVertexHasFlag |
-		preR13OptsVertexHasTangentDir | preR13OptsVertexHasIndex1 |
-		preR13OptsVertexHasIndex2 | preR13OptsVertexHasIndex3 |
-		preR13OptsVertexHasIndex4
+	const optsAll = drawing.PreR13OptsVertexHasStartWidth | drawing.PreR13OptsVertexHasEndWidth |
+		drawing.PreR13OptsVertexHasBulge | drawing.PreR13OptsVertexHasFlag |
+		drawing.PreR13OptsVertexHasTangentDir | drawing.PreR13OptsVertexHasIndex1 |
+		drawing.PreR13OptsVertexHasIndex2 | drawing.PreR13OptsVertexHasIndex3 |
+		drawing.PreR13OptsVertexHasIndex4
 	rd := func(f float64) []byte { return gap2R11F64(f) }
-	build := func(vertexFlag byte, opts uint16) ([]byte, preR13EntHead) {
+	build := func(vertexFlag byte, opts uint16) ([]byte, drawing.PreR13EntHead) {
 		body := gap2R11Body(
 			rd(1), rd(2), // point 2RD
 			rd(0.5),                                    // start_width
@@ -1644,29 +1645,29 @@ func TestSynthPreR13Vertex(t *testing.T) {
 			gap2R11LE(uint16(3)), gap2R11LE(uint16(4)), // index3/4
 		)
 		data := gap2R11Body(
-			[]byte{preR13TypeVertex, 0},
+			[]byte{drawing.PreR13TypeVertex, 0},
 			gap2R11LE(uint16(8+len(body))),
 			gap2R11LE(uint16(0)),
 			gap2R11LE(opts),
 		)
 		data = append(data, body...)
-		return data, preR13EntHead{
-			startOff: 0, rawType: preR13TypeVertex, typ: preR13TypeVertex,
-			flag: 0, size: uint16(len(data)), opts: opts,
+		return data, drawing.PreR13EntHead{
+			StartOff: 0, RawType: drawing.PreR13TypeVertex, Typ: drawing.PreR13TypeVertex,
+			Flag: 0, Size: uint16(len(data)), Opts: opts,
 		}
 	}
 	cases := []struct {
 		vflag byte
 		want  string
 	}{
-		{preR13FlagVertexMesh | preR13FlagVertexPfaceMesh, "VERTEX_PFACE"},
-		{preR13FlagVertexMesh, "VERTEX_MESH"},
-		{preR13FlagVertex3D, "VERTEX_3D"},
+		{drawing.PreR13FlagVertexMesh | drawing.PreR13FlagVertexPfaceMesh, "VERTEX_PFACE"},
+		{drawing.PreR13FlagVertexMesh, "VERTEX_MESH"},
+		{drawing.PreR13FlagVertex3D, "VERTEX_3D"},
 		{0, "VERTEX_2D"},
 	}
 	for _, tc := range cases {
 		data, h := build(tc.vflag, optsAll)
-		e := decodePreR13Vertex(data, h, container.VerR11)
+		e := drawing.DecodePreR13Vertex(data, h, container.VerR11)
 		b := entity.EntityBase(e)
 		if b == nil || b.TypeName != tc.want {
 			t.Errorf("vflag %X: 得到 %v，期望 %s", tc.vflag, b.TypeName, tc.want)
@@ -1674,32 +1675,32 @@ func TestSynthPreR13Vertex(t *testing.T) {
 	}
 	// 2D 变体字段断言
 	data, h := build(0, optsAll)
-	v := decodePreR13Vertex(data, h, container.VerR11).(*entity.EntVertex2d)
+	v := drawing.DecodePreR13Vertex(data, h, container.VerR11).(*entity.EntVertex2d)
 	if v.Bulge != 0.25 || v.StartWidth != 0.5 {
 		t.Errorf("2D bulge/width = %v/%v", v.Bulge, v.StartWidth)
 	}
 	// PFACE_FACE 变体：无 point/widths 前缀（HasNotXY 置位），body 为
 	// flag + 4 个索引
-	const optsFace = preR13OptsVertexHasFlag | preR13OptsVertexHasNotXY |
-		preR13OptsVertexHasIndex1 | preR13OptsVertexHasIndex2 |
-		preR13OptsVertexHasIndex3 | preR13OptsVertexHasIndex4
+	const optsFace = drawing.PreR13OptsVertexHasFlag | drawing.PreR13OptsVertexHasNotXY |
+		drawing.PreR13OptsVertexHasIndex1 | drawing.PreR13OptsVertexHasIndex2 |
+		drawing.PreR13OptsVertexHasIndex3 | drawing.PreR13OptsVertexHasIndex4
 	faceBody := gap2R11Body(
-		[]byte{preR13FlagVertexPfaceMesh}, // flag
+		[]byte{drawing.PreR13FlagVertexPfaceMesh}, // flag
 		gap2R11LE(uint16(1)), gap2R11LE(uint16(2)),
 		gap2R11LE(uint16(3)), gap2R11LE(uint16(4)),
 	)
 	faceData := gap2R11Body(
-		[]byte{preR13TypeVertex, 0},
+		[]byte{drawing.PreR13TypeVertex, 0},
 		gap2R11LE(uint16(8+len(faceBody))),
 		gap2R11LE(uint16(0)),
 		gap2R11LE(uint16(optsFace)),
 	)
 	faceData = append(faceData, faceBody...)
-	faceHead := preR13EntHead{
-		startOff: 0, rawType: preR13TypeVertex, typ: preR13TypeVertex,
-		flag: 0, size: uint16(len(faceData)), opts: optsFace,
+	faceHead := drawing.PreR13EntHead{
+		StartOff: 0, RawType: drawing.PreR13TypeVertex, Typ: drawing.PreR13TypeVertex,
+		Flag: 0, Size: uint16(len(faceData)), Opts: optsFace,
 	}
-	f := decodePreR13Vertex(faceData, faceHead, container.VerR11).(*entity.EntVertexPfaceFace)
+	f := drawing.DecodePreR13Vertex(faceData, faceHead, container.VerR11).(*entity.EntVertexPfaceFace)
 	if f.Vertind[3] != 4 {
 		t.Errorf("PFACE_FACE vertind = %v", f.Vertind)
 	}
@@ -2028,22 +2029,22 @@ func TestSynthTableContentFull(t *testing.T) {
 
 // TestDxfStateHandles dxfState.recordHandle 分配与 blockHandle 兜底注册。
 func TestDxfStateHandles(t *testing.T) {
-	st := &dxfState{nextHandle: 0x50, blockByName: map[string]uint64{}, doc: &Document{blocks: map[uint64][]any{}}}
-	rec := &dxfRec{}
+	st := &drawing.DxfState{NextHandle: 0x50, BlockByName: map[string]uint64{}, Doc: &Document{Blocks: map[uint64][]any{}}}
+	rec := &drawing.DxfRec{}
 	// 组码 5 缺失 → 合成句柄
-	if h := st.recordHandle(rec); h != 0x50 {
+	if h := st.RecordHandle(rec); h != 0x50 {
 		t.Errorf("合成句柄 = %X", h)
 	}
-	if st.nextHandle != 0x51 {
-		t.Errorf("nextHandle = %X", st.nextHandle)
+	if st.NextHandle != 0x51 {
+		t.Errorf("nextHandle = %X", st.NextHandle)
 	}
 	// blockHandle 首次分配 + 复用
-	h1 := st.blockHandle(" BLK ")
-	h2 := st.blockHandle("BLK")
+	h1 := st.BlockHandle(" BLK ")
+	h2 := st.BlockHandle("BLK")
 	if h1 == 0 || h1 != h2 {
 		t.Errorf("blockHandle = %X/%X", h1, h2)
 	}
-	if _, ok := st.doc.blocks[h1]; !ok {
+	if _, ok := st.Doc.Blocks[h1]; !ok {
 		t.Error("blocks 未注册合成句柄")
 	}
 }

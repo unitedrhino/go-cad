@@ -4,6 +4,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"math"
 	"os"
@@ -18,15 +19,15 @@ func buildLineBlockDoc(blockHandle uint64, nLines, nIns int) *Document {
 	for i := 0; i < nLines; i++ {
 		inner = append(inner, &entity.EntLine{
 			BaseEntity: entity.BaseEntity{},
-			Start:      entity.Point3{float64(i), 0, 0},
-			End:        entity.Point3{float64(i), 9, 0},
+			Start:      entity.Point3{X: float64(i), Y: 0, Z: 0},
+			End:        entity.Point3{X: float64(i), Y: 9, Z: 0},
 		})
 	}
-	doc := &Document{blocks: map[uint64][]any{blockHandle: inner}}
+	doc := &Document{Blocks: map[uint64][]any{blockHandle: inner}}
 	for i := 0; i < nIns; i++ {
-		doc.modelSpace = append(doc.modelSpace, &entity.EntInsert{
-			Position:    entity.Point3{float64(i * 100), 0, 0},
-			Scale:       entity.Point3{1, 1, 1},
+		doc.ModelSpace = append(doc.ModelSpace, &entity.EntInsert{
+			Position:    entity.Point3{X: float64(i * 100), Y: 0, Z: 0},
+			Scale:       entity.Point3{X: 1, Y: 1, Z: 1},
 			BlockHeader: blockHandle,
 		})
 	}
@@ -37,46 +38,46 @@ func buildLineBlockDoc(blockHandle uint64, nLines, nIns int) *Document {
 // 非环内容照常产出（真实 DWG 块引用为 DAG，环只来自异常文件）。
 func TestExpandAllCycleGuard(t *testing.T) {
 	line := func(x1, x2 float64) *entity.EntLine {
-		return &entity.EntLine{BaseEntity: entity.BaseEntity{}, Start: entity.Point3{x1, 0, 0}, End: entity.Point3{x2, 0, 0}}
+		return &entity.EntLine{BaseEntity: entity.BaseEntity{}, Start: entity.Point3{X: x1, Y: 0, Z: 0}, End: entity.Point3{X: x2, Y: 0, Z: 0}}
 	}
 	// 自引用：块 A = LINE + 引用 A 的 INSERT
-	selfIns := &entity.EntInsert{Scale: entity.Point3{1, 1, 1}, BlockHeader: 0xA}
+	selfIns := &entity.EntInsert{Scale: entity.Point3{X: 1, Y: 1, Z: 1}, BlockHeader: 0xA}
 	docA := &Document{
-		modelSpace: []any{&entity.EntInsert{Scale: entity.Point3{1, 1, 1}, BlockHeader: 0xA}},
-		blocks:     map[uint64][]any{0xA: {line(0, 5), selfIns}},
+		ModelSpace: []any{&entity.EntInsert{Scale: entity.Point3{X: 1, Y: 1, Z: 1}, BlockHeader: 0xA}},
+		Blocks:     map[uint64][]any{0xA: {line(0, 5), selfIns}},
 	}
-	prims := newTessellator(docA).expandAll()
+	prims := drawing.NewTessellator(docA).ExpandAll()
 	if len(prims) != 1 {
 		t.Fatalf("自引用环应短路且保留非环 LINE，实际 %d 图元", len(prims))
 	}
 	// 互引用：块 A 引用 B，块 B 引用 A；模型空间引用 A
 	docB := &Document{
-		modelSpace: []any{&entity.EntInsert{Scale: entity.Point3{1, 1, 1}, BlockHeader: 0xA}},
-		blocks: map[uint64][]any{
-			0xA: {line(0, 5), &entity.EntInsert{Scale: entity.Point3{1, 1, 1}, BlockHeader: 0xB}},
-			0xB: {line(10, 15), &entity.EntInsert{Scale: entity.Point3{1, 1, 1}, BlockHeader: 0xA}},
+		ModelSpace: []any{&entity.EntInsert{Scale: entity.Point3{X: 1, Y: 1, Z: 1}, BlockHeader: 0xA}},
+		Blocks: map[uint64][]any{
+			0xA: {line(0, 5), &entity.EntInsert{Scale: entity.Point3{X: 1, Y: 1, Z: 1}, BlockHeader: 0xB}},
+			0xB: {line(10, 15), &entity.EntInsert{Scale: entity.Point3{X: 1, Y: 1, Z: 1}, BlockHeader: 0xA}},
 		},
 	}
-	prims = newTessellator(docB).expandAll()
+	prims = drawing.NewTessellator(docB).ExpandAll()
 	if len(prims) != 2 {
 		t.Fatalf("互引用环应短路且保留两侧 LINE，实际 %d 图元", len(prims))
 	}
 	// 非环的同一块多次引用（DAG 分支）：块 B 被 A 引用 3 次，每次展开完整
 	docC := &Document{
-		modelSpace: []any{
-			&entity.EntInsert{Scale: entity.Point3{1, 1, 1}, BlockHeader: 0xA},
+		ModelSpace: []any{
+			&entity.EntInsert{Scale: entity.Point3{X: 1, Y: 1, Z: 1}, BlockHeader: 0xA},
 		},
-		blocks: map[uint64][]any{
+		Blocks: map[uint64][]any{
 			0xA: {
 				line(0, 1),
-				&entity.EntInsert{Scale: entity.Point3{1, 1, 1}, BlockHeader: 0xB},
-				&entity.EntInsert{Scale: entity.Point3{1, 1, 1}, BlockHeader: 0xB},
-				&entity.EntInsert{Scale: entity.Point3{1, 1, 1}, BlockHeader: 0xB},
+				&entity.EntInsert{Scale: entity.Point3{X: 1, Y: 1, Z: 1}, BlockHeader: 0xB},
+				&entity.EntInsert{Scale: entity.Point3{X: 1, Y: 1, Z: 1}, BlockHeader: 0xB},
+				&entity.EntInsert{Scale: entity.Point3{X: 1, Y: 1, Z: 1}, BlockHeader: 0xB},
 			},
 			0xB: {line(0, 2)},
 		},
 	}
-	prims = newTessellator(docC).expandAll()
+	prims = drawing.NewTessellator(docC).ExpandAll()
 	if len(prims) != 4 {
 		t.Fatalf("DAG 同块多引用应全部展开（1+3），实际 %d 图元", len(prims))
 	}
@@ -87,7 +88,7 @@ func TestExpandAllCycleGuard(t *testing.T) {
 // 6000 实例 INSERT × 每块 40 LINE = 240000 实例，全量展开应产出等量图元。
 func TestExpandAllBudgetCoversLargeDAG(t *testing.T) {
 	doc := buildLineBlockDoc(0x300, 40, 6000)
-	prims := newTessellator(doc).expandAll()
+	prims := drawing.NewTessellator(doc).ExpandAll()
 	if len(prims) != 40*6000 {
 		t.Fatalf("大图完整展开：期望 %d 图元，实际 %d（预算截断）", 40*6000, len(prims))
 	}
@@ -97,24 +98,24 @@ func TestExpandAllBudgetCoversLargeDAG(t *testing.T) {
 // +X，镜像后世界坐标 X 反向（RD-29 框 62 个 -0.7499 镜像块的特征路径）。
 func TestInsertMirrorExpand(t *testing.T) {
 	doc := &Document{
-		modelSpace: []any{&entity.EntInsert{
-			Position:    entity.Point3{100, 0, 0},
-			Scale:       entity.Point3{-1, 1, 1},
+		ModelSpace: []any{&entity.EntInsert{
+			Position:    entity.Point3{X: 100, Y: 0, Z: 0},
+			Scale:       entity.Point3{X: -1, Y: 1, Z: 1},
 			BlockHeader: 0xA,
 		}},
-		blocks: map[uint64][]any{
-			0xA: {&entity.EntLine{BaseEntity: entity.BaseEntity{}, Start: entity.Point3{0, 0, 0}, End: entity.Point3{10, 0, 0}}},
+		Blocks: map[uint64][]any{
+			0xA: {&entity.EntLine{BaseEntity: entity.BaseEntity{}, Start: entity.Point3{X: 0, Y: 0, Z: 0}, End: entity.Point3{X: 10, Y: 0, Z: 0}}},
 		},
 	}
-	prims := newTessellator(doc).expandAll()
+	prims := drawing.NewTessellator(doc).ExpandAll()
 	if len(prims) != 1 {
 		t.Fatalf("镜像 INSERT 应展开 1 条 LINE，实际 %d", len(prims))
 	}
-	s := prims[0].strokes[0]
+	s := prims[0].Strokes[0]
 	// 局部 (0,0)→(100,0)、(10,0)→(90,0)：X 翻转、Y 不变
-	if math.Abs(s.x1-100) > 1e-9 || math.Abs(s.y1) > 1e-9 ||
-		math.Abs(s.x2-90) > 1e-9 || math.Abs(s.y2) > 1e-9 {
-		t.Fatalf("镜像展开坐标错误: (%v,%v)-(%v,%v) 期望 (100,0)-(90,0)", s.x1, s.y1, s.x2, s.y2)
+	if math.Abs(s.X1-100) > 1e-9 || math.Abs(s.Y1) > 1e-9 ||
+		math.Abs(s.X2-90) > 1e-9 || math.Abs(s.Y2) > 1e-9 {
+		t.Fatalf("镜像展开坐标错误: (%v,%v)-(%v,%v) 期望 (100,0)-(90,0)", s.X1, s.Y1, s.X2, s.Y2)
 	}
 }
 
@@ -153,7 +154,7 @@ func TestSheetsRD29Usercase(t *testing.T) {
 			if !primInBox(&sp.prims[i], vp) {
 				continue
 			}
-			if sp.prims[i].kind == 0 {
+			if sp.prims[i].Kind == 0 {
 				stroke++
 			} else {
 				label++
@@ -177,9 +178,9 @@ func TestSheetsRD29Usercase(t *testing.T) {
 		t.Fatal("未识别到 RD-29 图框")
 	}
 	nIns := 0
-	for _, ent := range doc.modelSpace {
+	for _, ent := range doc.ModelSpace {
 		if ins, ok := ent.(*entity.EntInsert); ok && pointInBox(ins.Position.X, ins.Position.Y,
-			box2{minX: rd29.Box[0], minY: rd29.Box[1], maxX: rd29.Box[2], maxY: rd29.Box[3]}) {
+			drawing.Box2{MinX: rd29.Box[0], MinY: rd29.Box[1], MaxX: rd29.Box[2], MaxY: rd29.Box[3]}) {
 			nIns++
 		}
 	}

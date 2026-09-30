@@ -225,7 +225,7 @@ func TestInternalObjectsGold(t *testing.T) {
 			continue
 		}
 		h := jsonHandle(o["handle"])
-		g, ok := doc.internalObjects[h]
+		g, ok := doc.InternalObjs[h]
 		if !ok {
 			t.Errorf("%s h=%d 未解析到", name, h)
 			fail++

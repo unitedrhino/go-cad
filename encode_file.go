@@ -28,10 +28,10 @@ import (
 // → 对象区整块回放 → 重建的对象图。写出的文件可被本包 Parse 与 LibreDWG
 // 重新读取（见 encode_file_test.go 门禁）。
 func WriteDwgR2000(doc *Document, w io.Writer) error {
-	if doc == nil || doc.r2000Raw == nil {
+	if doc == nil || doc.R2000Raw == nil {
 		return fmt.Errorf("cad: 非 R2000 家族文档或缺少回放素材，无法写出")
 	}
-	out, err := writeR2000Sections(doc.r2000Raw)
+	out, err := writeR2000Sections(doc.R2000Raw)
 	if err != nil {
 		return err
 	}
@@ -251,13 +251,13 @@ func r2004PageChecksum(seed uint32, skipZero int, parts ...[]byte) uint32 {
 // 合成来源）自动降级到结构化正向路径 writeDwgForwardR2000——按位流
 // 规范重建 R2000 容器，不再报「缺少回放素材」。
 func WriteDwg(doc *Document, w io.Writer) error {
-	if doc != nil && doc.r2007Raw != nil {
+	if doc != nil && doc.R2007Raw != nil {
 		return WriteDwgR2007(doc, w)
 	}
-	if doc != nil && doc.r2004Raw != nil {
+	if doc != nil && doc.R2004Raw != nil {
 		return WriteDwgR2004(doc, w)
 	}
-	if doc != nil && doc.r2000Raw != nil {
+	if doc != nil && doc.R2000Raw != nil {
 		return WriteDwgR2000(doc, w)
 	}
 	out, err := writeDwgForwardR2000(doc)
@@ -274,10 +274,10 @@ func WriteDwg(doc *Document, w io.Writer) error {
 // 段表内容原样回放）→ 尾部 secondheader 区（20 字节伪 system 段头 + 加密
 // 头副本）。对象记录字节随 AcDb:AcDbObjects 段原样回放，句柄偏移不变。
 func WriteDwgR2004(doc *Document, w io.Writer) error {
-	if doc == nil || doc.r2004Raw == nil {
+	if doc == nil || doc.R2004Raw == nil {
 		return fmt.Errorf("cad: 非 R2004 家族文档或缺少回放素材，无法写出")
 	}
-	out, err := writeR2004Sections(doc.r2004Raw)
+	out, err := writeR2004Sections(doc.R2004Raw)
 	if err != nil {
 		return err
 	}
@@ -715,10 +715,10 @@ type r2007PlacedPage struct {
 // 段表页与各数据页，数据页按 compressR21 重压缩 + RS 交织）。对象记录字节
 // 随 AcDb:AcDbObjects / AcDb:Handles 段回放，句柄偏移不变。
 func WriteDwgR2007(doc *Document, w io.Writer) error {
-	if doc == nil || doc.r2007Raw == nil {
+	if doc == nil || doc.R2007Raw == nil {
 		return fmt.Errorf("cad: 非 R2007 文档或缺少回放素材，无法写出")
 	}
-	out, err := writeR2007Sections(doc.r2007Raw)
+	out, err := writeR2007Sections(doc.R2007Raw)
 	if err != nil {
 		return err
 	}

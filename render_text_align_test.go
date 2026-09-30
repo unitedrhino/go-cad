@@ -9,6 +9,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"image"
 	"image/color"
@@ -115,10 +116,10 @@ func TestMTextLineAdvanceFactor(t *testing.T) {
 		tr := newTextRenderer(cv)
 		// 1 世界单位 = em 像素（基向量承载像素比例，与真实管线一致）
 		l := textLayout{px: 20, py: 120, upx: em, vpy: -em, emPx: em, hWorld: 1, widthFactor: 1}
-		tr.drawMText(l, &textInfo{
-			lines:      []string{"一", "一"}, // 扁平横笔画行，墨带不粘连可测行距
-			hWorld:     1,
-			lineFactor: lineFactor,
+		tr.drawMText(l, &drawing.GlyphTextInfo{
+			Lines:      []string{"一", "一"}, // 扁平横笔画行，墨带不粘连可测行距
+			HWorld:     1,
+			LineFactor: lineFactor,
 		}, color.RGBA{0, 0, 0, 255})
 		return img
 	}
@@ -171,43 +172,43 @@ func TestMTextLineAdvanceFactor(t *testing.T) {
 // （修复前单 MTEXT 样本墨迹全部落在视口外渲染空，reliability_corpus
 // Text.dwg 六版本实证）。
 func TestMTextBlockBounds(t *testing.T) {
-	newPrim := func(att uint16) primitive {
-		return primitive{kind: 1, lb: label{
-			x: 100, y: 200, w: 50, h: 10,
-			tx: &textInfo{lines: []string{"第一行", "第二行", "第三行", "第四行"},
-				hWorld: 10, attachment: att, rectWidth: 50, lineFactor: 1},
+	newPrim := func(att uint16) drawing.Primitive {
+		return drawing.Primitive{Kind: 1, Lb: drawing.Label{
+			X: 100, Y: 200, W: 50, H: 10,
+			Tx: &drawing.GlyphTextInfo{Lines: []string{"第一行", "第二行", "第三行", "第四行"},
+				HWorld: 10, Attachment: att, RectWidth: 50, LineFactor: 1},
 		}}
 	}
 	// 顶排附着：块顶在锚点，4 行 ×1.0×10 = 30 行距 + 10 字高 = 块底 200−40=160
-	b := primitivesBounds([]primitive{newPrim(1)})
-	if b.minY > 200-40+1e-9 || b.maxY < 200-40-1e-9 {
-		t.Fatalf("顶排附着块底应≈%v，实得 minY=%g maxY=%g", 200-40, b.minY, b.maxY)
+	b := drawing.PrimitivesBounds([]drawing.Primitive{newPrim(1)})
+	if b.MinY > 200-40+1e-9 || b.MaxY < 200-40-1e-9 {
+		t.Fatalf("顶排附着块底应≈%v，实得 minY=%g maxY=%g", 200-40, b.MinY, b.MaxY)
 	}
 	// 底排附着：块底在锚点，块顶 200+40
-	b2 := primitivesBounds([]primitive{newPrim(7)})
-	if b2.maxY < 200+40-1e-9 {
-		t.Fatalf("底排附着块顶应≥%v，实得 maxY=%g", 200+40, b2.maxY)
+	b2 := drawing.PrimitivesBounds([]drawing.Primitive{newPrim(7)})
+	if b2.MaxY < 200+40-1e-9 {
+		t.Fatalf("底排附着块顶应≥%v，实得 maxY=%g", 200+40, b2.MaxY)
 	}
 	// 单行语义（attachment=0）不触发块体扩展，行为不变
-	b3 := primitivesBounds([]primitive{newPrim(0)})
-	if b3.maxY > 200+10+1e-9 || b3.minY < 200-1e-9 {
-		t.Fatalf("attachment=0 应保持旧口径，实得 [%g,%g]", b3.minY, b3.maxY)
+	b3 := drawing.PrimitivesBounds([]drawing.Primitive{newPrim(0)})
+	if b3.MaxY > 200+10+1e-9 || b3.MinY < 200-1e-9 {
+		t.Fatalf("attachment=0 应保持旧口径，实得 [%g,%g]", b3.MinY, b3.MaxY)
 	}
 }
 
 // TestMTextLineFactorDecodeWiring 解码接线：JSON 构建路径把 gold 的
 // linespace_factor 键带入 entMText.lineFactor（渲染行距口径的数据来源）。
 func TestMTextLineFactorDecodeWiring(t *testing.T) {
-	o := jsonObject{"linespace_factor": 0.9, "text": "x", "attachment": int64(1)}
-	m, ok := jsonBuildMText(o).(*entity.EntMText)
+	o := drawing.JsonObject{"linespace_factor": 0.9, "text": "x", "attachment": int64(1)}
+	m, ok := drawing.JsonBuildMText(o).(*entity.EntMText)
 	if !ok {
-		t.Fatalf("jsonBuildMText 返回类型: %T", jsonBuildMText(o))
+		t.Fatalf("jsonBuildMText 返回类型: %T", drawing.JsonBuildMText(o))
 	}
 	if m.LineFactor != 0.9 {
 		t.Fatalf("lineFactor=%v, 期望 0.9", m.LineFactor)
 	}
 	// 缺键 → 0（绘制侧按缺省行距兜底）
-	m2 := jsonBuildMText(jsonObject{"text": "x"}).(*entity.EntMText)
+	m2 := drawing.JsonBuildMText(drawing.JsonObject{"text": "x"}).(*entity.EntMText)
 	if m2.LineFactor != 0 {
 		t.Fatalf("缺键 lineFactor 应为 0，实际 %v", m2.LineFactor)
 	}

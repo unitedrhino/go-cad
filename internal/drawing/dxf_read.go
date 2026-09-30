@@ -16,7 +16,7 @@
 // MLINE/TOLERANCE/VIEWPORT 与极限批次 A 的 REGION/3DSOLID/BODY(SAT 文本
 // 行拼接)。DXF 格式参考 LibreDWG in_dxf.c（读侧）与 dwg.spec/dwg2.spec
 // 的 DXF 组码标注。
-package cad
+package drawing
 
 import (
 	"bytes"
@@ -32,7 +32,7 @@ import (
 )
 
 // dxfBinaryMagic 二进制 DXF 文件头（22 字节，LibreDWG dwg_read_dxf 同款）。
-var dxfBinaryMagic = []byte("AutoCAD Binary DXF\r\n\x1a\x00")
+var DxfBinaryMagic = []byte("AutoCAD Binary DXF\r\n\x1a\x00")
 
 // ParseDXF 解析 DXF 字节流（自动识别 ASCII 与二进制编码）为文档模型。
 // 返回的 Document 与 DWG 解析共用：modelSpace/blocks/attribs/layerColors
@@ -44,17 +44,17 @@ func ParseDXF(data []byte) (*Document, error) {
 		return nil, err
 	}
 	doc := &Document{
-		version:         lex.version,
-		codepage:        30, // ANSI_1252 的 DWG 编号（HEADER $DWGCODEPAGE 可覆盖）
-		blocks:          make(map[uint64][]any),
-		attribs:         make(map[uint64]*entity.EntAttrib),
-		layerColors:     make(map[uint64]layerColor),
-		internalObjects: make(map[uint64]*object.ObjGeneric),
+		Ver:          lex.Ver,
+		Codepage:     30, // ANSI_1252 的 DWG 编号（HEADER $DWGCODEPAGE 可覆盖）
+		Blocks:       make(map[uint64][]any),
+		Attribs:      make(map[uint64]*entity.EntAttrib),
+		LayerColors:  make(map[uint64]LayerColor),
+		InternalObjs: make(map[uint64]*object.ObjGeneric),
 	}
-	st := &dxfState{doc: doc, lexer: lex,
+	st := &DxfState{Doc: doc, lexer: lex,
 		layerByName: map[string]uint64{},
-		blockByName: map[string]uint64{},
-		nextHandle:  dxfFirstSynthHandle,
+		BlockByName: map[string]uint64{},
+		NextHandle:  dxfFirstSynthHandle,
 	}
 	if err := st.parseSections(); err != nil {
 		return nil, err
@@ -70,12 +70,12 @@ func ParseDXF(data []byte) (*Document, error) {
 const dxfFirstSynthHandle = 0x100000
 
 // dxfState DXF 语义解析的会话状态。
-type dxfState struct {
-	doc         *Document
+type DxfState struct {
+	Doc         *Document
 	lexer       *dxfLexer
 	layerByName map[string]uint64 // LAYER 表：名字 → 句柄
-	blockByName map[string]uint64 // BLOCKS 段：块名 → 句柄
-	nextHandle  uint64            // 合成句柄分配器
+	BlockByName map[string]uint64 // BLOCKS 段：块名 → 句柄
+	NextHandle  uint64            // 合成句柄分配器
 	sawSection  bool              // 是否进入过任一 SECTION
 	unsupported int               // 跳过的未支持实体计数
 	// curPolylineHost 最近一个 POLYLINE 宿主：R12 布局的 VERTEX 无 330
@@ -86,7 +86,7 @@ type dxfState struct {
 }
 
 // parseSections 主循环：逐段分发，未知段整段跳过。
-func (st *dxfState) parseSections() error {
+func (st *DxfState) parseSections() error {
 	for {
 		p, ok, err := st.lexer.next()
 		if err != nil {
@@ -95,7 +95,7 @@ func (st *dxfState) parseSections() error {
 		if !ok {
 			return nil
 		}
-		if p.code != 0 {
+		if p.Code != 0 {
 			continue // 段外散落组码对：容忍并忽略
 		}
 		switch p.strValue() {
@@ -115,12 +115,12 @@ func (st *dxfState) parseSections() error {
 }
 
 // readSectionName 段头之后的 (2, 段名) 对。
-func (st *dxfState) readSectionName() (string, error) {
+func (st *DxfState) readSectionName() (string, error) {
 	p, ok, err := st.lexer.next()
 	if err != nil {
 		return "", err
 	}
-	if !ok || p.code != 2 {
+	if !ok || p.Code != 2 {
 		return "", fmt.Errorf("cad: DXF SECTION 后缺少段名")
 	}
 	return p.strValue(), nil
@@ -128,7 +128,7 @@ func (st *dxfState) readSectionName() (string, error) {
 
 // dispatchSection 按段名分发；HEADER/TABLES/BLOCKS/ENTITIES 有专门解析，
 // 其余（CLASSES/OBJECTS/ACAD_XREC 等）跳过到 ENDSEC。
-func (st *dxfState) dispatchSection(name string) error {
+func (st *DxfState) dispatchSection(name string) error {
 	switch name {
 	case "HEADER":
 		return st.parseHeader()
@@ -144,7 +144,7 @@ func (st *dxfState) dispatchSection(name string) error {
 }
 
 // skipToEndSec 消费组码对直到 (0, ENDSEC) 或文件结束。
-func (st *dxfState) skipToEndSec() error {
+func (st *DxfState) skipToEndSec() error {
 	for {
 		p, ok, err := st.lexer.next()
 		if err != nil {
@@ -153,7 +153,7 @@ func (st *dxfState) skipToEndSec() error {
 		if !ok {
 			return nil
 		}
-		if p.code == 0 && (p.strValue() == "ENDSEC" || p.strValue() == "EOF") {
+		if p.Code == 0 && (p.strValue() == "ENDSEC" || p.strValue() == "EOF") {
 			return nil
 		}
 	}
@@ -164,7 +164,7 @@ func (st *dxfState) skipToEndSec() error {
 // parseHeader 头部变量：$ACADVER（版本枚举）与 $DWGCODEPAGE（码页），
 // 其余键从略。读到码页后，pre-R13（R12 及更早）的 DXF 文本按该码页
 // 解码（复用 DWG 侧 decodeCodepage，GBK 等；R13+ 文本保持字节直读）。
-func (st *dxfState) parseHeader() error {
+func (st *DxfState) parseHeader() error {
 	for {
 		p, ok, err := st.lexer.next()
 		if err != nil {
@@ -173,13 +173,13 @@ func (st *dxfState) parseHeader() error {
 		if !ok {
 			return nil
 		}
-		if p.code == 0 {
+		if p.Code == 0 {
 			if p.strValue() == "ENDSEC" {
 				return nil
 			}
 			continue
 		}
-		if p.code != 9 {
+		if p.Code != 9 {
 			continue
 		}
 		switch p.strValue() {
@@ -189,7 +189,7 @@ func (st *dxfState) parseHeader() error {
 				return err
 			}
 			if ok {
-				st.doc.version = dxfVersionEnum(v.strValue())
+				st.Doc.Ver = dxfVersionEnum(v.strValue())
 				st.applyCodepage()
 			}
 		case "$DWGCODEPAGE":
@@ -198,7 +198,7 @@ func (st *dxfState) parseHeader() error {
 				return err
 			}
 			if ok {
-				st.doc.codepage = dxfCodepageValue(v.strValue())
+				st.Doc.Codepage = DxfCodepageValue(v.strValue())
 				st.applyCodepage()
 			}
 		default:
@@ -209,16 +209,16 @@ func (st *dxfState) parseHeader() error {
 
 // applyCodepage HEADER 键就绪后同步词法层码页：仅 pre-R13（R12 系）
 // 应用——R13+ 的 DXF 文本不走码页；未知码页（0）显式禁用（字节直读）。
-func (st *dxfState) applyCodepage() {
-	if st.doc.version.PreR13() {
-		st.lexer.cp = st.doc.codepage
+func (st *DxfState) applyCodepage() {
+	if st.Doc.Ver.PreR13() {
+		st.lexer.cp = st.Doc.Codepage
 	}
 }
 
 // dxfCodepageValue DXF $DWGCODEPAGE 名 → DWG 码页编号（decodeCodepage
 // 的输入域）：ANSI_936/GBK → 31；windows-125x 家族 → N-1222（1252→30）；
 // 未知名返回 0（保持字节直读，避免历史上 uint16 负溢出产生无效编号）。
-func dxfCodepageValue(name string) uint16 {
+func DxfCodepageValue(name string) uint16 {
 	name = strings.TrimSpace(name)
 	if name == "GBK" {
 		return 31
@@ -260,7 +260,7 @@ func dxfVersionEnum(ver string) container.DwgVersion {
 // ---- TABLES 段 ----
 
 // parseTables 符号表区：仅 LAYER 表需要（名字+颜色），其余表跳到 ENDTAB。
-func (st *dxfState) parseTables() error {
+func (st *DxfState) parseTables() error {
 	for {
 		p, ok, err := st.lexer.next()
 		if err != nil {
@@ -269,7 +269,7 @@ func (st *dxfState) parseTables() error {
 		if !ok {
 			return nil
 		}
-		if p.code != 0 {
+		if p.Code != 0 {
 			continue
 		}
 		switch p.strValue() {
@@ -292,7 +292,7 @@ func (st *dxfState) parseTables() error {
 }
 
 // skipToEndTab 消费到 (0, ENDTAB)。
-func (st *dxfState) skipToEndTab() error {
+func (st *DxfState) skipToEndTab() error {
 	for {
 		p, ok, err := st.lexer.next()
 		if err != nil {
@@ -301,7 +301,7 @@ func (st *dxfState) skipToEndTab() error {
 		if !ok {
 			return nil
 		}
-		if p.code == 0 && (p.strValue() == "ENDTAB" || p.strValue() == "ENDSEC") {
+		if p.Code == 0 && (p.strValue() == "ENDTAB" || p.strValue() == "ENDSEC") {
 			return nil
 		}
 	}
@@ -309,7 +309,7 @@ func (st *dxfState) skipToEndTab() error {
 
 // parseLayerTable LAYER 表记录：句柄（组码 5）、名字（2）、ACI 颜色（62，
 // 负值=图层关闭取绝对值）、真彩色（420）。渲染与颜色继承依赖该表。
-func (st *dxfState) parseLayerTable() error {
+func (st *DxfState) parseLayerTable() error {
 	for {
 		rec, err := st.readRecord()
 		if err != nil {
@@ -318,35 +318,35 @@ func (st *dxfState) parseLayerTable() error {
 		if rec == nil {
 			return nil // ENDSEC/EOF（readRecord 已回吐该边界对）
 		}
-		switch rec.typ {
+		switch rec.Typ {
 		case "ENDTAB":
 			return nil
 		case "LAYER":
-			h := st.recordHandle(rec)
+			h := st.RecordHandle(rec)
 			name := rec.str(2)
 			st.layerByName[name] = h
-			lc := layerColor{index: 7, name: name} // DXF 缺省 ACI 白
+			lc := LayerColor{Index: 7, Name: name} // DXF 缺省 ACI 白
 			if c, ok := rec.intVal(62); ok {
 				idx := c
 				if idx < 0 {
 					idx = -idx
 				}
 				if idx > 0 && idx <= 257 {
-					lc.index = uint16(idx)
+					lc.Index = uint16(idx)
 				}
 			}
 			if tc, ok := rec.intVal(420); ok {
-				lc.trueColor = uint32(tc) & 0x00FFFFFF
-				lc.hasTrue = lc.trueColor != 0
+				lc.TrueColor = uint32(tc) & 0x00FFFFFF
+				lc.HasTrue = lc.TrueColor != 0
 			}
-			st.doc.layerColors[h] = lc
+			st.Doc.LayerColors[h] = lc
 		}
 	}
 }
 
 // readRecord 读取一个 (0, 类型) 开头的记录（实体/表记录/块定义通用），
 // 返回 nil 表示遇到 ENDSEC/EOF（不消费该结束对——由调用方处理边界）。
-func (st *dxfState) readRecord() (*dxfRec, error) {
+func (st *DxfState) readRecord() (*DxfRec, error) {
 	var head dxfPair
 	for {
 		p, ok, err := st.lexer.next()
@@ -356,7 +356,7 @@ func (st *dxfState) readRecord() (*dxfRec, error) {
 		if !ok {
 			return nil, nil
 		}
-		if p.code == 0 {
+		if p.Code == 0 {
 			v := p.strValue()
 			if v == "ENDSEC" || v == "EOF" {
 				st.lexer.pushBack(p)
@@ -367,7 +367,7 @@ func (st *dxfState) readRecord() (*dxfRec, error) {
 		}
 		// 记录边界外的散落对：容忍（如上一记录的收尾 SEQEND 标记）
 	}
-	rec := &dxfRec{typ: head.strValue()}
+	rec := &DxfRec{Typ: head.strValue()}
 	for {
 		p, ok, err := st.lexer.next()
 		if err != nil {
@@ -376,7 +376,7 @@ func (st *dxfState) readRecord() (*dxfRec, error) {
 		if !ok {
 			return rec, nil
 		}
-		if p.code == 0 {
+		if p.Code == 0 {
 			st.lexer.pushBack(p)
 			return rec, nil
 		}
@@ -385,15 +385,15 @@ func (st *dxfState) readRecord() (*dxfRec, error) {
 }
 
 // dxfRec 一个 0 组码记录：类型名与全部非 0 组码对。
-type dxfRec struct {
-	typ   string
+type DxfRec struct {
+	Typ   string
 	pairs []dxfPair
 }
 
 // first 返回首个指定组码的对。
-func (r *dxfRec) first(code int) (dxfPair, bool) {
+func (r *DxfRec) first(code int) (dxfPair, bool) {
 	for _, p := range r.pairs {
-		if p.code == code {
+		if p.Code == code {
 			return p, true
 		}
 	}
@@ -401,10 +401,10 @@ func (r *dxfRec) first(code int) (dxfPair, bool) {
 }
 
 // all 返回指定组码的全部对（顶点/节点等重复组码场景）。
-func (r *dxfRec) all(code int) []dxfPair {
+func (r *DxfRec) all(code int) []dxfPair {
 	var out []dxfPair
 	for _, p := range r.pairs {
-		if p.code == code {
+		if p.Code == code {
 			out = append(out, p)
 		}
 	}
@@ -412,7 +412,7 @@ func (r *dxfRec) all(code int) []dxfPair {
 }
 
 // str 首个字符串类组码值（去两端空白；DXF 写出端常填充对齐空格）。
-func (r *dxfRec) str(code int) string {
+func (r *DxfRec) str(code int) string {
 	if p, ok := r.first(code); ok {
 		return strings.TrimSpace(p.strValue())
 	}
@@ -420,7 +420,7 @@ func (r *dxfRec) str(code int) string {
 }
 
 // strAll 指定组码的字符串值序列（MTEXT 的 3+1 分段拼接用）。
-func (r *dxfRec) strAll(code int) []string {
+func (r *DxfRec) strAll(code int) []string {
 	var out []string
 	for _, p := range r.all(code) {
 		out = append(out, p.strValue())
@@ -429,7 +429,7 @@ func (r *dxfRec) strAll(code int) []string {
 }
 
 // floatVal 首个浮点组码值。
-func (r *dxfRec) floatVal(code int) (float64, bool) {
+func (r *DxfRec) floatVal(code int) (float64, bool) {
 	if p, ok := r.first(code); ok {
 		return p.floatValue(), true
 	}
@@ -437,7 +437,7 @@ func (r *dxfRec) floatVal(code int) (float64, bool) {
 }
 
 // intVal 首个整数组码值（浮点截断；DXF 整型常写成 "     0"）。
-func (r *dxfRec) intVal(code int) (int64, bool) {
+func (r *DxfRec) intVal(code int) (int64, bool) {
 	if p, ok := r.first(code); ok {
 		return int64(p.floatValue()), true
 	}
@@ -445,22 +445,22 @@ func (r *dxfRec) intVal(code int) (int64, bool) {
 }
 
 // point2 取 (code, code+10) 平面点。
-func (r *dxfRec) point2(code int) entity.Point2 {
+func (r *DxfRec) point2(code int) entity.Point2 {
 	x, _ := r.floatVal(code)
 	y, _ := r.floatVal(code + 10)
-	return entity.Point2{x, y}
+	return entity.Point2{X: x, Y: y}
 }
 
 // point3 取 (code, code+10, code+20) 空间点。
-func (r *dxfRec) point3(code int) entity.Point3 {
+func (r *DxfRec) point3(code int) entity.Point3 {
 	x, _ := r.floatVal(code)
 	y, _ := r.floatVal(code + 10)
 	z, _ := r.floatVal(code + 20)
-	return entity.Point3{x, y, z}
+	return entity.Point3{X: x, Y: y, Z: z}
 }
 
 // hexHandle 句柄类组码值（十六进制字符串，二进制编码同样是 hex 文本）。
-func (r *dxfRec) hexHandle(code int) (uint64, bool) {
+func (r *DxfRec) hexHandle(code int) (uint64, bool) {
 	if p, ok := r.first(code); ok {
 		if h, err := strconv.ParseUint(strings.TrimSpace(p.strValue()), 16, 64); err == nil {
 			return h, true
@@ -471,15 +471,15 @@ func (r *dxfRec) hexHandle(code int) (uint64, bool) {
 
 // recordHandle 记录句柄：组码 5 缺失时分配合成句柄（保持 Document 内
 // 句柄唯一性不变式）。
-func (st *dxfState) recordHandle(rec *dxfRec) uint64 {
+func (st *DxfState) RecordHandle(rec *DxfRec) uint64 {
 	if h, ok := rec.hexHandle(5); ok && h != 0 {
-		if h >= st.nextHandle {
-			st.nextHandle = h + 1
+		if h >= st.NextHandle {
+			st.NextHandle = h + 1
 		}
 		return h
 	}
-	h := st.nextHandle
-	st.nextHandle++
+	h := st.NextHandle
+	st.NextHandle++
 	return h
 }
 
@@ -498,7 +498,7 @@ func isPaperSpaceBlockName(name string) bool {
 
 // parseBlocks 块定义区：登记块名 → 句柄；*Model_Space 内容直接进模型
 // 空间，图纸空间布局跳过，普通块内容按 owner 归入 blocks。
-func (st *dxfState) parseBlocks() error {
+func (st *DxfState) parseBlocks() error {
 	for {
 		rec, err := st.readRecord()
 		if err != nil {
@@ -507,13 +507,13 @@ func (st *dxfState) parseBlocks() error {
 		if rec == nil {
 			return nil
 		}
-		if rec.typ != "BLOCK" {
+		if rec.Typ != "BLOCK" {
 			continue // ENDBLK 等结构标记
 		}
 		name := rec.str(2)
-		h := st.recordHandle(rec)
+		h := st.RecordHandle(rec)
 		if name != "" {
-			st.blockByName[name] = h
+			st.BlockByName[name] = h
 		}
 		// 块定义元数据（真名 + 基点）以 BLOCK_HEADER 内部对象形态登记，
 		// 与 DWG/JSON 来源统一：DXF 写出侧按句柄从 internalObjects 取
@@ -525,7 +525,7 @@ func (st *dxfState) parseBlocks() error {
 			bpz, _ := rec.floatVal(30)
 			bg.Fields = append(bg.Fields, object.ObjField{Key: "base_pt", Val: []float64{bp, bpy, bpz}})
 		}
-		st.doc.internalObjects[h] = bg
+		st.Doc.InternalObjs[h] = bg
 		// 收集块内容直到 ENDBLK
 		var inModelSpace, inPaperSpace bool
 		if isModelSpaceBlockName(name) {
@@ -541,8 +541,8 @@ func (st *dxfState) parseBlocks() error {
 			if erec == nil {
 				return nil
 			}
-			if erec.typ == "ENDBLK" {
-				st.recordHandle(erec) // ENDBLK 也可能带句柄，推进合成器
+			if erec.Typ == "ENDBLK" {
+				st.RecordHandle(erec) // ENDBLK 也可能带句柄，推进合成器
 				break
 			}
 			switch {
@@ -561,7 +561,7 @@ func (st *dxfState) parseBlocks() error {
 
 // parseEntitiesSpace 顶级实体区：全部按模型空间实体处理（67=1 的图纸
 // 空间实体在 buildEntity 内统一跳过，与既有 DWG 解析口径一致）。
-func (st *dxfState) parseEntitiesSpace() error {
+func (st *DxfState) parseEntitiesSpace() error {
 	for {
 		rec, err := st.readRecord()
 		if err != nil {
@@ -577,23 +577,23 @@ func (st *dxfState) parseEntitiesSpace() error {
 }
 
 // skipSpaceEntity 图纸空间实体：仅消费句柄合成器状态，不构建实体。
-func (st *dxfState) skipSpaceEntity(rec *dxfRec) {
-	st.recordHandle(rec)
+func (st *DxfState) skipSpaceEntity(rec *DxfRec) {
+	st.RecordHandle(rec)
 	st.unsupported++
 }
 
 // buildSpaceEntity 构建一个指定空间归属的实体（mode 2=模型空间）。
-func (st *dxfState) buildSpaceEntity(rec *dxfRec, mode uint8, owner uint64) {
+func (st *DxfState) buildSpaceEntity(rec *DxfRec, mode uint8, owner uint64) {
 	if ent := st.buildEntity(rec, mode, owner); ent != nil {
-		st.doc.classify(ent)
+		st.Doc.Classify(ent)
 	}
 }
 
 // buildBlockEntity 块内实体：mode=0 且 owner 指向块定义句柄，
 // classify 会按 owner 归入 blocks。
-func (st *dxfState) buildBlockEntity(rec *dxfRec, blockHandle uint64) {
+func (st *DxfState) buildBlockEntity(rec *DxfRec, blockHandle uint64) {
 	if ent := st.buildEntity(rec, 0, blockHandle); ent != nil {
-		st.doc.classify(ent)
+		st.Doc.Classify(ent)
 	}
 }
 
@@ -615,24 +615,24 @@ var dxfSupportedEntities = map[string]bool{
 
 // buildEntity 单实体构建主分发：返回 nil 表示该类型不构建（SEQEND 结构
 // 标记按宿主归属或静默跳过、其余未支持类型计数后丢弃）。
-func (st *dxfState) buildEntity(rec *dxfRec, mode uint8, owner uint64) any {
+func (st *DxfState) buildEntity(rec *DxfRec, mode uint8, owner uint64) any {
 	// 67=1：图纸空间实体，模型空间渲染不涉及
 	if sp, ok := rec.intVal(67); ok && sp == 1 {
 		st.unsupported++
 		return nil
 	}
 	// 结构标记先行处理（不推进合成句柄，避免挤占真实句柄空间）
-	if rec.typ == "SEQEND" {
+	if rec.Typ == "SEQEND" {
 		return st.buildSeqend(rec, mode, owner)
 	}
-	if !dxfSupportedEntities[rec.typ] {
+	if !dxfSupportedEntities[rec.Typ] {
 		st.unsupported++
 		return nil
 	}
 
 	base := st.dxfBase(rec, mode, owner)
 	var ent any
-	switch rec.typ {
+	switch rec.Typ {
 	case "LINE":
 		ent = &entity.EntLine{BaseEntity: *base, Start: rec.point3(10), End: rec.point3(11)}
 	case "CIRCLE":
@@ -674,13 +674,13 @@ func (st *dxfState) buildEntity(rec *dxfRec, mode uint8, owner uint64) any {
 		elevation, _ := rec.floatVal(30)
 		ent = &entity.EntSolid{BaseEntity: *base,
 			P1: rec.point2(10), P2: rec.point2(11), P3: rec.point2(12), P4: rec.point2(13),
-			Elevation: elevation, Trace: rec.typ == "TRACE"}
+			Elevation: elevation, Trace: rec.Typ == "TRACE"}
 	case "3DFACE":
 		ent = &entity.EntFace3d{BaseEntity: *base,
 			P1: rec.point3(10), P2: rec.point3(11), P3: rec.point3(12), P4: rec.point3(13)}
 	case "RAY", "XLINE":
 		ent = &entity.EntRay{BaseEntity: *base, Start: rec.point3(10), UnitVector: rec.point3(11),
-			Xline: rec.typ == "XLINE"}
+			Xline: rec.Typ == "XLINE"}
 	case "SPLINE":
 		ent = st.buildSpline(rec, base)
 	// ---- 批次 R：复杂实体 ----
@@ -708,14 +708,14 @@ func (st *dxfState) buildEntity(rec *dxfRec, mode uint8, owner uint64) any {
 }
 
 // dxfBase 公共字段（句柄/图层/颜色/归属）。
-func (st *dxfState) dxfBase(rec *dxfRec, mode uint8, owner uint64) *entity.BaseEntity {
+func (st *DxfState) dxfBase(rec *DxfRec, mode uint8, owner uint64) *entity.BaseEntity {
 	if owner == 0 {
 		if h, ok := rec.hexHandle(330); ok {
 			owner = h
 		}
 	}
 	return &entity.BaseEntity{
-		Handle: st.recordHandle(rec),
+		Handle: st.RecordHandle(rec),
 		Color:  dxfEntityColor(rec),
 		Layer:  st.layerHandle(rec.str(8)),
 		Owner:  owner,
@@ -725,7 +725,7 @@ func (st *dxfState) dxfBase(rec *dxfRec, mode uint8, owner uint64) *entity.BaseE
 
 // dxfEntityColor 实体颜色：62 ACI 索引与 420 真彩色（420 优先级更高，
 // 与渲染 entityColor 的取色顺序一致）。
-func dxfEntityColor(rec *dxfRec) entity.EntColor {
+func dxfEntityColor(rec *DxfRec) entity.EntColor {
 	var c entity.EntColor
 	if v, ok := rec.intVal(62); ok {
 		idx := v
@@ -746,7 +746,7 @@ func dxfEntityColor(rec *dxfRec) entity.EntColor {
 
 // layerHandle 图层名 → LAYER 表句柄；未知名字兜底注册合成图层，
 // 保证实体 layer 引用总能落到 layerColors（渲染按图层取色的前提）。
-func (st *dxfState) layerHandle(name string) uint64 {
+func (st *DxfState) layerHandle(name string) uint64 {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		name = "0"
@@ -754,16 +754,16 @@ func (st *dxfState) layerHandle(name string) uint64 {
 	if h, ok := st.layerByName[name]; ok {
 		return h
 	}
-	h := st.nextHandle
-	st.nextHandle++
+	h := st.NextHandle
+	st.NextHandle++
 	st.layerByName[name] = h
-	st.doc.layerColors[h] = layerColor{index: 7}
+	st.Doc.LayerColors[h] = LayerColor{Index: 7}
 	return h
 }
 
 // buildText TEXT：文本（1）、字高（40）、插入点（10）、旋转（50，度）、
 // 对齐点（11）与对齐模式（72/73）。
-func (st *dxfState) buildText(rec *dxfRec, base *entity.BaseEntity) any {
+func (st *DxfState) buildText(rec *DxfRec, base *entity.BaseEntity) any {
 	t := &entity.EntText{BaseEntity: *base}
 	t.Text = rec.str(1)
 	t.Insertion = rec.point3(10)
@@ -794,7 +794,7 @@ func (st *dxfState) buildText(rec *dxfRec, base *entity.BaseEntity) any {
 
 // buildMText MTEXT：分段文本 3*（前置段）+1（末段）拼接为原始富文本，
 // 40 字高、41 矩形宽、71 附着点。
-func (st *dxfState) buildMText(rec *dxfRec, base *entity.BaseEntity) any {
+func (st *DxfState) buildMText(rec *DxfRec, base *entity.BaseEntity) any {
 	m := &entity.EntMText{BaseEntity: *base}
 	var sb strings.Builder
 	for _, s := range rec.strAll(3) {
@@ -823,7 +823,7 @@ func (st *dxfState) buildMText(rec *dxfRec, base *entity.BaseEntity) any {
 
 // buildLwPolyline LWPOLYLINE：顶点按 10/20 对序收集，42 凸度关联最近
 // 顶点（DXF 逐顶点交错写出），43 常量宽、38 标高、70 标志。
-func (st *dxfState) buildLwPolyline(rec *dxfRec, base *entity.BaseEntity) any {
+func (st *DxfState) buildLwPolyline(rec *DxfRec, base *entity.BaseEntity) any {
 	lw := &entity.EntLwPolyline{BaseEntity: *base}
 	if v, ok := rec.intVal(70); ok {
 		lw.Flags = uint16(v)
@@ -835,7 +835,7 @@ func (st *dxfState) buildLwPolyline(rec *dxfRec, base *entity.BaseEntity) any {
 		lw.Elevation = e
 	}
 	for _, p := range rec.pairs {
-		switch p.code {
+		switch p.Code {
 		case 10:
 			lw.Vertices = append(lw.Vertices, entity.Point2{X: p.floatValue()})
 		case 20:
@@ -858,7 +858,7 @@ func (st *dxfState) buildLwPolyline(rec *dxfRec, base *entity.BaseEntity) any {
 // buildPolyline POLYLINE（R12 布局）：70 标志区分 2D/3D/面网格/多面
 // 网格多段线（bit3=3D、bit4=MESH、bit6=PFACE，与 DWG 侧类型分布对齐），
 // 顶点由后续 VERTEX 记录按文件顺序回填。渲染依赖 ownedHandles 句柄表。
-func (st *dxfState) buildPolyline(rec *dxfRec, base *entity.BaseEntity) any {
+func (st *DxfState) buildPolyline(rec *DxfRec, base *entity.BaseEntity) any {
 	flags, _ := rec.intVal(70)
 	switch {
 	case flags&8 != 0:
@@ -904,11 +904,11 @@ func (st *dxfState) buildPolyline(rec *dxfRec, base *entity.BaseEntity) any {
 // buildVertex VERTEX：位置（10）、凸度（42）、标志（70）；按宿主 POLYLINE
 // 类型构造对应顶点实体，归属句柄改为宿主（mode=0），并回填宿主句柄表
 // ——与 DWG 侧 VERTEX 的对象归属语义一致（blocks[宿主句柄]）。
-func (st *dxfState) buildVertex(rec *dxfRec, base *entity.BaseEntity) any {
+func (st *DxfState) buildVertex(rec *DxfRec, base *entity.BaseEntity) any {
 	host := st.curPolylineHost
 	if h, ok := rec.hexHandle(330); ok && h != 0 {
 		// R2000+：330 owner 指回宿主，按句柄覆盖文件顺序归属
-		if e := st.doc.entityByHandle[h]; e != nil {
+		if e := st.Doc.ByHandle[h]; e != nil {
 			switch e.(type) {
 			case *entity.EntPolyline2d, *entity.EntPolyline3d, *entity.EntPolylinePface, *entity.EntPolylineMesh:
 				host = e
@@ -971,9 +971,9 @@ func (st *dxfState) buildVertex(rec *dxfRec, base *entity.BaseEntity) any {
 }
 
 // dxfRecHasSubclass 记录是否携带指定子类标记（100 组码值匹配）。
-func dxfRecHasSubclass(rec *dxfRec, name string) bool {
+func dxfRecHasSubclass(rec *DxfRec, name string) bool {
 	for _, p := range rec.pairs {
-		if p.code == 100 && p.strValue() == name {
+		if p.Code == 100 && p.strValue() == name {
 			return true
 		}
 	}
@@ -981,19 +981,19 @@ func dxfRecHasSubclass(rec *dxfRec, name string) bool {
 }
 
 // bulgeOf VERTEX 凸度组码。
-func bulgeOf(rec *dxfRec) float64 {
+func bulgeOf(rec *DxfRec) float64 {
 	b, _ := rec.floatVal(42)
 	return b
 }
 
 // buildInsert INSERT：块名（2）解析为块定义句柄，插入点（10）、缩放
 // （41/42/43，缺省 1）、旋转（50，度）、66 属性跟随标志。
-func (st *dxfState) buildInsert(rec *dxfRec, base *entity.BaseEntity) any {
+func (st *DxfState) buildInsert(rec *DxfRec, base *entity.BaseEntity) any {
 	ins := &entity.EntInsert{BaseEntity: *base,
 		Position: rec.point3(10),
 		Scale:    entity.Point3{X: 1, Y: 1, Z: 1}}
 	if name := rec.str(2); name != "" {
-		ins.BlockHeader = st.blockHandle(name)
+		ins.BlockHeader = st.BlockHandle(name)
 	}
 	if v, ok := rec.floatVal(41); ok {
 		ins.Scale.X = v
@@ -1018,7 +1018,7 @@ func (st *dxfState) buildInsert(rec *dxfRec, base *entity.BaseEntity) any {
 // buildAttrib ATTRIB：属性文本（1）、标签（2）、插入点与字高/旋转；
 // 归属最近的 INSERT（66=1 序列或 330 owner），归属语义与 DWG 侧一致
 // （mode=0、owner=块参照句柄，进 blocks 而非模型空间直挂）。
-func (st *dxfState) buildAttrib(rec *dxfRec, base *entity.BaseEntity) any {
+func (st *DxfState) buildAttrib(rec *DxfRec, base *entity.BaseEntity) any {
 	a := &entity.EntAttrib{BaseEntity: *base}
 	a.Text = rec.str(1)
 	a.Tag = rec.str(2)
@@ -1040,7 +1040,7 @@ func (st *dxfState) buildAttrib(rec *dxfRec, base *entity.BaseEntity) any {
 	// 关联宿主 INSERT：330 owner 优先，否则取 66=1 序列的最近 INSERT
 	host := st.curInsert
 	if h, ok := rec.hexHandle(330); ok && h != 0 {
-		if ins, ok2 := st.doc.entityByHandle[h].(*entity.EntInsert); ok2 {
+		if ins, ok2 := st.Doc.ByHandle[h].(*entity.EntInsert); ok2 {
 			host = ins
 		}
 	}
@@ -1060,14 +1060,14 @@ func (st *dxfState) buildAttrib(rec *dxfRec, base *entity.BaseEntity) any {
 // 游标，其后散落的孤立 VERTEX/ATTRIB 不再误归属（DXF 格式语义）。
 // 宿主判定：330 owner 优先（R2000+），否则取最近 POLYLINE 聚合宿主
 // /66=1 属性序列 INSERT；宿主不在实体表时同样视为孤立。
-func (st *dxfState) buildSeqend(rec *dxfRec, mode uint8, owner uint64) any {
+func (st *DxfState) buildSeqend(rec *DxfRec, mode uint8, owner uint64) any {
 	defer func() {
 		st.curPolylineHost = nil
 		st.curInsert = nil
 	}()
 	var host any
 	if h, ok := rec.hexHandle(330); ok && h != 0 {
-		host = st.doc.entityByHandle[h]
+		host = st.Doc.ByHandle[h]
 	}
 	if host == nil && st.curPolylineHost != nil {
 		host = st.curPolylineHost
@@ -1090,7 +1090,7 @@ func (st *dxfState) buildSeqend(rec *dxfRec, mode uint8, owner uint64) any {
 // ATTRIB 的归属语义），按 330 owner（块定义句柄）归入 blocks；顶层
 // ATTDEF 按 dxfBase 的 owner 兜底逻辑处理（渲染不消费，与 DWG 侧
 // ATTDEF→entAttrib 同构口径一致）。
-func (st *dxfState) buildAttdef(rec *dxfRec, base *entity.BaseEntity) any {
+func (st *DxfState) buildAttdef(rec *DxfRec, base *entity.BaseEntity) any {
 	a := &entity.EntAttrib{BaseEntity: *base}
 	a.Text = rec.str(1)
 	a.Tag = rec.str(2)
@@ -1116,7 +1116,7 @@ func (st *dxfState) buildAttdef(rec *dxfRec, base *entity.BaseEntity) any {
 // buildSpline SPLINE：70 标志、71 阶数、节点（40*）、控制点（10*）、
 // 拟合点（11*）、拟合容差（43）。scenario 按拟合点有无推断（渲染仅
 // 用控制点）。
-func (st *dxfState) buildSpline(rec *dxfRec, base *entity.BaseEntity) any {
+func (st *DxfState) buildSpline(rec *DxfRec, base *entity.BaseEntity) any {
 	s := &entity.EntSpline{BaseEntity: *base, Scenario: 1}
 	if f, ok := rec.intVal(70); ok {
 		s.Closed = f&1 != 0
@@ -1138,7 +1138,7 @@ func (st *dxfState) buildSpline(rec *dxfRec, base *entity.BaseEntity) any {
 		cur := entity.Point3{}
 		stage := 0
 		for _, p := range rec.pairs {
-			switch p.code {
+			switch p.Code {
 			case code:
 				cur.X = p.floatValue()
 				stage = 1
@@ -1167,15 +1167,15 @@ func (st *dxfState) buildSpline(rec *dxfRec, base *entity.BaseEntity) any {
 
 // blockHandle 块名 → 块定义句柄；未知名字（前向引用或孤立 INSERT）
 // 兜底注册合成块句柄，保证 INSERT.blockHeader 指向有效归属。
-func (st *dxfState) blockHandle(name string) uint64 {
+func (st *DxfState) BlockHandle(name string) uint64 {
 	name = strings.TrimSpace(name)
-	if h, ok := st.blockByName[name]; ok {
+	if h, ok := st.BlockByName[name]; ok {
 		return h
 	}
-	h := st.nextHandle
-	st.nextHandle++
-	st.blockByName[name] = h
-	st.doc.blocks[h] = nil
+	h := st.NextHandle
+	st.NextHandle++
+	st.BlockByName[name] = h
+	st.Doc.Blocks[h] = nil
 	return h
 }
 
@@ -1193,7 +1193,7 @@ func dxfDegToRad(deg float64) float64 { return deg * math.Pi / 180 }
 // feature_location/leader_end（直接载入 point13/14，与 JSON 侧同口径）。
 // DIMENSION 走显式组码字段，无 dimSpecificLayout 位流布局问题；
 // dimstyle 名（组码 3）与匿名块名（组码 2）无句柄对应，不恢复句柄引用。
-func (st *dxfState) buildDimension(rec *dxfRec, base *entity.BaseEntity) any {
+func (st *DxfState) buildDimension(rec *DxfRec, base *entity.BaseEntity) any {
 	d := &entity.EntDimension{BaseEntity: *base}
 	flag, _ := rec.intVal(70)
 	d.DimFlag = uint8(flag & 0xFF)
@@ -1265,7 +1265,7 @@ func (st *dxfState) buildDimension(rec *dxfRec, base *entity.BaseEntity) any {
 // 463+63/421 逐色三元组/470 渐变名）。
 // 边界细分点列与 DWG/JSON 来源同口径（多段线带凸度细分，边集直线段拼接，
 // 弧段保留原始参数）。
-func (st *dxfState) buildHatch(rec *dxfRec, base *entity.BaseEntity) any {
+func (st *DxfState) buildHatch(rec *DxfRec, base *entity.BaseEntity) any {
 	h := &entity.EntHatch{BaseEntity: *base}
 	if e, ok := rec.floatVal(30); ok {
 		h.Elevation = e
@@ -1301,7 +1301,7 @@ func (st *dxfState) buildHatch(rec *dxfRec, base *entity.BaseEntity) any {
 		var cur *entity.HatchDefLine
 		var dashes int
 		for _, p := range rec.pairs {
-			switch p.code {
+			switch p.Code {
 			case 53:
 				if cur != nil {
 					h.Deflines = append(h.Deflines, *cur)
@@ -1358,7 +1358,7 @@ func (st *dxfState) buildHatch(rec *dxfRec, base *entity.BaseEntity) any {
 	curColor := -1
 	var seedX float64
 	for _, p := range rec.pairs {
-		if expect11Y && p.code == 21 {
+		if expect11Y && p.Code == 21 {
 			expect11Y = false
 			pa := &h.Paths[curPath]
 			if !pa.IsPolyline && len(pa.Segs) > 0 {
@@ -1373,7 +1373,7 @@ func (st *dxfState) buildHatch(rec *dxfRec, base *entity.BaseEntity) any {
 			continue
 		}
 		expect11Y = false
-		switch p.code {
+		switch p.Code {
 		case 92:
 			flg := uint32(p.floatValue())
 			h.Paths = append(h.Paths, entity.HatchPath{Flag: flg, IsPolyline: flg&2 != 0})
@@ -1487,7 +1487,7 @@ func (st *dxfState) buildHatch(rec *dxfRec, base *entity.BaseEntity) any {
 			}
 			seg := &h.Paths[curPath].Segs[len(h.Paths[curPath].Segs)-1]
 			if segStage == 2 || segStage == 3 {
-				if p.code == 50 {
+				if p.Code == 50 {
 					seg.StartAng = p.floatValue()
 				} else {
 					seg.EndAng = p.floatValue()
@@ -1574,7 +1574,7 @@ func (st *dxfState) buildHatch(rec *dxfRec, base *entity.BaseEntity) any {
 // buildLeader LEADER：71 箭头可见、72 路径类型、73 注释类型、74 钩线方向、
 // 40/41 文本框宽高、76 顶点数 + 10/20/30 折点、210 挤出、211 X 方向、
 // 212 插入偏移、213 端点投影（组码对照 dwg.spec LEADER 的 DXF 分支）。
-func (st *dxfState) buildLeader(rec *dxfRec, base *entity.BaseEntity) any {
+func (st *DxfState) buildLeader(rec *DxfRec, base *entity.BaseEntity) any {
 	l := &entity.EntLeader{BaseEntity: *base}
 	if v, ok := rec.intVal(71); ok {
 		l.ArrowheadOn = v != 0
@@ -1607,12 +1607,12 @@ func (st *dxfState) buildLeader(rec *dxfRec, base *entity.BaseEntity) any {
 
 // collect3Seq 按出现顺序收集 (code, code+10, code+20) 三元组序列
 // （LEADER/MULTILEADER 的重复 10 组码顶点）。
-func collect3Seq(rec *dxfRec, code int) []entity.Point3 {
+func collect3Seq(rec *DxfRec, code int) []entity.Point3 {
 	var out []entity.Point3
 	var cur entity.Point3
 	stage := 0
 	for _, p := range rec.pairs {
-		switch p.code {
+		switch p.Code {
 		case code:
 			if stage == 3 {
 				out = append(out, cur)
@@ -1642,7 +1642,7 @@ func collect3Seq(rec *dxfRec, code int) []entity.Point3 {
 // 12/22/32 方向 + 13/23/33 miter + 每线 74/41 段参数、75/42 区域参数
 // （组码对照 dwg.spec MLINE 的 DXF 分支：justification=70、num_verts=72、
 // num_lines=73）。
-func (st *dxfState) buildMLine(rec *dxfRec, base *entity.BaseEntity) any {
+func (st *DxfState) buildMLine(rec *DxfRec, base *entity.BaseEntity) any {
 	m := &entity.EntMLine{BaseEntity: *base}
 	if sh, ok := rec.hexHandle(340); ok {
 		m.StyleHandle = sh
@@ -1672,7 +1672,7 @@ func (st *dxfState) buildMLine(rec *dxfRec, base *entity.BaseEntity) any {
 	parmCount := 0
 	var cur entity.EntMLineVertex
 	for _, p := range rec.pairs {
-		switch p.code {
+		switch p.Code {
 		case 11:
 			if stage != stIdle {
 				m.Vertices = append(m.Vertices, cur)
@@ -1750,7 +1750,7 @@ func (st *dxfState) buildMLine(rec *dxfRec, base *entity.BaseEntity) any {
 // 的 DXF 标注与 in_dxf.c add_MULTILEADER。上下文段解析顶层标量、文字
 // 内容与 302 LEADER{...} 引线骨架（点列/狗腿/断开），LEADER_LINE 段读
 // 点列与线索引；块内容（296 起）结构深且渲染不消费，跳过。
-func (st *dxfState) buildMLeader(rec *dxfRec, base *entity.BaseEntity) any {
+func (st *DxfState) buildMLeader(rec *DxfRec, base *entity.BaseEntity) any {
 	m := &entity.EntMLeader{BaseEntity: *base}
 	if v, ok := rec.intVal(270); ok {
 		m.HasVersion = true
@@ -1765,7 +1765,7 @@ func (st *dxfState) buildMLeader(rec *dxfRec, base *entity.BaseEntity) any {
 	numLeaders := 0
 	blkTf := 0 // blk 变换矩阵 47×16 游标
 	for _, p := range rec.pairs {
-		code := p.code
+		code := p.Code
 		if code == 300 {
 			inCtx = p.strValue() == "CONTEXT_DATA{"
 			continue
@@ -2006,7 +2006,7 @@ func (st *dxfState) buildMLeader(rec *dxfRec, base *entity.BaseEntity) any {
 	// ---- 顶层尾段（301 } 之后；二次扫描跳过上下文段内同名组码）----
 	tail := false
 	for _, p := range rec.pairs {
-		switch p.code {
+		switch p.Code {
 		case 300:
 			tail = true
 		case 301:
@@ -2018,7 +2018,7 @@ func (st *dxfState) buildMLeader(rec *dxfRec, base *entity.BaseEntity) any {
 		if tail {
 			continue
 		}
-		switch p.code {
+		switch p.Code {
 		case 340:
 			if h, ok := dxfPairHandle(p); ok {
 				m.MleaderStyle = h
@@ -2130,7 +2130,7 @@ func dxfSetMLeaderCMC(c *entity.MleaderCMC, p dxfPair) {
 // buildTolerance TOLERANCE：10 插入点、11 对称轴方向、210 挤出、1 标注
 // 文本（组码对照 dwg.spec TOLERANCE 的 DXF 分支；3 为 dimstyle 名，无
 // 句柄对应不恢复；R13/R14 专属 height/dimgap 位流字段 DXF 不输出）。
-func (st *dxfState) buildTolerance(rec *dxfRec, base *entity.BaseEntity) any {
+func (st *DxfState) buildTolerance(rec *DxfRec, base *entity.BaseEntity) any {
 	t := &entity.EntTolerance{BaseEntity: *base}
 	t.Insertion = rec.point3(10)
 	t.XDirection = rec.point3(11)
@@ -2143,7 +2143,7 @@ func (st *dxfState) buildTolerance(rec *dxfRec, base *entity.BaseEntity) any {
 // 16/17 视向与目标、42-45 镜头/前后裁剪/视高、50/51 角度、72 圆缩放、
 // 90 状态、1 样式表、281 渲染模式、71/74 UCS 标志、110-112 UCS 三轴、
 // 79 正交视图、146 标高（组码对照 dwg.spec VIEWPORT 的 DXF 分支）。
-func (st *dxfState) buildViewport(rec *dxfRec, base *entity.BaseEntity) any {
+func (st *DxfState) buildViewport(rec *DxfRec, base *entity.BaseEntity) any {
 	vp := &entity.EntViewport{BaseEntity: *base}
 	vp.Center = rec.point3(10)
 	if v, ok := rec.floatVal(40); ok {
@@ -2218,8 +2218,8 @@ func (st *dxfState) buildViewport(rec *dxfRec, base *entity.BaseEntity) any {
 // 按码值逐行拼接后做 in_dxf 同款解密（'^ ' 还原为明文 'A'，其余字节
 // b≤32 保留、否则 159-b）得 acisData；290 acis_empty/70 version 一并
 // 消费。几何内核不在解析范围，与 DWG 侧 entAcis 同构。
-func (st *dxfState) buildAcis(rec *dxfRec, base *entity.BaseEntity) any {
-	a := &entity.EntAcis{BaseEntity: *base, Kind: rec.typ}
+func (st *DxfState) buildAcis(rec *DxfRec, base *entity.BaseEntity) any {
+	a := &entity.EntAcis{BaseEntity: *base, Kind: rec.Typ}
 	if v, ok := rec.intVal(290); ok {
 		a.AcisEmpty = v != 0
 	}
@@ -2231,7 +2231,7 @@ func (st *dxfState) buildAcis(rec *dxfRec, base *entity.BaseEntity) any {
 	}
 	var buf []byte
 	for _, p := range rec.pairs {
-		if p.code != 1 && p.code != 3 {
+		if p.Code != 1 && p.Code != 3 {
 			continue
 		}
 		s := p.strValue()
@@ -2246,7 +2246,7 @@ func (st *dxfState) buildAcis(rec *dxfRec, base *entity.BaseEntity) any {
 				buf = append(buf, 159-s[i])
 			}
 		}
-		if p.code == 1 {
+		if p.Code == 1 {
 			buf = append(buf, '\n')
 		}
 	}
@@ -2358,7 +2358,7 @@ func dxfValueType(code int) dxfValKind {
 
 // dxfPair 单个组码对（ASCII/二进制统一表示）。
 type dxfPair struct {
-	code int
+	Code int
 	s    string // 字符串/句柄类原始值
 	num  float64
 }
@@ -2371,13 +2371,13 @@ func (p dxfPair) floatValue() float64 { return p.num }
 
 // dxfLexer 组码对流：ASCII 与二进制两种编码的统一读取游标。
 type dxfLexer struct {
-	data    []byte
-	pos     int
-	binary  bool // "AutoCAD Binary DXF" 变体
-	preR14  bool // 二进制 pre-R14：1 字节组码（0xFF 前缀扩展到 RS）
-	back    *dxfPair
-	version container.DwgVersion
-	cp      uint16 // 文本解码码页（R12 系由 HEADER $DWGCODEPAGE 启用；0=字节直读）
+	Data   []byte
+	pos    int
+	binary bool // "AutoCAD Binary DXF" 变体
+	preR14 bool // 二进制 pre-R14：1 字节组码（0xFF 前缀扩展到 RS）
+	back   *dxfPair
+	Ver    container.DwgVersion
+	cp     uint16 // 文本解码码页（R12 系由 HEADER $DWGCODEPAGE 启用；0=字节直读）
 }
 
 // newDXFLexer 构造词法器并完成编码识别：22 字节魔数判定二进制；随后按
@@ -2387,19 +2387,19 @@ func newDXFLexer(data []byte) (*dxfLexer, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return nil, fmt.Errorf("cad: DXF 输入为空")
 	}
-	l := &dxfLexer{data: data, version: container.VerR2018}
-	if bytes.HasPrefix(data, dxfBinaryMagic) {
+	l := &dxfLexer{Data: data, Ver: container.VerR2018}
+	if bytes.HasPrefix(data, DxfBinaryMagic) {
 		l.binary = true
-		l.pos = len(dxfBinaryMagic)
+		l.pos = len(DxfBinaryMagic)
 		// 截断保护：至少还能容纳一个最短记录
 		if len(data) < l.pos+2 {
 			return nil, fmt.Errorf("cad: 二进制 DXF 头部不完整")
 		}
 		if data[l.pos] == 0 && l.pos+1 < len(data) && data[l.pos+1] == 0 {
-			l.version = container.VerR14
+			l.Ver = container.VerR14
 		} else {
 			l.preR14 = true
-			l.version = container.VerR13
+			l.Ver = container.VerR13
 		}
 	}
 	return l, nil
@@ -2426,16 +2426,16 @@ func (l *dxfLexer) next() (dxfPair, bool, error) {
 
 // readLine 读取一行（不含行尾；容忍 CR/LF/CRLF）。
 func (l *dxfLexer) readLine() (string, bool) {
-	if l.pos >= len(l.data) {
+	if l.pos >= len(l.Data) {
 		return "", false
 	}
-	end := bytes.IndexByte(l.data[l.pos:], '\n')
+	end := bytes.IndexByte(l.Data[l.pos:], '\n')
 	var line []byte
 	if end < 0 {
-		line = l.data[l.pos:]
-		l.pos = len(l.data)
+		line = l.Data[l.pos:]
+		l.pos = len(l.Data)
 	} else {
-		line = l.data[l.pos : l.pos+end]
+		line = l.Data[l.pos : l.pos+end]
 		l.pos += end + 1
 	}
 	line = bytes.TrimSuffix(line, []byte("\r"))
@@ -2458,7 +2458,7 @@ func (l *dxfLexer) nextASCII() (dxfPair, bool, error) {
 		if !ok {
 			return dxfPair{}, false, fmt.Errorf("cad: DXF 在组码 %d 后意外结束（截断）", code)
 		}
-		p := dxfPair{code: code}
+		p := dxfPair{Code: code}
 		l.fillValue(&p, strings.TrimSuffix(valLine, "\r"))
 		return p, true, nil
 	}
@@ -2470,7 +2470,7 @@ func (l *dxfLexer) nextBinary() (dxfPair, bool, error) {
 	if err != nil {
 		return dxfPair{}, false, nil // 尾部残缺按 EOF 处理
 	}
-	p := dxfPair{code: code}
+	p := dxfPair{Code: code}
 	if err := l.readBinValue(&p); err != nil {
 		return dxfPair{}, false, err
 	}
@@ -2480,24 +2480,24 @@ func (l *dxfLexer) nextBinary() (dxfPair, bool, error) {
 // readBinCode 组码：R14+ 为 2 字节小端；pre-R14 为 1 字节、0xFF 前缀扩展。
 func (l *dxfLexer) readBinCode() (int, error) {
 	if l.preR14 {
-		if l.pos >= len(l.data) {
+		if l.pos >= len(l.Data) {
 			return 0, fmt.Errorf("cad: 二进制 DXF 组码越界")
 		}
-		c := int(l.data[l.pos])
+		c := int(l.Data[l.pos])
 		l.pos++
 		if c == 0xFF {
-			if l.pos+2 > len(l.data) {
+			if l.pos+2 > len(l.Data) {
 				return 0, fmt.Errorf("cad: 二进制 DXF 扩展组码越界")
 			}
-			c = int(binary.LittleEndian.Uint16(l.data[l.pos:]))
+			c = int(binary.LittleEndian.Uint16(l.Data[l.pos:]))
 			l.pos += 2
 		}
 		return c, nil
 	}
-	if l.pos+2 > len(l.data) {
+	if l.pos+2 > len(l.Data) {
 		return 0, fmt.Errorf("cad: 二进制 DXF 组码越界")
 	}
-	c := int(binary.LittleEndian.Uint16(l.data[l.pos:]))
+	c := int(binary.LittleEndian.Uint16(l.Data[l.pos:]))
 	l.pos += 2
 	return c, nil
 }
@@ -2505,61 +2505,61 @@ func (l *dxfLexer) readBinCode() (int, error) {
 // readBinValue 按组码类型读取二进制值。
 func (l *dxfLexer) readBinValue(p *dxfPair) error {
 	need := func(n int) error {
-		if l.pos+n > len(l.data) {
-			l.pos = len(l.data)
-			return fmt.Errorf("cad: 二进制 DXF 值越界（组码 %d，截断）", p.code)
+		if l.pos+n > len(l.Data) {
+			l.pos = len(l.Data)
+			return fmt.Errorf("cad: 二进制 DXF 值越界（组码 %d，截断）", p.Code)
 		}
 		return nil
 	}
-	switch dxfValueType(p.code) {
+	switch dxfValueType(p.Code) {
 	case dxfValReal, dxfValInt64:
 		if err := need(8); err != nil {
 			return err
 		}
-		if dxfValueType(p.code) == dxfValReal {
-			p.num = math.Float64frombits(binary.LittleEndian.Uint64(l.data[l.pos:]))
+		if dxfValueType(p.Code) == dxfValReal {
+			p.num = math.Float64frombits(binary.LittleEndian.Uint64(l.Data[l.pos:]))
 		} else {
-			p.num = float64(int64(binary.LittleEndian.Uint64(l.data[l.pos:])))
+			p.num = float64(int64(binary.LittleEndian.Uint64(l.Data[l.pos:])))
 		}
 		l.pos += 8
 	case dxfValInt32:
 		if err := need(4); err != nil {
 			return err
 		}
-		p.num = float64(int32(binary.LittleEndian.Uint32(l.data[l.pos:])))
+		p.num = float64(int32(binary.LittleEndian.Uint32(l.Data[l.pos:])))
 		l.pos += 4
 	case dxfValInt16, dxfValInt8:
 		// 二进制编码统一用 2 字节（280-289 INT8 亦然，对齐 in_dxf.c）
 		if err := need(2); err != nil {
 			return err
 		}
-		p.num = float64(int16(binary.LittleEndian.Uint16(l.data[l.pos:])))
+		p.num = float64(int16(binary.LittleEndian.Uint16(l.Data[l.pos:])))
 		l.pos += 2
 	case dxfValBool:
 		if err := need(1); err != nil {
 			return err
 		}
-		p.num = float64(l.data[l.pos])
+		p.num = float64(l.Data[l.pos])
 		l.pos++
 	case dxfValBinary:
 		if err := need(1); err != nil {
 			return err
 		}
-		n := int(l.data[l.pos])
+		n := int(l.Data[l.pos])
 		l.pos++
 		if err := need(n); err != nil {
 			return err
 		}
 		l.pos += n // 字节块当前无消费方，跳过即可
 	case dxfValString, dxfValHandle:
-		end := bytes.IndexByte(l.data[l.pos:], 0)
+		end := bytes.IndexByte(l.Data[l.pos:], 0)
 		if end < 0 {
-			l.pos = len(l.data)
-			return fmt.Errorf("cad: 二进制 DXF 字符串未以 NUL 结束（组码 %d，截断）", p.code)
+			l.pos = len(l.Data)
+			return fmt.Errorf("cad: 二进制 DXF 字符串未以 NUL 结束（组码 %d，截断）", p.Code)
 		}
-		raw := string(l.data[l.pos : l.pos+end])
+		raw := string(l.Data[l.pos : l.pos+end])
 		l.pos += end + 1
-		if dxfValueType(p.code) == dxfValReal {
+		if dxfValueType(p.Code) == dxfValReal {
 			p.num, _ = strconv.ParseFloat(p.s, 64)
 		} else {
 			p.s = l.decodeText(raw) // R12 系按码页解码（与 ASCII 路径同口径）
@@ -2574,7 +2574,7 @@ func (l *dxfLexer) readBinValue(p *dxfPair) error {
 // 字节可含 ^ 字符，先转义会误改字节流），再还原 ^J/^M 转义（写出端
 // cquote 的逆过程）。
 func (l *dxfLexer) fillValue(p *dxfPair, raw string) {
-	switch dxfValueType(p.code) {
+	switch dxfValueType(p.Code) {
 	case dxfValReal, dxfValInt16, dxfValInt8, dxfValBool, dxfValInt32, dxfValInt64:
 		p.num, _ = strconv.ParseFloat(strings.TrimSpace(raw), 64)
 	case dxfValHandle, dxfValBinary:

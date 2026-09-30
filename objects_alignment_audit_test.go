@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/entity"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
 	"path/filepath"
@@ -168,26 +169,6 @@ type auditSample struct {
 	strict bool
 }
 
-// resolveSamplePath 由 gold 别名推导 test-data 相对路径。三条规则：
-// ex*→example_*.dwg、sample*→sample_*.dwg（批次 0 根目录样本）；
-// c_<目录>_<文件名>→<目录>/<文件名>.dwg（批次 I 语料扩容样本，文件名
-// 保留原始大小写，目录取别名首个下划线前的版本段）。
-func resolveSamplePath(alias string) string {
-	base := alias + ".json"
-	if len(base) > 4 && base[:2] == "ex" {
-		return "example_" + base[2:len(base)-5] + ".dwg"
-	}
-	if len(base) > 10 && base[:6] == "sample" {
-		return "sample_" + base[6:len(base)-5] + ".dwg"
-	}
-	if len(alias) > 2 && alias[:2] == "c_" {
-		if i := strings.Index(alias[2:], "_"); i >= 0 {
-			return alias[2:2+i] + "/" + alias[3+i:] + ".dwg"
-		}
-	}
-	return ""
-}
-
 // runAlignmentAudit 值级对齐审计（批次 0 十样本硬门禁+批次 I 扩容样本矩阵）。
 // includeEntities 控制是否纳入实体对象（gold "entity" 键）。
 func runAlignmentAudit(t *testing.T, includeEntities bool) {
@@ -254,7 +235,7 @@ func runAlignmentAudit(t *testing.T, includeEntities bool) {
 			t.Logf("%s: gold 不可用，跳过", c)
 			continue
 		}
-		sample := resolveSamplePath(c)
+		sample := testsupport.ResolveSamplePath(c)
 		if sample == "" {
 			t.Errorf("%s: 无法从别名推导样本路径", c)
 			continue

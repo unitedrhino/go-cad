@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/object"
 	"github.com/unitedrhino/go-cad/internal/objrec"
@@ -30,7 +31,7 @@ var rtDebug = os.Getenv("CAD_RT_DEBUG") != ""
 func TestAllObjectsRoundTrip(t *testing.T) {
 	cases := []struct {
 		sample string
-		ver    container.DwgVersion
+		Ver    container.DwgVersion
 	}{
 		{"example_2000.dwg", container.VerR2000},
 		{"example_2004.dwg", container.VerR2004},
@@ -41,7 +42,7 @@ func TestAllObjectsRoundTrip(t *testing.T) {
 	for _, c := range cases {
 		c := c
 		t.Run(c.sample, func(t *testing.T) {
-			roundTripAll(t, c.sample, c.ver)
+			roundTripAll(t, c.sample, c.Ver)
 		})
 	}
 }
@@ -77,7 +78,7 @@ func roundTripAll(t *testing.T, sample string, ver container.DwgVersion) {
 	}
 	pass, fail, skip := 0, 0, 0
 	fails := map[string]int{}
-	for h, g := range doc.internalObjects {
+	for h, g := range doc.InternalObjs {
 		if g == nil || g.Unknown {
 			continue
 		}
@@ -103,7 +104,7 @@ func roundTripAll(t *testing.T, sample string, ver container.DwgVersion) {
 					// 桥接路由：DICTIONARY 系对象走专用编码器
 					//（objDictionary 结构，TestDictionaryRoundTrip 同链路）
 					if strings.Contains(g.Name, "DICTIONARY") {
-						if d, ok := doc.dictionaries[h]; ok && d != nil {
+						if d, ok := doc.Dictionaries[h]; ok && d != nil {
 							db2, derr := encodeDictionaryR2000(d, ver, false)
 							if derr == nil {
 								drec := &objrec.ObjectRecord{Body: db2, BodyBitOffset: 0, Size: uint32(len(db2))}
@@ -199,15 +200,15 @@ func roundTripAllEntities(t *testing.T, doc *Document, data []byte, sample strin
 	// 重解码端按版本重建动态类名表（≥500 类型码实体需要）
 	dynamicTypes := map[uint16]string{}
 	if ver == container.VerR2000 || ver == container.VerR14 || ver == container.VerR13 {
-		dynamicTypes, _ = doc.loadR2000Classes(data)
+		dynamicTypes, _ = doc.LoadR2000Classes(data)
 	} else {
-		dynamicTypes, _ = doc.loadDynamicTypes(data)
+		dynamicTypes, _ = doc.LoadDynamicTypes(data)
 	}
-	ensureFixedEntityTypes(dynamicTypes)
+	drawing.EnsureFixedEntityTypes(dynamicTypes)
 
 	pass, fail := 0, 0
 	fails := map[string]int{}
-	for h, e1 := range doc.entityByHandle {
+	for h, e1 := range doc.ByHandle {
 		if e1 == nil {
 			continue
 		}
@@ -260,10 +261,10 @@ func roundTripAllEntities(t *testing.T, doc *Document, data []byte, sample strin
 			rr := rec2.BodyBitStream()
 			rr.SetBitPos(h2.DataStartBit)
 			var e2 any
-			if isVersionedEntityKind(typeName) {
-				e2, err = decodeVersionedEntity(rr, h2, h, typeName, ver)
+			if drawing.IsVersionedEntityKind(typeName) {
+				e2, err = drawing.DecodeVersionedEntity(rr, h2, h, typeName, ver)
 			} else {
-				e2, err = entity.DecodeEntityFieldsVer(rr, h2, h, rec2.Size, typeName, b1.TypeCode, ver, doc.codepage, dynamicTypes, doc.lightingUnits)
+				e2, err = entity.DecodeEntityFieldsVer(rr, h2, h, rec2.Size, typeName, b1.TypeCode, ver, doc.Codepage, dynamicTypes, doc.LightingUnits)
 			}
 			if err != nil {
 				t.Logf("%s h=%d 重解码失败: %v", typeName, h, err)

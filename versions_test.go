@@ -30,7 +30,7 @@ func parseSample(t *testing.T, name string) *Document {
 
 // allEntities 模型空间全部实体（含模型空间块头启发式并入的内容）。
 func allEntities(d *Document) []any {
-	return append(append([]any{}, d.modelSpace...), d.largestBlockEntities()...)
+	return append(append([]any{}, d.ModelSpace...), d.LargestBlockEntities()...)
 }
 
 func findEntity[T any](d *Document) *T {
@@ -163,10 +163,10 @@ func TestR14SamplesParse(t *testing.T) {
 			t.Errorf("%s 应可解析: %v", name, err)
 			continue
 		}
-		if doc.version != container.VerR14 {
-			t.Errorf("%s 版本应为 verR14，得到 %v", name, doc.version)
+		if doc.Ver != container.VerR14 {
+			t.Errorf("%s 版本应为 verR14，得到 %v", name, doc.Ver)
 		}
-		if len(doc.modelSpace) == 0 {
+		if len(doc.ModelSpace) == 0 {
 			t.Errorf("%s 应解出至少 1 个模型空间实体", name)
 		}
 	}

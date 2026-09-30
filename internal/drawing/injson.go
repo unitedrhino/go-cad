@@ -10,7 +10,7 @@
 // ParseJSON 产出的文档无法 WriteDwg（返回"缺少回放素材"错误）——
 // 结构化正向编码（实体侧正向写位流）未建；本文件的降级目标是消费侧
 // 完整：Document 可供 RenderPNG/Texts/modelSpaceEntities 审计对照使用。
-package cad
+package drawing
 
 import (
 	"bytes"
@@ -46,16 +46,16 @@ func ParseJSON(data []byte) (*Document, error) {
 		return nil, fmt.Errorf("cad: JSON 缺少 OBJECTS 数组，不是 dwgread -O JSON 输出")
 	}
 	doc := &Document{
-		version:         jsonDetectVersion(root),
-		blocks:          make(map[uint64][]any),
-		attribs:         make(map[uint64]*entity.EntAttrib),
-		layerColors:     make(map[uint64]layerColor),
-		dictionaries:    make(map[uint64]*object.ObjDictionary),
-		xrecords:        make(map[uint64]*object.ObjXrecord),
-		internalObjects: make(map[uint64]*object.ObjGeneric),
-		entityByHandle:  make(map[uint64]any),
-		HeaderVars:      make(map[string]any),
-		ltscale:         1, // 解码侧缺省比例
+		Ver:          jsonDetectVersion(root),
+		Blocks:       make(map[uint64][]any),
+		Attribs:      make(map[uint64]*entity.EntAttrib),
+		LayerColors:  make(map[uint64]LayerColor),
+		Dictionaries: make(map[uint64]*object.ObjDictionary),
+		Xrecs:        make(map[uint64]*object.ObjXrecord),
+		InternalObjs: make(map[uint64]*object.ObjGeneric),
+		ByHandle:     make(map[uint64]any),
+		HeaderVars:   make(map[string]any),
+		Ltscale:      1, // 解码侧缺省比例
 	}
 	jsonApplyHeader(doc, root["HEADER"])
 	for _, it := range objsRaw {
@@ -64,7 +64,7 @@ func ParseJSON(data []byte) (*Document, error) {
 			doc.skipped++
 			continue
 		}
-		o := jsonObject(m)
+		o := JsonObject(m)
 		if name := o.str("entity"); name != "" {
 			if name == "ATTDEF" {
 				// 定义类标记：与 Parse 的 decodeObjects 同口径静默跳过
@@ -76,16 +76,16 @@ func ParseJSON(data []byte) (*Document, error) {
 				doc.skipped++ // 未知实体类：跳过计数，不阻断其余对象
 				continue
 			}
-			doc.classify(ent)
+			doc.Classify(ent)
 			continue
 		}
 		if name := o.str("object"); name != "" {
-			h := o.handle("handle")
+			h := o.Handle("handle")
 			if name == "LAYER" {
-				doc.layerColors[h] = jsonLayerColor(o)
+				doc.LayerColors[h] = jsonLayerColor(o)
 				continue
 			}
-			doc.internalObjects[h] = jsonGenericObject(o, name, h)
+			doc.InternalObjs[h] = jsonGenericObject(o, name, h)
 			continue
 		}
 		doc.skipped++ // 既无 entity 也无 object 键：坏条目
@@ -133,16 +133,16 @@ func jsonApplyHeader(doc *Document, h any) {
 		doc.HeaderVars[k] = v
 	}
 	if arr, ok := m["EXTMIN"].([]any); ok && len(arr) >= 2 {
-		doc.extMin = entity.Point3{jsonNumAt(arr, 0), jsonNumAt(arr, 1), jsonNumAt(arr, 2)}
+		doc.ExtMin = entity.Point3{X: JsonNumAt(arr, 0), Y: JsonNumAt(arr, 1), Z: JsonNumAt(arr, 2)}
 	}
 	if arr, ok := m["EXTMAX"].([]any); ok && len(arr) >= 2 {
-		doc.extMax = entity.Point3{jsonNumAt(arr, 0), jsonNumAt(arr, 1), jsonNumAt(arr, 2)}
+		doc.ExtMax = entity.Point3{X: JsonNumAt(arr, 0), Y: JsonNumAt(arr, 1), Z: JsonNumAt(arr, 2)}
 	}
 	if arr, ok := m["INSBASE"].([]any); ok && len(arr) >= 2 {
-		doc.insbase = entity.Point3{jsonNumAt(arr, 0), jsonNumAt(arr, 1), jsonNumAt(arr, 2)}
+		doc.Insbase = entity.Point3{X: JsonNumAt(arr, 0), Y: JsonNumAt(arr, 1), Z: JsonNumAt(arr, 2)}
 	}
 	if f, ok := m["LTSCALE"].(float64); ok {
-		doc.ltscale = f
+		doc.Ltscale = f
 	}
 }
 
@@ -200,22 +200,22 @@ func versionFromStr(s string) (container.DwgVersion, bool) {
 // ---- gold JSON 条目的类型化取值辅助 ----
 
 // jsonObject gold JSON 的单个 OBJECTS 条目（顶层键值原样保留）。
-type jsonObject map[string]any
+type JsonObject map[string]any
 
 // raw 取原始值（键缺失返回 nil）。
-func (o jsonObject) raw(key string) any { return o[key] }
+func (o JsonObject) raw(key string) any { return o[key] }
 
 // has 判断键存在（值为 null 也算存在）。
-func (o jsonObject) has(key string) bool { _, ok := o[key]; return ok }
+func (o JsonObject) has(key string) bool { _, ok := o[key]; return ok }
 
 // str 取字符串值。
-func (o jsonObject) str(key string) string {
+func (o JsonObject) str(key string) string {
 	s, _ := o[key].(string)
 	return s
 }
 
 // strAt 取字符串数组的指定下标元素（越界/类型不符返回空串）。
-func (o jsonObject) strAt(key string, i int) string {
+func (o JsonObject) strAt(key string, i int) string {
 	arr, ok := o[key].([]any)
 	if !ok || i >= len(arr) {
 		return ""
@@ -225,13 +225,13 @@ func (o jsonObject) strAt(key string, i int) string {
 }
 
 // num 取数值（JSON 数字统一为 float64）。
-func (o jsonObject) num(key string) (float64, bool) {
+func (o JsonObject) num(key string) (float64, bool) {
 	f, ok := o[key].(float64)
 	return f, ok
 }
 
 // i64 取整数值（缺省 0）。
-func (o jsonObject) i64(key string) int64 {
+func (o JsonObject) i64(key string) int64 {
 	f, ok := o[key].(float64)
 	if !ok {
 		return 0
@@ -240,17 +240,17 @@ func (o jsonObject) i64(key string) int64 {
 }
 
 // f64 取浮点值（缺省 0）。
-func (o jsonObject) f64(key string) float64 {
+func (o JsonObject) f64(key string) float64 {
 	f, _ := o[key].(float64)
 	return f
 }
 
 // boolean 取布尔值（gold 以 0/1 整数表达）。
-func (o jsonObject) boolean(key string) bool { return o.i64(key) != 0 }
+func (o JsonObject) boolean(key string) bool { return o.i64(key) != 0 }
 
 // handle 取句柄引用值：gold 句柄为 [code, size, value(, absValue)] 数组，
 // 末位是绝对句柄（LibreDWG 句柄语义）；非数组/空数组返回 0。
-func (o jsonObject) handle(key string) uint64 {
+func (o JsonObject) Handle(key string) uint64 {
 	return jsonHandleValue(o[key])
 }
 
@@ -268,23 +268,23 @@ func jsonHandleValue(v any) uint64 {
 }
 
 // p2 取 2D 点（[x, y]；长度不足按 0 补齐）。
-func (o jsonObject) p2(key string) entity.Point2 {
+func (o JsonObject) p2(key string) entity.Point2 {
 	if arr, ok := o[key].([]any); ok {
-		return entity.Point2{jsonNumAt(arr, 0), jsonNumAt(arr, 1)}
+		return entity.Point2{X: JsonNumAt(arr, 0), Y: JsonNumAt(arr, 1)}
 	}
 	return entity.Point2{}
 }
 
 // p3 取 3D 点（[x, y(, z)]；gold 侧 2 元形态的 z 恒 0）。
-func (o jsonObject) p3(key string) entity.Point3 {
+func (o JsonObject) p3(key string) entity.Point3 {
 	if arr, ok := o[key].([]any); ok {
-		return entity.Point3{jsonNumAt(arr, 0), jsonNumAt(arr, 1), jsonNumAt(arr, 2)}
+		return entity.Point3{X: JsonNumAt(arr, 0), Y: JsonNumAt(arr, 1), Z: JsonNumAt(arr, 2)}
 	}
 	return entity.Point3{}
 }
 
 // jsonNumAt 数组指定下标的数值（越界/类型不符返回 0）。
-func jsonNumAt(arr []any, i int) float64 {
+func JsonNumAt(arr []any, i int) float64 {
 	if i >= len(arr) {
 		return 0
 	}
@@ -293,7 +293,7 @@ func jsonNumAt(arr []any, i int) float64 {
 }
 
 // p3s 取 3D 点数组（[[x,y,z], ...]）。
-func (o jsonObject) p3s(key string) []entity.Point3 {
+func (o JsonObject) p3s(key string) []entity.Point3 {
 	arr, ok := o[key].([]any)
 	if !ok {
 		return nil
@@ -301,7 +301,7 @@ func (o jsonObject) p3s(key string) []entity.Point3 {
 	var out []entity.Point3
 	for _, e := range arr {
 		if pa, ok := e.([]any); ok {
-			out = append(out, entity.Point3{jsonNumAt(pa, 0), jsonNumAt(pa, 1), jsonNumAt(pa, 2)})
+			out = append(out, entity.Point3{X: JsonNumAt(pa, 0), Y: JsonNumAt(pa, 1), Z: JsonNumAt(pa, 2)})
 		}
 	}
 	return out
@@ -309,7 +309,7 @@ func (o jsonObject) p3s(key string) []entity.Point3 {
 
 // p2s 取 2D 点数组：兼容 [[x,y],...] 嵌套与 [x,y,x,y,...] 展平两种形态
 // （LWPOLYLINE gold 的 points 为嵌套，展平形态见 LibreDWG 部分版本输出）。
-func (o jsonObject) p2s(key string) []entity.Point2 {
+func (o JsonObject) p2s(key string) []entity.Point2 {
 	arr, ok := o[key].([]any)
 	if !ok {
 		return nil
@@ -319,7 +319,7 @@ func (o jsonObject) p2s(key string) []entity.Point2 {
 			var out []entity.Point2
 			for _, e := range arr {
 				if pa, ok := e.([]any); ok {
-					out = append(out, entity.Point2{jsonNumAt(pa, 0), jsonNumAt(pa, 1)})
+					out = append(out, entity.Point2{X: JsonNumAt(pa, 0), Y: JsonNumAt(pa, 1)})
 				}
 			}
 			return out
@@ -327,13 +327,13 @@ func (o jsonObject) p2s(key string) []entity.Point2 {
 	}
 	var out []entity.Point2
 	for i := 0; i+1 < len(arr); i += 2 {
-		out = append(out, entity.Point2{jsonNumAt(arr, i), jsonNumAt(arr, i+1)})
+		out = append(out, entity.Point2{X: JsonNumAt(arr, i), Y: JsonNumAt(arr, i+1)})
 	}
 	return out
 }
 
 // f64s 取浮点数组。
-func (o jsonObject) f64s(key string) []float64 {
+func (o JsonObject) f64s(key string) []float64 {
 	arr, ok := o[key].([]any)
 	if !ok {
 		return nil
@@ -347,15 +347,15 @@ func (o jsonObject) f64s(key string) []float64 {
 }
 
 // objs 取嵌套对象数组（paths[i]/verts[i] 等）。
-func (o jsonObject) objs(key string) []jsonObject {
+func (o JsonObject) objs(key string) []JsonObject {
 	arr, ok := o[key].([]any)
 	if !ok {
 		return nil
 	}
-	var out []jsonObject
+	var out []JsonObject
 	for _, e := range arr {
 		if m, ok := e.(map[string]any); ok {
-			out = append(out, jsonObject(m))
+			out = append(out, JsonObject(m))
 		}
 	}
 	return out
@@ -378,7 +378,7 @@ func jsonEntColor(v any) entity.EntColor {
 		return entity.EntColor{HasIndex: true, Index: uint16(n)}
 	case map[string]any:
 		var col entity.EntColor
-		m := jsonObject(c)
+		m := JsonObject(c)
 		if f, ok := m.num("index"); ok {
 			col.HasIndex, col.Index = true, uint16(f)
 		}
@@ -417,14 +417,14 @@ func parseHexUint32(s string) (uint32, error) {
 // （head 供 entityField 审计导出 ltype_scale/invisible/linewt 等公共键；
 // objSizeBit/recSize 取 gold bitsize/size 使 JSON 来源实体的审计导出与
 // gold 一致）。内部类型名按 DIMENSION_→DIM_ 前缀还原。
-func jsonBase(o jsonObject, goldName string) entity.BaseEntity {
-	h := o.handle("handle")
+func jsonBase(o JsonObject, goldName string) entity.BaseEntity {
+	h := o.Handle("handle")
 	base := entity.BaseEntity{
 		Handle:        h,
 		Color:         jsonEntColor(o.raw("color")),
 		Mode:          uint8(o.i64("entmode")),
-		Owner:         o.handle("ownerhandle"),
-		Layer:         o.handle("layer"),
+		Owner:         o.Handle("ownerhandle"),
+		Layer:         o.Handle("layer"),
 		ObjSizeBit:    uint64(o.i64("bitsize")),
 		RecSize:       uint32(o.i64("size")),
 		TypeName:      jsonInternalTypeName(goldName),
@@ -457,7 +457,7 @@ func jsonBase(o jsonObject, goldName string) entity.BaseEntity {
 	}
 	// preview 缩略图（hex 串 → 原始字节，entityField 以 %X 导出对照）
 	if base.PreviewExists {
-		if pv := jsonHexBytes(o.str("preview")); pv != nil {
+		if pv := JsonHexBytes(o.str("preview")); pv != nil {
 			base.Head.Preview = pv
 		}
 	}
@@ -477,20 +477,20 @@ func jsonInternalTypeName(gold string) string {
 
 // jsonLayerColor LAYER 对象的 gold color 键 → layerColor（标量索引或
 // CMC 对象双形态）；name 为图层真名（DXF 写出消费）。
-func jsonLayerColor(o jsonObject) layerColor {
-	var lc layerColor
-	lc.name = o.str("name")
+func jsonLayerColor(o JsonObject) LayerColor {
+	var lc LayerColor
+	lc.Name = o.str("name")
 	switch c := o.raw("color").(type) {
 	case float64:
-		lc.index = uint16(int64(c))
+		lc.Index = uint16(int64(c))
 	case map[string]any:
-		m := jsonObject(c)
+		m := JsonObject(c)
 		if f, ok := m.num("index"); ok {
-			lc.index = uint16(f)
+			lc.Index = uint16(f)
 		}
 		if rgb := m.str("rgb"); rgb != "" {
 			if v32, err := parseHexUint32(rgb); err == nil && v32&0xFFFFFF != 0 {
-				lc.hasTrue, lc.trueColor = true, v32&0xFFFFFF
+				lc.HasTrue, lc.TrueColor = true, v32&0xFFFFFF
 			}
 		}
 	}
@@ -499,7 +499,7 @@ func jsonLayerColor(o jsonObject) layerColor {
 
 // jsonGenericObject 非实体对象 → objGeneric：gold 展平键值对存入 Fields
 // 中间表示（FieldPath 可直接按展平键查询，与解码对象的消费口径一致）。
-func jsonGenericObject(o jsonObject, name string, h uint64) *object.ObjGeneric {
+func jsonGenericObject(o JsonObject, name string, h uint64) *object.ObjGeneric {
 	g := &object.ObjGeneric{Name: name, Handle: h}
 	for k, v := range o {
 		switch v.(type) {
@@ -514,8 +514,8 @@ func jsonGenericObject(o jsonObject, name string, h uint64) *object.ObjGeneric {
 // （DWG 侧该链存于 INSERT 的 handle 流，JSON 无流可读；ATTRIB 的
 // gold ownerhandle 即宿主 INSERT 句柄， Texts 的 INSERT 属性展开依赖）。
 func linkJSONAttribs(doc *Document) {
-	for h, a := range doc.attribs {
-		if ins, ok := doc.entityByHandle[a.Owner].(*entity.EntInsert); ok {
+	for h, a := range doc.Attribs {
+		if ins, ok := doc.ByHandle[a.Owner].(*entity.EntInsert); ok {
 			ins.Attribs = append(ins.Attribs, h)
 		}
 	}
@@ -524,7 +524,7 @@ func linkJSONAttribs(doc *Document) {
 // ---- 实体构造（entityField 的逆映射，手工 per-type setter）----
 
 // jsonEntityBuilder 单个实体类型的 gold 键 → 实体构造器。
-type jsonEntityBuilder func(o jsonObject) any
+type jsonEntityBuilder func(o JsonObject) any
 
 // jsonEntityBuilders gold entity 名 → 构造器。覆盖九样本全部实体类型
 // （ATTDEF 按 Parse 口径在 ParseJSON 中先行跳过，不入表）；长尾复杂类
@@ -538,7 +538,7 @@ var jsonEntityBuilders = map[string]jsonEntityBuilder{
 	"ELLIPSE":                jsonBuildEllipse,
 	"LWPOLYLINE":             jsonBuildLwPolyline,
 	"TEXT":                   jsonBuildText,
-	"MTEXT":                  jsonBuildMText,
+	"MTEXT":                  JsonBuildMText,
 	"INSERT":                 jsonBuildInsert,
 	"MINSERT":                jsonBuildInsert,
 	"ATTRIB":                 jsonBuildAttrib,
@@ -561,13 +561,13 @@ var jsonEntityBuilders = map[string]jsonEntityBuilder{
 	"RAY":                    jsonBuildRay,
 	"XLINE":                  jsonBuildRay,
 	"MLINE":                  jsonBuildMLine,
-	"HATCH":                  jsonBuildHatch,
-	"MPOLYGON":               jsonBuildHatch,
+	"HATCH":                  JsonBuildHatch,
+	"MPOLYGON":               JsonBuildHatch,
 	"WIPEOUT":                jsonBuildWipeout,
 	"IMAGE":                  jsonBuildWipeout,
 	"TOLERANCE":              jsonBuildTolerance,
 	"VIEWPORT":               jsonBuildViewport,
-	"LEADER":                 jsonBuildLeader,
+	"LEADER":                 JsonBuildLeader,
 	"DIMENSION_ORDINATE":     jsonBuildDimension,
 	"DIMENSION_LINEAR":       jsonBuildDimension,
 	"DIMENSION_ALIGNED":      jsonBuildDimension,
@@ -581,17 +581,17 @@ var jsonEntityBuilders = map[string]jsonEntityBuilder{
 	"3DSOLID":                jsonBuildAcis,
 	"REGION":                 jsonBuildAcis,
 	"BODY":                   jsonBuildAcis,
-	"OLE2FRAME":              jsonBuildOle2Frame,
-	"OLEFRAME":               jsonBuildOleFrame,
-	"LIGHT":                  jsonBuildLight,
+	"OLE2FRAME":              JsonBuildOle2Frame,
+	"OLEFRAME":               JsonBuildOleFrame,
+	"LIGHT":                  JsonBuildLight,
 	"MULTILEADER":            jsonBuildMLeader,
-	"SHAPE":                  jsonBuildShape,
-	"PROXY_ENTITY":           jsonBuildProxyEntity,
+	"SHAPE":                  JsonBuildShape,
+	"PROXY_ENTITY":           JsonBuildProxyEntity,
 	"UNKNOWN_ENT":            jsonBuildUnknownEnt,
 }
 
 // buildJSONEntity 按 gold entity 名分发构造；未注册类型返回 nil。
-func buildJSONEntity(o jsonObject, name string) any {
+func buildJSONEntity(o JsonObject, name string) any {
 	if b, ok := jsonEntityBuilders[name]; ok {
 		return b(o)
 	}
@@ -601,7 +601,7 @@ func buildJSONEntity(o jsonObject, name string) any {
 // jsonWithExtra 将 gold 条目中实际存在的扩展键填入 base.extra（键名与
 // 取值类型对齐 DWG 解码器的 extra 填充口径——thickness/extrusion 等
 // 标量由 entityField 经 extra 导出，json 与 dwg 两侧导出键值须一致）。
-func jsonWithExtra(base entity.BaseEntity, o jsonObject, keys ...string) entity.BaseEntity {
+func jsonWithExtra(base entity.BaseEntity, o JsonObject, keys ...string) entity.BaseEntity {
 	for _, k := range keys {
 		if !o.has(k) {
 			continue
@@ -622,17 +622,17 @@ func jsonWithExtra(base entity.BaseEntity, o jsonObject, keys ...string) entity.
 	return base
 }
 
-func jsonBuildLine(o jsonObject) any {
+func jsonBuildLine(o JsonObject) any {
 	b := jsonWithExtra(jsonBase(o, "LINE"), o, "thickness", "extrusion", "z_is_zero")
 	return &entity.EntLine{BaseEntity: b, Start: o.p3("start"), End: o.p3("end")}
 }
 
-func jsonBuildCircle(o jsonObject) any {
+func jsonBuildCircle(o JsonObject) any {
 	b := jsonWithExtra(jsonBase(o, "CIRCLE"), o, "thickness", "extrusion")
 	return &entity.EntCircle{BaseEntity: b, Center: o.p3("center"), Radius: o.f64("radius")}
 }
 
-func jsonBuildArc(o jsonObject) any {
+func jsonBuildArc(o JsonObject) any {
 	// gold start_angle/end_angle 与解码侧同为弧度（AutoCAD 内部存储）
 	b := jsonWithExtra(jsonBase(o, "ARC"), o, "thickness", "extrusion")
 	return &entity.EntArc{
@@ -644,9 +644,9 @@ func jsonBuildArc(o jsonObject) any {
 	}
 }
 
-func jsonBuildPoint(o jsonObject) any {
+func jsonBuildPoint(o JsonObject) any {
 	// gold POINT 无 location 数组键，以 x/y/z 标量 + x_ang（x 轴角度）表达
-	p := entity.Point3{o.f64("x"), o.f64("y"), o.f64("z")}
+	p := entity.Point3{X: o.f64("x"), Y: o.f64("y"), Z: o.f64("z")}
 	if !o.has("x") {
 		p = o.p3("location") // 兼容数组形态输出
 	}
@@ -654,7 +654,7 @@ func jsonBuildPoint(o jsonObject) any {
 	return &entity.EntPoint{BaseEntity: b, Location: p, Rotation: o.f64("x_ang")}
 }
 
-func jsonBuildEllipse(o jsonObject) any {
+func jsonBuildEllipse(o JsonObject) any {
 	return &entity.EntEllipse{
 		BaseEntity: jsonBase(o, "ELLIPSE"),
 		Center:     o.p3("center"),
@@ -665,7 +665,7 @@ func jsonBuildEllipse(o jsonObject) any {
 	}
 }
 
-func jsonBuildLwPolyline(o jsonObject) any {
+func jsonBuildLwPolyline(o JsonObject) any {
 	// gold flag 键即解码侧 flags；points 数组为顶点（bulges 缺失段按 0 对齐）
 	e := &entity.EntLwPolyline{
 		BaseEntity: jsonBase(o, "LWPOLYLINE"),
@@ -683,7 +683,7 @@ func jsonBuildLwPolyline(o jsonObject) any {
 	return e
 }
 
-func jsonBuildText(o jsonObject) any {
+func jsonBuildText(o JsonObject) any {
 	b := jsonWithExtra(jsonBase(o, "TEXT"), o, "thickness", "elevation", "oblique_angle", "width_factor")
 	t := &entity.EntText{
 		BaseEntity:  b,
@@ -695,7 +695,7 @@ func jsonBuildText(o jsonObject) any {
 		VAlign:      uint16(o.i64("vert_alignment")),
 		Gen:         uint16(o.i64("generation")),
 		Extrusion:   o.p3("extrusion"),
-		StyleHandle: o.handle("style"),
+		StyleHandle: o.Handle("style"),
 	}
 	if o.has("alignment_pt") {
 		p := o.p2("alignment_pt")
@@ -704,7 +704,7 @@ func jsonBuildText(o jsonObject) any {
 	return t
 }
 
-func jsonBuildMText(o jsonObject) any {
+func JsonBuildMText(o JsonObject) any {
 	// gold text 已按 bit_TV_to_utf8 展开 \U+XXXX，内部直接保存展开后文本
 	b := jsonWithExtra(jsonBase(o, "MTEXT"), o, "flow_dir", "extents_height", "extents_width")
 	m := &entity.EntMText{
@@ -717,12 +717,12 @@ func jsonBuildMText(o jsonObject) any {
 		Attachment:  uint16(o.i64("attachment")),
 		LineFactor:  o.f64("linespace_factor"),
 		Extrusion:   o.p3("extrusion"),
-		StyleHandle: o.handle("style"),
+		StyleHandle: o.Handle("style"),
 	}
 	return m
 }
 
-func jsonBuildInsert(o jsonObject) any {
+func jsonBuildInsert(o JsonObject) any {
 	// attribs 由 linkJSONAttribs 后处理按 ATTRIB owner 归属回填；
 	// scale_flag/has_attribs 入 extra（entityField 导出口径与解码侧一致）
 	return &entity.EntInsert{
@@ -731,12 +731,12 @@ func jsonBuildInsert(o jsonObject) any {
 		Scale:       o.p3("scale"),
 		Rotation:    o.f64("rotation"),
 		Extrusion:   o.p3("extrusion"),
-		BlockHeader: o.handle("block_header"),
-		Seqend:      o.handle("seqend"),
+		BlockHeader: o.Handle("block_header"),
+		Seqend:      o.Handle("seqend"),
 	}
 }
 
-func jsonBuildAttrib(o jsonObject) any {
+func jsonBuildAttrib(o JsonObject) any {
 	b := jsonWithExtra(jsonBase(o, "ATTRIB"), o, "thickness", "elevation", "oblique_angle", "width_factor")
 	a := &entity.EntAttrib{
 		BaseEntity:  b,
@@ -750,7 +750,7 @@ func jsonBuildAttrib(o jsonObject) any {
 		VAlign:      uint16(o.i64("vert_alignment")),
 		Gen:         uint16(o.i64("generation")),
 		Extrusion:   o.p3("extrusion"),
-		StyleHandle: o.handle("style"),
+		StyleHandle: o.Handle("style"),
 	}
 	if o.has("alignment_pt") {
 		p := o.p2("alignment_pt")
@@ -759,7 +759,7 @@ func jsonBuildAttrib(o jsonObject) any {
 	return a
 }
 
-func jsonBuildSolid(o jsonObject) any {
+func jsonBuildSolid(o JsonObject) any {
 	name := "SOLID"
 	if o.str("entity") == "TRACE" {
 		name = "TRACE"
@@ -777,7 +777,7 @@ func jsonBuildSolid(o jsonObject) any {
 	}
 }
 
-func jsonBuildFace3d(o jsonObject) any {
+func jsonBuildFace3d(o JsonObject) any {
 	return &entity.EntFace3d{
 		BaseEntity:         jsonBase(o, "3DFACE"),
 		P1:                 o.p3("corner1"),
@@ -788,7 +788,7 @@ func jsonBuildFace3d(o jsonObject) any {
 	}
 }
 
-func jsonBuildVertex2d(o jsonObject) any {
+func jsonBuildVertex2d(o JsonObject) any {
 	return &entity.EntVertex2d{
 		BaseEntity: jsonBase(o, "VERTEX_2D"),
 		Flags:      uint16(o.i64("flag")),
@@ -798,7 +798,7 @@ func jsonBuildVertex2d(o jsonObject) any {
 	}
 }
 
-func jsonBuildVertex3d(o jsonObject) any {
+func jsonBuildVertex3d(o JsonObject) any {
 	return &entity.EntVertex3d{
 		BaseEntity: jsonBase(o, "VERTEX_3D"),
 		Flags:      uint8(o.i64("flag")),
@@ -806,7 +806,7 @@ func jsonBuildVertex3d(o jsonObject) any {
 	}
 }
 
-func jsonBuildVertexPface(o jsonObject) any {
+func jsonBuildVertexPface(o JsonObject) any {
 	return &entity.EntVertexPface{
 		BaseEntity: jsonBase(o, "VERTEX_PFACE"),
 		Flag:       uint8(o.i64("flag")),
@@ -814,7 +814,7 @@ func jsonBuildVertexPface(o jsonObject) any {
 	}
 }
 
-func jsonBuildVertexPfaceFace(o jsonObject) any {
+func jsonBuildVertexPfaceFace(o JsonObject) any {
 	f := &entity.EntVertexPfaceFace{
 		BaseEntity: jsonBase(o, "VERTEX_PFACE_FACE"),
 		Flag:       128, // 解码侧恒定值（LibreDWG 同口径），gold 亦输出 128
@@ -828,7 +828,7 @@ func jsonBuildVertexPfaceFace(o jsonObject) any {
 	return f
 }
 
-func jsonBuildPolyline2d(o jsonObject) any {
+func jsonBuildPolyline2d(o JsonObject) any {
 	return &entity.EntPolyline2d{
 		BaseEntity: jsonBase(o, "POLYLINE_2D"),
 		Flags:      uint16(o.i64("flag")),
@@ -841,7 +841,7 @@ func jsonBuildPolyline2d(o jsonObject) any {
 	}
 }
 
-func jsonBuildPolyline3d(o jsonObject) any {
+func jsonBuildPolyline3d(o JsonObject) any {
 	return &entity.EntPolyline3d{
 		BaseEntity: jsonBase(o, "POLYLINE_3D"),
 		Flags70:    uint8(o.i64("flag")),
@@ -849,7 +849,7 @@ func jsonBuildPolyline3d(o jsonObject) any {
 	}
 }
 
-func jsonBuildPolylinePface(o jsonObject) any {
+func jsonBuildPolylinePface(o JsonObject) any {
 	return &entity.EntPolylinePface{
 		BaseEntity:  jsonBase(o, "POLYLINE_PFACE"),
 		NumVertices: int(o.i64("numverts")),
@@ -857,12 +857,12 @@ func jsonBuildPolylinePface(o jsonObject) any {
 	}
 }
 
-func jsonBuildBlockLike(o jsonObject) any {
+func jsonBuildBlockLike(o JsonObject) any {
 	name := o.str("entity")
 	return &entity.EntBlockLike{BaseEntity: jsonBase(o, name), Name: o.str("name")}
 }
 
-func jsonBuildSpline(o jsonObject) any {
+func jsonBuildSpline(o JsonObject) any {
 	// 拟合/控制点与节点向量按 gold 数组还原；beg/end_tan_vec 解码侧未建模
 	// （entSpline 无对应字段），不消费
 	return &entity.EntSpline{
@@ -879,7 +879,7 @@ func jsonBuildSpline(o jsonObject) any {
 	}
 }
 
-func jsonBuildRay(o jsonObject) any {
+func jsonBuildRay(o JsonObject) any {
 	name := o.str("entity")
 	return &entity.EntRay{
 		BaseEntity: jsonBase(o, name),
@@ -889,7 +889,7 @@ func jsonBuildRay(o jsonObject) any {
 	}
 }
 
-func jsonBuildMLine(o jsonObject) any {
+func jsonBuildMLine(o JsonObject) any {
 	// base_point/extrusion 为主体 3BD（渲染平铺与法向），verts 的
 	// lines[j].segparms/areafillparms 为样式线段参数——按 gold 分组还原
 	// 并记录每线计数（与 decodeMline 的计数口径一致，分组导出可对齐）
@@ -920,7 +920,7 @@ func jsonBuildMLine(o jsonObject) any {
 	return m
 }
 
-func jsonBuildHatch(o jsonObject) any {
+func JsonBuildHatch(o JsonObject) any {
 	// 主体标量与边界路径还原（多段线路径细分出渲染点列；边集路径拼接
 	// 直线段端点）；图案定义线（deflines）与样条段专有参数不还原
 	h := &entity.EntHatch{
@@ -1007,7 +1007,7 @@ func jsonBuildHatch(o jsonObject) any {
 	return h
 }
 
-func jsonBuildWipeout(o jsonObject) any {
+func jsonBuildWipeout(o JsonObject) any {
 	// WIPEOUT/IMAGE 同布局：标量 + 图像变换主键；裁剪顶点与 imagedef 句柄
 	// 不还原（渲染仅消费 pt0/uvec/vvec/image_size 的边界框）
 	name := o.str("entity")
@@ -1032,7 +1032,7 @@ func jsonBuildWipeout(o jsonObject) any {
 	return w
 }
 
-func jsonBuildTolerance(o jsonObject) any {
+func jsonBuildTolerance(o JsonObject) any {
 	return &entity.EntTolerance{
 		BaseEntity:   jsonBase(o, "TOLERANCE"),
 		Text:         o.str("text_value"),
@@ -1042,11 +1042,11 @@ func jsonBuildTolerance(o jsonObject) any {
 		Extrusion:    o.p3("extrusion"),
 		Height:       o.f64("height"),
 		Dimgap:       o.f64("dimgap"),
-		Dimstyle:     o.handle("dimstyle"),
+		Dimstyle:     o.Handle("dimstyle"),
 	}
 }
 
-func jsonBuildViewport(o jsonObject) any {
+func jsonBuildViewport(o JsonObject) any {
 	return &entity.EntViewport{
 		BaseEntity:          jsonBase(o, "VIEWPORT"),
 		Center:              o.p3("center"),
@@ -1085,7 +1085,7 @@ func jsonBuildViewport(o jsonObject) any {
 	}
 }
 
-func jsonBuildLeader(o jsonObject) any {
+func JsonBuildLeader(o JsonObject) any {
 	// LEADER 标量基键；annotated/points 等数组键由解码侧同样不入审计导出，
 	// 渲染消费的顶点数组在 entLeader 中按需还原
 	l := &entity.EntLeader{
@@ -1099,7 +1099,7 @@ func jsonBuildLeader(o jsonObject) any {
 	return l
 }
 
-func jsonBuildDimension(o jsonObject) any {
+func jsonBuildDimension(o JsonObject) any {
 	gold := o.str("entity")
 	d := &entity.EntDimension{BaseEntity: jsonBase(o, gold)}
 	d.Extrusion = o.p3("extrusion")
@@ -1143,7 +1143,7 @@ func jsonBuildDimension(o jsonObject) any {
 		d.HasPoint15 = true
 		d.Point10 = o.p3("xline2end_pt")
 	}
-	d.InsertPoint = entity.Point3{d.Point10.X, d.Point10.Y, d.Elevation}
+	d.InsertPoint = entity.Point3{X: d.Point10.X, Y: d.Point10.Y, Z: d.Elevation}
 	d.HasInsertPoint = true
 	d.ExtLineRotation = o.f64("oblique_angle")
 	d.DimRotation = o.f64("dim_rotation")
@@ -1155,12 +1155,12 @@ func jsonBuildDimension(o jsonObject) any {
 	d.HasLeader = o.boolean("has_leader")
 	d.Leader1Pt = o.p3("leader1_pt")
 	d.Leader2Pt = o.p3("leader2_pt")
-	d.DimstyleHandle = o.handle("dimstyle")
-	d.AnonymousBlock = o.handle("anonymous_block")
+	d.DimstyleHandle = o.Handle("dimstyle")
+	d.AnonymousBlock = o.Handle("anonymous_block")
 	return d
 }
 
-func jsonBuildAcis(o jsonObject) any {
+func jsonBuildAcis(o JsonObject) any {
 	// 标量基键还原；acis_data（ACIS 文本模型）按 version 双形态还原到
 	// acisData（与 decodeAcisVer 同一存储口径，JSON 来源实体消费侧完整）
 	gold := o.str("entity")
@@ -1190,7 +1190,7 @@ func jsonBuildAcis(o jsonObject) any {
 		if lines, ok := o.raw("acis_data").([]any); ok && len(lines) > 0 {
 			if a.Version >= 2 {
 				data := []byte(o.strAt("acis_data", 0))
-				data = append(data, jsonHexBytes(o.strAt("acis_data", 1))...)
+				data = append(data, JsonHexBytes(o.strAt("acis_data", 1))...)
 				a.AcisData = data
 				a.SabSize = len(data)
 			} else {
@@ -1207,7 +1207,7 @@ func jsonBuildAcis(o jsonObject) any {
 		if raw, ok := o.raw("encr_sat_data").([]any); ok {
 			for _, e := range raw {
 				if s, ok := e.(string); ok {
-					if b := jsonHexBytes(s); b != nil {
+					if b := JsonHexBytes(s); b != nil {
 						a.Blocks = append(a.Blocks, b)
 					}
 				}
@@ -1217,9 +1217,9 @@ func jsonBuildAcis(o jsonObject) any {
 	return a
 }
 
-func jsonBuildOle2Frame(o jsonObject) any {
+func JsonBuildOle2Frame(o JsonObject) any {
 	gold := o.str("entity")
-	data := jsonHexBytes(o.str("data"))
+	data := JsonHexBytes(o.str("data"))
 	return &entity.EntOle2Frame{
 		BaseEntity: jsonBase(o, gold),
 		OleType:    uint16(o.i64("type")),
@@ -1230,9 +1230,9 @@ func jsonBuildOle2Frame(o jsonObject) any {
 	}
 }
 
-func jsonBuildOleFrame(o jsonObject) any {
+func JsonBuildOleFrame(o JsonObject) any {
 	gold := o.str("entity")
-	data := jsonHexBytes(o.str("data"))
+	data := JsonHexBytes(o.str("data"))
 	return &entity.EntOleFrame{
 		BaseEntity: jsonBase(o, gold),
 		Flag:       uint16(o.i64("flag")),
@@ -1242,7 +1242,7 @@ func jsonBuildOleFrame(o jsonObject) any {
 	}
 }
 
-func jsonBuildLight(o jsonObject) any {
+func JsonBuildLight(o JsonObject) any {
 	l := &entity.EntLight{
 		BaseEntity:           jsonBase(o, "LIGHT"),
 		ClassVersion:         uint32(o.i64("class_version")),
@@ -1269,7 +1269,7 @@ func jsonBuildLight(o jsonObject) any {
 	case float64:
 		l.LightColorIndex = uint16(int64(c))
 	case map[string]any:
-		m := jsonObject(c)
+		m := JsonObject(c)
 		l.HasLightColorTrue = true
 		l.LightColorIndex = uint16(m.i64("index"))
 		if v32, err := parseHexUint32(m.str("rgb")); err == nil {
@@ -1291,7 +1291,7 @@ func jsonMLeaderCMC(v any) entity.MleaderCMC {
 		}
 		return entity.MleaderCMC{}
 	}
-	o := jsonObject(m)
+	o := JsonObject(m)
 	var c entity.MleaderCMC
 	c.IsTrue = true
 	if v32, err := parseHexUint32(o.str("rgb")); err == nil {
@@ -1308,7 +1308,7 @@ func jsonMLeaderCMC(v any) entity.MleaderCMC {
 	return c
 }
 
-func jsonBuildMLeader(o jsonObject) any {
+func jsonBuildMLeader(o JsonObject) any {
 	// 顶层标量 + ctx 全结构还原（jsonMLeaderCtx：leaders/lines 三层嵌套、
 	// txt/blk 内容两分支、base 三点组；键名均为 gold 展平键）+ 顶层 CMC
 	// 双形态与句柄系，与 decodeMLeader 的模型字段一一对应
@@ -1321,21 +1321,21 @@ func jsonBuildMLeader(o jsonObject) any {
 	m.Flags = uint32(o.i64("flags"))
 	m.LineColor = jsonMLeaderCMC(o.raw("line_color"))
 	m.LineLinewt = int32(o.i64("line_linewt"))
-	m.LineLtype = o.handle("line_ltype")
+	m.LineLtype = o.Handle("line_ltype")
 	m.HasLanding = o.boolean("has_landing")
 	m.HasDogleg = o.boolean("has_dogleg")
 	m.LandingDist = o.f64("landing_dist")
-	m.ArrowHandle = o.handle("arrow_handle")
+	m.ArrowHandle = o.Handle("arrow_handle")
 	m.ArrowSize = o.f64("arrow_size")
 	m.StyleContent = uint16(o.i64("style_content"))
-	m.TextStyle = o.handle("text_style")
+	m.TextStyle = o.Handle("text_style")
 	m.TextLeft = uint16(o.i64("text_left"))
 	m.TextRight = uint16(o.i64("text_right"))
 	m.TextAngletype = uint16(o.i64("text_angletype"))
 	m.TextAlignment = uint16(o.i64("text_alignment"))
 	m.TextColor = jsonMLeaderCMC(o.raw("text_color"))
 	m.HasTextFrame = o.boolean("has_text_frame")
-	m.BlockStyle = o.handle("block_style")
+	m.BlockStyle = o.Handle("block_style")
 	m.BlockColor = jsonMLeaderCMC(o.raw("block_color"))
 	m.BlockScale = o.p3("block_scale")
 	m.BlockRotation = o.f64("block_rotation")
@@ -1350,12 +1350,12 @@ func jsonBuildMLeader(o jsonObject) any {
 	for _, ao := range o.objs("arrowheads") {
 		m.Arrowheads = append(m.Arrowheads, entity.MleaderArrowhead{
 			IsDefault: ao.boolean("is_default"),
-			Arrowhead: ao.handle("arrowhead"),
+			Arrowhead: ao.Handle("arrowhead"),
 		})
 	}
 	for _, bo := range o.objs("blocklabels") {
 		m.Blocklabels = append(m.Blocklabels, entity.MleaderBlockLabel{
-			Attdef:    bo.handle("attdef"),
+			Attdef:    bo.Handle("attdef"),
 			LabelText: bo.str("label_text"),
 			UiIndex:   uint16(bo.i64("ui_index")),
 			Width:     bo.f64("width"),
@@ -1367,7 +1367,7 @@ func jsonBuildMLeader(o jsonObject) any {
 		m.AttachBottom = uint16(o.i64("attach_bottom"))
 		m.IsTextExtended = o.boolean("is_text_extended")
 	}
-	m.MleaderStyle = o.handle("mleaderstyle")
+	m.MleaderStyle = o.Handle("mleaderstyle")
 	jsonMLeaderCtx(o, m)
 	return m
 }
@@ -1376,7 +1376,7 @@ func jsonBuildMLeader(o jsonObject) any {
 // leaders→lines→breaks/points 三层嵌套、content txt/blk 内容两分支与
 // base 三点组。gold 的 has_content_txt 缺省（pre-R2004 无该键形态）按
 // content.txt 键存在性判定（LibreDWG HAS_CONTENT 分支输出键集互斥）。
-func jsonMLeaderCtx(o jsonObject, m *entity.EntMLeader) {
+func jsonMLeaderCtx(o JsonObject, m *entity.EntMLeader) {
 	c := &m.Ctx
 	c.NumLeaders = uint32(o.i64("ctx.num_leaders"))
 	for _, lo := range o.objs("ctx.leaders") {
@@ -1405,7 +1405,7 @@ func jsonMLeaderCtx(o jsonObject, m *entity.EntMLeader) {
 				ln.Color = jsonMLeaderCMC(lno.raw("color"))
 				ln.Linewt = int32(lno.i64("linewt"))
 				ln.ArrowSize = lno.f64("arrow_size")
-				ln.ArrowHandle = lno.handle("arrow_handle")
+				ln.ArrowHandle = lno.Handle("arrow_handle")
 				ln.Flags = uint32(lno.i64("flags"))
 			}
 			n.Lines = append(n.Lines, ln)
@@ -1430,7 +1430,7 @@ func jsonMLeaderCtx(o jsonObject, m *entity.EntMLeader) {
 		t := &c.Txt
 		t.DefaultText = o.str("ctx.content.txt.default_text")
 		t.Normal = o.p3("ctx.content.txt.normal")
-		t.StyleHandle = o.handle("ctx.content.txt.style")
+		t.StyleHandle = o.Handle("ctx.content.txt.style")
 		t.Location = o.p3("ctx.content.txt.location")
 		t.Direction = o.p3("ctx.content.txt.direction")
 		t.Rotation = o.f64("ctx.content.txt.rotation")
@@ -1459,7 +1459,7 @@ func jsonMLeaderCtx(o jsonObject, m *entity.EntMLeader) {
 		c.HasContentBlk = o.boolean("ctx.has_content_blk")
 		if c.HasContentBlk {
 			k := &c.Blk
-			k.BlockTable = o.handle("ctx.content.blk.block_table")
+			k.BlockTable = o.Handle("ctx.content.blk.block_table")
 			k.Normal = o.p3("ctx.content.blk.normal")
 			k.Location = o.p3("ctx.content.blk.location")
 			k.Scale = o.p3("ctx.content.blk.scale")
@@ -1480,7 +1480,7 @@ func jsonMLeaderCtx(o jsonObject, m *entity.EntMLeader) {
 	}
 }
 
-func jsonBuildShape(o jsonObject) any {
+func JsonBuildShape(o JsonObject) any {
 	return &entity.EntShape{
 		BaseEntity:  jsonBase(o, "SHAPE"),
 		Insertion:   o.p3("ins_pt"),
@@ -1492,7 +1492,7 @@ func jsonBuildShape(o jsonObject) any {
 	}
 }
 
-func jsonBuildProxyEntity(o jsonObject) any {
+func JsonBuildProxyEntity(o JsonObject) any {
 	gold := o.str("entity")
 	p := &entity.EntProxyEntity{
 		BaseEntity:    jsonBase(o, gold),
@@ -1505,11 +1505,11 @@ func jsonBuildProxyEntity(o jsonObject) any {
 		NumObjids:     uint32(o.i64("num_objids")),
 		ProxyDataSize: uint32(o.i64("proxy_data_size")),
 	}
-	p.ProxyData = jsonHexBytes(o.str("proxy_data"))
+	p.ProxyData = JsonHexBytes(o.str("proxy_data"))
 	return p
 }
 
-func jsonBuildUnknownEnt(o jsonObject) any {
+func jsonBuildUnknownEnt(o JsonObject) any {
 	name := o.str("entity")
 	e := &entity.EntUnknownEnt{BaseEntity: jsonBase(o, name)}
 	if dx := o.str("_subclass"); dx != "" {
@@ -1519,7 +1519,7 @@ func jsonBuildUnknownEnt(o jsonObject) any {
 }
 
 // jsonHexBytes gold 的十六进制串（data/preview 等）还原为字节；空串返回 nil。
-func jsonHexBytes(s string) []byte {
+func JsonHexBytes(s string) []byte {
 	if s == "" || len(s)%2 != 0 {
 		return nil
 	}

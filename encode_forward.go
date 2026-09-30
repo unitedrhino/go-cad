@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/object"
 	"github.com/unitedrhino/go-cad/internal/objrec"
@@ -369,7 +370,7 @@ func fwdExtraF(b *entity.BaseEntity, key string, def float64) float64 {
 // fwdExtraVec 取 extra 三维向量（缺省 def）。
 func fwdExtraVec(b *entity.BaseEntity, key string, def entity.Point3) entity.Point3 {
 	if v, ok := b.Extra[key].([]float64); ok && len(v) == 3 {
-		return entity.Point3{v[0], v[1], v[2]}
+		return entity.Point3{X: v[0], Y: v[1], Z: v[2]}
 	}
 	return def
 }
@@ -427,10 +428,10 @@ func writeHdlNull(w *bitstream.EncWriter) { w.WriteH(5, 0, 0) }
 // nearestACI 真彩色 → 最近 ACI 索引（RGB 欧氏距离最小）。R2000 容器的
 // 颜色段仅承载索引（真彩 ENC 为 R2004+），跨版本写出时颜色降维。
 func nearestACI(rgb uint32) uint16 {
-	r, g, b := splitTrueColor(rgb)
+	r, g, b := drawing.SplitTrueColor(rgb)
 	best, bestD := uint16(7), uint32(math.MaxUint32)
 	for i := 1; i <= 255; i++ {
-		rr, gg, bb, ok := aciColor(uint16(i), false)
+		rr, gg, bb, ok := drawing.AciColor(uint16(i), false)
 		if !ok {
 			continue
 		}
@@ -606,7 +607,7 @@ func encFwdLine(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 		w.WriteDD(e.End.Z, e.Start.Z)
 	}
 	writeBT(w, fwdExtraF(&e.BaseEntity, "thickness", 0))
-	ex := fwdExtraVec(&e.BaseEntity, "extrusion", entity.Point3{0, 0, 1})
+	ex := fwdExtraVec(&e.BaseEntity, "extrusion", entity.Point3{X: 0, Y: 0, Z: 1})
 	writeBE(w, ex.X, ex.Y, ex.Z)
 	return nil
 }
@@ -617,7 +618,7 @@ func encFwdCircle(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error
 	write3BD(w, e.Center)
 	w.WriteBD(e.Radius)
 	writeBT(w, fwdExtraF(&e.BaseEntity, "thickness", 0))
-	ex := fwdExtraVec(&e.BaseEntity, "extrusion", entity.Point3{0, 0, 1})
+	ex := fwdExtraVec(&e.BaseEntity, "extrusion", entity.Point3{X: 0, Y: 0, Z: 1})
 	writeBE(w, ex.X, ex.Y, ex.Z)
 	return nil
 }
@@ -628,7 +629,7 @@ func encFwdArc(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	write3BD(w, e.Center)
 	w.WriteBD(e.Radius)
 	writeBT(w, fwdExtraF(&e.BaseEntity, "thickness", 0))
-	ex := fwdExtraVec(&e.BaseEntity, "extrusion", entity.Point3{0, 0, 1})
+	ex := fwdExtraVec(&e.BaseEntity, "extrusion", entity.Point3{X: 0, Y: 0, Z: 1})
 	writeBE(w, ex.X, ex.Y, ex.Z)
 	w.WriteBD(e.AngleStart)
 	w.WriteBD(e.AngleEnd)
@@ -640,7 +641,7 @@ func encFwdPoint(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error 
 	e := ent.(*entity.EntPoint)
 	write3BD(w, e.Location)
 	writeBT(w, fwdExtraF(&e.BaseEntity, "thickness", 0))
-	ex := fwdExtraVec(&e.BaseEntity, "extrusion", entity.Point3{0, 0, 1})
+	ex := fwdExtraVec(&e.BaseEntity, "extrusion", entity.Point3{X: 0, Y: 0, Z: 1})
 	writeBE(w, ex.X, ex.Y, ex.Z)
 	w.WriteBD(e.Rotation)
 	return nil
@@ -652,7 +653,7 @@ func encFwdEllipse(w *bitstream.EncWriter, ent any, _ container.DwgVersion) erro
 	e := ent.(*entity.EntEllipse)
 	write3BD(w, e.Center)
 	write3BD(w, e.MajorAxis)
-	ex := fwdExtraVec(&e.BaseEntity, "extrusion", entity.Point3{0, 0, 1})
+	ex := fwdExtraVec(&e.BaseEntity, "extrusion", entity.Point3{X: 0, Y: 0, Z: 1})
 	write3BD(w, ex)
 	w.WriteBD(e.Ratio)
 	w.WriteBD(e.StartAng)
@@ -685,7 +686,7 @@ func encFwdTextFields(w *bitstream.EncWriter, s textFieldSource, ver container.D
 	}
 	w.WriteDD(ax, s.insertion.X)
 	w.WriteDD(ay, s.insertion.Y)
-	ex := fwdExtraVec(s.base, "extrusion", entity.Point3{0, 0, 1})
+	ex := fwdExtraVec(s.base, "extrusion", entity.Point3{X: 0, Y: 0, Z: 1})
 	writeBE(w, ex.X, ex.Y, ex.Z)
 	writeBT(w, fwdExtraF(s.base, "thickness", 0))
 	w.WriteRD(fwdExtraF(s.base, "oblique_angle", 0))
@@ -719,7 +720,7 @@ func encFwdText(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error
 func encFwdMText(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error {
 	e := ent.(*entity.EntMText)
 	write3BD(w, e.Insertion)
-	ex := fwdExtraVec(&e.BaseEntity, "extrusion", entity.Point3{0, 0, 1})
+	ex := fwdExtraVec(&e.BaseEntity, "extrusion", entity.Point3{X: 0, Y: 0, Z: 1})
 	write3BD(w, ex)
 	write3BD(w, e.XAxisDir)
 	w.WriteBD(e.RectWidth)
@@ -748,7 +749,7 @@ func encFwdMText(w *bitstream.EncWriter, ent any, ver container.DwgVersion) erro
 // 0x02 厚度、0x04 常量宽、0x08 标高、0x10 凸度、0x20 段宽）。
 func encFwdLwPolyline(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error {
 	e := ent.(*entity.EntLwPolyline)
-	ex := fwdExtraVec(&e.BaseEntity, "extrusion", entity.Point3{0, 0, 1})
+	ex := fwdExtraVec(&e.BaseEntity, "extrusion", entity.Point3{X: 0, Y: 0, Z: 1})
 	thickness := fwdExtraF(&e.BaseEntity, "thickness", e.Thickness)
 	var flags uint16
 	numBulges := 0
@@ -757,7 +758,7 @@ func encFwdLwPolyline(w *bitstream.EncWriter, ent any, ver container.DwgVersion)
 			numBulges = i + 1
 		}
 	}
-	if ex != (entity.Point3{0, 0, 1}) {
+	if ex != (entity.Point3{X: 0, Y: 0, Z: 1}) {
 		flags |= 0x01
 	}
 	if thickness != 0 {
@@ -830,7 +831,7 @@ func encFwdInsert(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error
 		w.WriteDD(e.Scale.Z, e.Scale.X)
 	}
 	w.WriteBD(e.Rotation)
-	ex := fwdExtraVec(&e.BaseEntity, "extrusion", entity.Point3{0, 0, 1})
+	ex := fwdExtraVec(&e.BaseEntity, "extrusion", entity.Point3{X: 0, Y: 0, Z: 1})
 	write3BD(w, ex) // 读侧 INSERT 挤出为 3BD（无 BE 前导位）
 	w.WriteB(len(e.Attribs) > 0)
 	return nil
@@ -1689,12 +1690,12 @@ func encFwdLight(w *bitstream.EncWriter, ent any, ver container.DwgVersion) erro
 // H + EED + BL reactors + TV 名称 + xref 标志组 + flag0 位包 + BS 颜色
 // 索引；handle 流 = owner → xdic → xref → plotstyle → ltype（后三者为
 // 表记录公共句柄，结构化重建以空引用占位）。
-func encodeForwardLayerBody(handle uint64, lc layerColor, owner uint64) ([]byte, error) {
-	idx := lc.index
-	if lc.hasTrue {
-		idx = nearestACI(lc.trueColor)
+func encodeForwardLayerBody(handle uint64, lc drawing.LayerColor, owner uint64) ([]byte, error) {
+	idx := lc.Index
+	if lc.HasTrue {
+		idx = nearestACI(lc.TrueColor)
 	}
-	name := lc.name
+	name := lc.Name
 	if name == "" {
 		name = fmt.Sprintf("LAYER_%X", handle)
 	}
@@ -1898,8 +1899,8 @@ func writeDwgForwardR2000(doc *Document) ([]byte, error) {
 	}
 	// 实体级空文档保持「无可写内容」错误契约（骨架对象不计入；空 DWG
 	// 的写出能力以文档实际携带实体为准）
-	hasEntities := len(doc.modelSpace) > 0 || len(doc.blocks) > 0 || len(doc.attribs) > 0 || len(doc.entityByHandle) > 0
-	if !hasEntities && len(doc.layerColors) == 0 {
+	hasEntities := len(doc.ModelSpace) > 0 || len(doc.Blocks) > 0 || len(doc.Attribs) > 0 || len(doc.ByHandle) > 0
+	if !hasEntities && len(doc.LayerColors) == 0 {
 		return nil, fmt.Errorf("cad: 文档无实体，正向写出无意义")
 	}
 	if len(objs) == 0 {
@@ -1955,8 +1956,8 @@ func writeDwgForwardR2000(doc *Document) ([]byte, error) {
 	w := bitstream.NewEncWriter()
 	hdr := forwardR2000FixedHeader
 	cp := uint16(30)
-	if doc.codepage != 0 {
-		cp = doc.codepage
+	if doc.Codepage != 0 {
+		cp = doc.Codepage
 	}
 	hdr[0x13] = uint8(cp)
 	hdr[0x14] = uint8(cp >> 8)
@@ -1993,26 +1994,26 @@ func allocateForwardDynamicClasses(doc *Document) ([]string, map[string]uint16) 
 			}
 		}
 	}
-	visit(doc.modelSpace)
-	visit(doc.pspaceSpace)
-	for _, list := range doc.blocks {
+	visit(doc.ModelSpace)
+	visit(doc.PspaceSpace)
+	for _, list := range doc.Blocks {
 		visit(list)
 	}
-	for _, a := range doc.attribs {
+	for _, a := range doc.Attribs {
 		if a != nil {
 			if name := fwdDynamicEntityKind(a); name != "" {
 				present[name] = true
 			}
 		}
 	}
-	if doc.entityByHandle != nil {
-		for _, ent := range doc.entityByHandle {
+	if doc.ByHandle != nil {
+		for _, ent := range doc.ByHandle {
 			if name := fwdDynamicEntityKind(ent); name != "" {
 				present[name] = true
 			}
 		}
 	}
-	for h, g := range doc.internalObjects {
+	for h, g := range doc.InternalObjs {
 		if g == nil || h == 0 {
 			continue
 		}
@@ -2051,7 +2052,7 @@ func allocateForwardDynamicClasses(doc *Document) ([]string, map[string]uint16) 
 // 编码器。无正向编码器或无句柄的实体跳过（能力边界，见报告）。
 // dyn 为动态类名 → 类型码映射（无动态类实体时可为 nil）。
 func collectForwardObjects(doc *Document, dyn map[string]uint16) ([]fwdObject, error) {
-	out := make([]fwdObject, 0, len(doc.entityByHandle)+len(doc.layerColors)+8)
+	out := make([]fwdObject, 0, len(doc.ByHandle)+len(doc.LayerColors)+8)
 	seen := map[uint64]bool{}
 	add := func(handle uint64, body []byte) {
 		if handle == 0 || seen[handle] {
@@ -2060,17 +2061,17 @@ func collectForwardObjects(doc *Document, dyn map[string]uint16) ([]fwdObject, e
 		seen[handle] = true
 		out = append(out, fwdObject{handle: handle, body: body})
 	}
-	entities := make([]any, 0, len(doc.entityByHandle)+8)
-	entities = append(entities, doc.modelSpace...)
-	entities = append(entities, doc.pspaceSpace...)
-	for _, list := range doc.blocks {
+	entities := make([]any, 0, len(doc.ByHandle)+8)
+	entities = append(entities, doc.ModelSpace...)
+	entities = append(entities, doc.PspaceSpace...)
+	for _, list := range doc.Blocks {
 		entities = append(entities, list...)
 	}
-	for _, a := range doc.attribs {
+	for _, a := range doc.Attribs {
 		entities = append(entities, a)
 	}
-	if doc.entityByHandle != nil {
-		for _, ent := range doc.entityByHandle {
+	if doc.ByHandle != nil {
+		for _, ent := range doc.ByHandle {
 			entities = append(entities, ent)
 		}
 	}
@@ -2093,7 +2094,7 @@ func collectForwardObjects(doc *Document, dyn map[string]uint16) ([]fwdObject, e
 		add(b.Handle, body)
 	}
 	// LAYER 表记录（渲染必需：颜色与名称）
-	for h, lc := range doc.layerColors {
+	for h, lc := range doc.LayerColors {
 		if seen[h] {
 			continue
 		}
@@ -2104,7 +2105,7 @@ func collectForwardObjects(doc *Document, dyn map[string]uint16) ([]fwdObject, e
 		add(h, body)
 	}
 	// 通用对象（Fields 驱动 gfWrite）：JSON 来源的 XRECORD/LAYOUT/GROUP 等
-	for h, g := range doc.internalObjects {
+	for h, g := range doc.InternalObjs {
 		if g == nil || seen[h] {
 			continue
 		}
@@ -2118,7 +2119,7 @@ func collectForwardObjects(doc *Document, dyn map[string]uint16) ([]fwdObject, e
 		add(h, body)
 	}
 	// DICTIONARY（结构化正向；JSON 来源的 objGeneric 形式字典不在范围）
-	for h, d := range doc.dictionaries {
+	for h, d := range doc.Dictionaries {
 		if d == nil || seen[h] {
 			continue
 		}
@@ -2181,12 +2182,12 @@ func appendForwardSkeleton(doc *Document, out *[]fwdObject, seen map[uint64]bool
 		ents        []uint64
 	}
 	var blocks []blkDef
-	for h, list := range doc.blocks {
+	for h, list := range doc.Blocks {
 		if h == 0 {
 			continue
 		}
 		bd := blkDef{handle: allocate(h), name: ""}
-		if g := doc.internalObjects[h]; g != nil {
+		if g := doc.InternalObjs[h]; g != nil {
 			if n, ok := g.Field("name").(string); ok {
 				bd.name = n
 			}
@@ -2212,7 +2213,7 @@ func appendForwardSkeleton(doc *Document, out *[]fwdObject, seen map[uint64]bool
 	// *MODEL_SPACE：模型空间直属实体（含最大块启发式并入由读侧处理，
 	// 此处仅挂 modelSpace 列表）
 	ms := blkDef{handle: allocate(fwdHdlModelSpace), name: "*Model_Space"}
-	for _, ent := range doc.modelSpace {
+	for _, ent := range doc.ModelSpace {
 		if b := entity.EntityBase(ent); b != nil && b.Handle != 0 {
 			ms.ents = append(ms.ents, b.Handle)
 		}
@@ -2252,8 +2253,8 @@ func appendForwardSkeleton(doc *Document, out *[]fwdObject, seen map[uint64]bool
 	for _, bd := range blocks {
 		blkEntries = append(blkEntries, bd.handle)
 	}
-	layerEntries := make([]uint64, 0, len(doc.layerColors))
-	for h := range doc.layerColors {
+	layerEntries := make([]uint64, 0, len(doc.LayerColors))
+	for h := range doc.LayerColors {
 		layerEntries = append(layerEntries, h)
 	}
 	sort.Slice(layerEntries, func(i, j int) bool { return layerEntries[i] < layerEntries[j] })

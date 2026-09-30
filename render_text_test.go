@@ -5,6 +5,7 @@ package cad
 
 import (
 	"bytes"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"image"
 	"image/color"
@@ -96,10 +97,10 @@ func TestGlyphRasterizeAndCache(t *testing.T) {
 // TestTextLayoutOf 版式换算：镜像标志、退化向量与亚像素判定。
 func TestTextLayoutOf(t *testing.T) {
 	cv := &canvas{}
-	cv.setTransform(box2{minX: 0, minY: 0, maxX: 100, maxY: 100}, 1)
+	cv.setTransform(drawing.Box2{MinX: 0, MinY: 0, MaxX: 100, MaxY: 100}, 1)
 	// 常规 + 双向镜像标志
-	tx := &textInfo{hWorld: 2, ux: 1, vx: 0, vy: 1, gen: 0x2 | 0x4, hAlign: 1, vAlign: 2}
-	lb := label{x: 10, y: 20, tx: tx}
+	tx := &drawing.GlyphTextInfo{HWorld: 2, Ux: 1, Vx: 0, Vy: 1, Gen: 0x2 | 0x4, HAlign: 1, VAlign: 2}
+	lb := drawing.Label{X: 10, Y: 20, Tx: tx}
 	l, ok := textLayoutOf(cv, &lb, tx)
 	if !ok || !l.mirrorX || !l.mirrorY || l.hAlign != 1 || l.vAlign != 2 {
 		t.Fatalf("镜像/对齐标志换算错误: %+v ok=%v", l, ok)
@@ -109,13 +110,13 @@ func TestTextLayoutOf(t *testing.T) {
 		t.Fatalf("锚点像素坐标错误: (%v,%v)", l.px, l.py)
 	}
 	// 零向量退化
-	tx0 := &textInfo{hWorld: 2}
-	if _, ok := textLayoutOf(cv, &label{tx: tx0}, tx0); ok {
+	tx0 := &drawing.GlyphTextInfo{HWorld: 2}
+	if _, ok := textLayoutOf(cv, &drawing.Label{Tx: tx0}, tx0); ok {
 		t.Fatal("零基向量应判定退化")
 	}
 	// 亚像素文字跳过
-	tiny := &textInfo{hWorld: 0.001, ux: 1, vx: 0, vy: 1}
-	if _, ok := textLayoutOf(cv, &label{tx: tiny}, tiny); ok {
+	tiny := &drawing.GlyphTextInfo{HWorld: 0.001, Ux: 1, Vx: 0, Vy: 1}
+	if _, ok := textLayoutOf(cv, &drawing.Label{Tx: tiny}, tiny); ok {
 		t.Fatal("亚像素文字应判定跳过")
 	}
 }
@@ -123,20 +124,20 @@ func TestTextLayoutOf(t *testing.T) {
 // TestTextLabelWithBasis textLabelWith 差分基向量：旋转 90° 下推进/字面
 // 方向互换且含正确符号。
 func TestTextLabelWithBasis(t *testing.T) {
-	ts := newTessellator(&Document{})
-	e := &entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "AB", Insertion: entity.Point3{1, 2, 0}, Height: 3}
-	p := ts.textLabelWith(1, 2, 3, mathPiHalf(), 2, identityXform(), e, "TEXT", textInfo{lines: []string{"AB"}})
-	tx := p.lb.tx
+	ts := drawing.NewTessellator(&Document{})
+	e := &entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "AB", Insertion: entity.Point3{X: 1, Y: 2, Z: 0}, Height: 3}
+	p := ts.TextLabelWith(1, 2, 3, mathPiHalf(), 2, drawing.IdentityXform(), e, "TEXT", drawing.GlyphTextInfo{Lines: []string{"AB"}})
+	tx := p.Lb.Tx
 	if tx == nil {
 		t.Fatal("textLabelWith 应附字形版式信息")
 	}
-	if d := tx.ux - 0; d > 1e-9 || tx.uy-1 > 1e-9 {
-		t.Fatalf("推进基向量应为 (0,1): (%v,%v)", tx.ux, tx.uy)
+	if d := tx.Ux - 0; d > 1e-9 || tx.Uy-1 > 1e-9 {
+		t.Fatalf("推进基向量应为 (0,1): (%v,%v)", tx.Ux, tx.Uy)
 	}
-	if tx.vx+1 > 1e-9 || tx.vy-0 > 1e-9 {
-		t.Fatalf("字面向上基向量应为 (-1,0): (%v,%v)", tx.vx, tx.vy)
+	if tx.Vx+1 > 1e-9 || tx.Vy-0 > 1e-9 {
+		t.Fatalf("字面向上基向量应为 (-1,0): (%v,%v)", tx.Vx, tx.Vy)
 	}
-	if tx.hWorld != 3 || tx.widthFactor != 1 || tx.oblique != 0 {
+	if tx.HWorld != 3 || tx.WidthFactor != 1 || tx.Oblique != 0 {
 		t.Fatalf("版式默认值错误: %+v", tx)
 	}
 }
@@ -146,33 +147,33 @@ func mathPiHalf() float64 { return 3.14159265358979323846 / 2 }
 
 // TestTextLabelAnchorSelection 非默认对齐时锚点取 alignment_pt（DXF 语义）。
 func TestTextLabelAnchorSelection(t *testing.T) {
-	ts := newTessellator(&Document{})
-	e := &entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "X", Insertion: entity.Point3{9, 9, 0},
-		Height: 1, HAlign: 1, VAlign: 2, AlignPt: &entity.Point2{3, 4}}
-	prim := ts.appendEntity(nil, e, identityXform(), 0)
-	if len(prim) != 1 || prim[0].lb.x != 3 || prim[0].lb.y != 4 {
-		t.Fatalf("对齐锚点应取 alignment_pt: %+v", prim[0].lb)
+	ts := drawing.NewTessellator(&Document{})
+	e := &entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "X", Insertion: entity.Point3{X: 9, Y: 9, Z: 0},
+		Height: 1, HAlign: 1, VAlign: 2, AlignPt: &entity.Point2{X: 3, Y: 4}}
+	prim := ts.AppendEntity(nil, e, drawing.IdentityXform(), 0)
+	if len(prim) != 1 || prim[0].Lb.X != 3 || prim[0].Lb.Y != 4 {
+		t.Fatalf("对齐锚点应取 alignment_pt: %+v", prim[0].Lb)
 	}
 	// 默认对齐回到 insertion
-	e2 := &entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "X", Insertion: entity.Point3{9, 9, 0}, Height: 1}
-	prim2 := ts.appendEntity(nil, e2, identityXform(), 0)
-	if prim2[0].lb.x != 9 || prim2[0].lb.y != 9 {
-		t.Fatalf("默认对齐锚点应为 insertion: (%v,%v)", prim2[0].lb.x, prim2[0].lb.y)
+	e2 := &entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "X", Insertion: entity.Point3{X: 9, Y: 9, Z: 0}, Height: 1}
+	prim2 := ts.AppendEntity(nil, e2, drawing.IdentityXform(), 0)
+	if prim2[0].Lb.X != 9 || prim2[0].Lb.Y != 9 {
+		t.Fatalf("默认对齐锚点应为 insertion: (%v,%v)", prim2[0].Lb.X, prim2[0].Lb.Y)
 	}
 }
 
 // TestMTextLabelInfo MTEXT 版式信息传播：\P 分行、attachment/rectWidth 透传。
 func TestMTextLabelInfo(t *testing.T) {
-	ts := newTessellator(&Document{})
-	e := &entity.EntMText{BaseEntity: entity.BaseEntity{}, Text: "A\\PB", Insertion: entity.Point3{0, 0, 0},
+	ts := drawing.NewTessellator(&Document{})
+	e := &entity.EntMText{BaseEntity: entity.BaseEntity{}, Text: "A\\PB", Insertion: entity.Point3{X: 0, Y: 0, Z: 0},
 		TextHeight: 2, Attachment: 7, RectWidth: 10}
-	prim := ts.appendEntity(nil, e, identityXform(), 0)
-	tx := prim[0].lb.tx
-	if tx == nil || tx.attachment != 7 || tx.rectWidth != 10 {
+	prim := ts.AppendEntity(nil, e, drawing.IdentityXform(), 0)
+	tx := prim[0].Lb.Tx
+	if tx == nil || tx.Attachment != 7 || tx.RectWidth != 10 {
 		t.Fatalf("MTEXT 版式信息错误: %+v", tx)
 	}
-	if len(tx.lines) != 2 || tx.lines[0] != "A" || tx.lines[1] != "B" {
-		t.Fatalf("\\P 应分行: %q", tx.lines)
+	if len(tx.Lines) != 2 || tx.Lines[0] != "A" || tx.Lines[1] != "B" {
+		t.Fatalf("\\P 应分行: %q", tx.Lines)
 	}
 }
 
@@ -255,11 +256,11 @@ func TestDrawMTextBlocks(t *testing.T) {
 		cv := newCanvas()
 		tr := newTextRenderer(cv)
 		l := textLayout{px: 60, py: 60, upx: 1, vpy: -1, emPx: 24, hWorld: 1, widthFactor: 1}
-		tr.drawMText(l, &textInfo{
-			lines:      []string{"中文第一行", "second line"},
-			hWorld:     1,
-			attachment: att,
-			rectWidth:  8, // 触发第二行换行
+		tr.drawMText(l, &drawing.GlyphTextInfo{
+			Lines:      []string{"中文第一行", "second line"},
+			HWorld:     1,
+			Attachment: att,
+			RectWidth:  8, // 触发第二行换行
 		}, color.RGBA{0, 0, 0, 255})
 		if n := countInk(cv.img); n == 0 {
 			t.Fatalf("attachment=%d 应绘出墨迹", att)
@@ -280,8 +281,8 @@ func TestWarpMaskDegenerate(t *testing.T) {
 // 线框需≥ 10 像素墨迹），PNG 合法且尺寸随宽度比例。
 func TestRenderPNGGlyphTextE2E(t *testing.T) {
 	requireRenderFont(t)
-	doc := &Document{modelSpace: []any{
-		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "测试ABC", Insertion: entity.Point3{0, 0, 0}, Height: 1},
+	doc := &Document{ModelSpace: []any{
+		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "测试ABC", Insertion: entity.Point3{X: 0, Y: 0, Z: 0}, Height: 1},
 	}}
 	data, err := RenderPNG(doc, RenderOptions{Width: 512})
 	if err != nil {
@@ -306,8 +307,8 @@ func TestRenderPNGGlyphTextE2E(t *testing.T) {
 // TestRenderPNGFontPathOverride FontPath 指向缺失文件时应继续系统探测
 // （本机有 wqy）仍出字形；整体不 panic。
 func TestRenderPNGFontPathOverride(t *testing.T) {
-	doc := &Document{modelSpace: []any{
-		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "OK", Insertion: entity.Point3{0, 0, 0}, Height: 1},
+	doc := &Document{ModelSpace: []any{
+		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "OK", Insertion: entity.Point3{X: 0, Y: 0, Z: 0}, Height: 1},
 	}}
 	data, err := RenderPNG(doc, RenderOptions{Width: 256, FontPath: "/nonexistent/font.ttf"})
 	if err != nil {

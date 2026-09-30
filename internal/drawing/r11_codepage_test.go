@@ -2,7 +2,7 @@
 // 字段读取（真实样本字段定位）与 TEXT 按码页解码（合成位流自证）。
 // 语料无中文 pre-R13 样本，GBK 文本路径以构造字节序列验证，
 // 真实中文样本出现后需补端到端 gold 对照。
-package cad
+package drawing
 
 import (
 	"github.com/unitedrhino/go-cad/internal/container"
@@ -22,19 +22,19 @@ func TestPreR13HeaderCodepageField(t *testing.T) {
 		filepath.Join("r10", "entities.dwg"),
 		filepath.Join("r11", "entities-2d.dwg"),
 	} {
-		data := requirePreR13Sample(t, rel)
+		data := testsupport.RequirePreR13Sample(t, rel)
 		version, err := container.DetectVersion(data)
 		if err != nil {
 			t.Fatalf("%s: detectVersion: %v", rel, err)
 		}
-		r := &preR13Reader{data: data}
+		r := &PreR13Reader{Data: data}
 		hdr, err := parsePreR13Header(r, version)
 		if err != nil {
 			t.Fatalf("%s: parsePreR13Header: %v", rel, err)
 		}
 		// 样本族原始值 0（缺省）或 30；parsePreR13Document 把 0 归一化为 30
-		if hdr.codepage != 0 && hdr.codepage != 30 {
-			t.Errorf("%s: hdr.codepage=%d, want 0 或 30", rel, hdr.codepage)
+		if hdr.Codepage != 0 && hdr.Codepage != 30 {
+			t.Errorf("%s: hdr.codepage=%d, want 0 或 30", rel, hdr.Codepage)
 		}
 	}
 }
@@ -43,8 +43,8 @@ func TestPreR13HeaderCodepageField(t *testing.T) {
 // GBK（码页 39=WINDOWS-936）编码的中文文本经 decodePreR13Text 解出 UTF-8；默认 30 走
 // Latin-1 近似（多字节序列不被合并，行为与此前一致）。
 func TestPreR13TextCodepageDecode(t *testing.T) {
-	const text = "母排标注TMY-3x(80x10)"
-	gbk, err := simplifiedchinese.GBK.NewEncoder().Bytes([]byte(text))
+	const Text = "母排标注TMY-3x(80x10)"
+	gbk, err := simplifiedchinese.GBK.NewEncoder().Bytes([]byte(Text))
 	if err != nil {
 		t.Fatalf("GBK 编码失败: %v", err)
 	}
@@ -63,11 +63,11 @@ func TestPreR13TextCodepageDecode(t *testing.T) {
 	w = append(w, byte(len(gbk)), byte(len(gbk)>>8))
 	w = append(w, gbk...)
 
-	head := preR13EntHead{typ: preR13TypeText, opts: 0, elevation: 0}
-	r := &preR13Reader{data: w}
+	head := PreR13EntHead{Typ: preR13TypeText, Opts: 0, elevation: 0}
+	r := &PreR13Reader{Data: w}
 	e := decodePreR13Text(r, head, 39)
-	if e.Text != text {
-		t.Errorf("GBK 码页文本=%q, want %q", e.Text, text)
+	if e.Text != Text {
+		t.Errorf("GBK 码页文本=%q, want %q", e.Text, Text)
 	}
 	if !testsupport.NearEq(e.Insertion.X, 10.0) || !testsupport.NearEq(e.Insertion.Y, 20.0) || !testsupport.NearEq(e.Height, 2.5) {
 		t.Errorf("TEXT 几何 = (%v,%v) h=%v", e.Insertion.X, e.Insertion.Y, e.Height)
@@ -76,9 +76,9 @@ func TestPreR13TextCodepageDecode(t *testing.T) {
 	// 默认码页 30（windows-1252 家族 Latin-1 近似）：GBK 字节不解合并，
 	// 与历史行为一致（13 个 ASCII 字节各 1 字节、8 个高位字节映射为
 	// 2 字节 UTF-8，len=13+8×2=29）
-	r2 := &preR13Reader{data: w}
+	r2 := &PreR13Reader{Data: w}
 	e2 := decodePreR13Text(r2, head, 30)
-	if e2.Text == text {
+	if e2.Text == Text {
 		t.Error("码页 30 不应解出 GBK 中文（行为回归检查）")
 	}
 	if len(e2.Text) != 29 {
@@ -112,8 +112,8 @@ func TestPreR13AttribCodepageDecode(t *testing.T) {
 	w = append(w, tv(gbk)...)         // tag
 	w = append(w, 0)                  // flags RC
 
-	head := preR13EntHead{typ: preR13TypeAttdef, opts: 0}
-	r := &preR13Reader{data: w}
+	head := PreR13EntHead{Typ: preR13TypeAttdef, Opts: 0}
+	r := &PreR13Reader{Data: w}
 	e := decodePreR13Attrib(r, head, true, 39)
 	if e.Text != tag {
 		t.Errorf("ATTRIB text=%q, want %q", e.Text, tag)

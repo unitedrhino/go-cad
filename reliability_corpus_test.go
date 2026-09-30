@@ -252,14 +252,14 @@ func corpusRunChain(data []byte) (res corpusChainResult) {
 		//     dwg2png 均不做曲面细分，无线框可画；
 		//   - 其余未知类型（entUnknownEnt 兜底）无解码几何。
 		if dark == 0 && corpusHasDrawableEntity(doc) {
-			return fmt.Errorf("渲染空（模型空间 %d 实体，非背景像素 0）", len(doc.modelSpace))
+			return fmt.Errorf("渲染空（模型空间 %d 实体，非背景像素 0）", len(doc.ModelSpace))
 		}
 		return nil
 	})
 	// WriteDwg → 再 Parse → 实体数一致：pre-R13 无写出器（功能边界，
 	// WriteDwgR2000 仅覆盖 R13/R14/R2000），该步骤记 N/A 跳过。
 	run("WriteDwg", func() error {
-		if doc.version.PreR13() {
+		if doc.Ver.PreR13() {
 			return nil // N/A
 		}
 		var buf bytes.Buffer
@@ -290,7 +290,7 @@ func errMsgOrEmpty(err error) string {
 // 排除块标记（BLOCK/ENDBLK/SEQEND）、ACIS B-rep（3DSOLID/REGION/BODY，
 // 无曲面细分渲染）与 UNKNOWN_ENT 兜底（无解码几何）。
 func corpusHasDrawableEntity(doc *Document) bool {
-	for _, ent := range doc.modelSpace {
+	for _, ent := range doc.ModelSpace {
 		base := entity.EntityBase(ent)
 		if base == nil {
 			continue
@@ -313,7 +313,7 @@ type corpusStats struct {
 	ok          int
 	corrupt     int
 	unsupported int
-	failures    []string // bug 清单（样本: 步骤 错误）
+	Failures    []string // bug 清单（样本: 步骤 错误）
 }
 
 // TestReliabilityCorpusThroughput 全语料 .dwg 吞吐主测试。
@@ -381,7 +381,7 @@ func TestReliabilityCorpusThroughput(t *testing.T) {
 			continue
 		}
 		verdicts[rel] = "bug"
-		st.failures = append(st.failures, fmt.Sprintf("%s: %s: %s", rel, stepName, stepErr))
+		st.Failures = append(st.Failures, fmt.Sprintf("%s: %s: %s", rel, stepName, stepErr))
 		t.Errorf("[bug] %s 失败于 %s: %s（dwgread 仲裁成功，需修复）", rel, stepName, stepErr)
 	}
 
@@ -391,12 +391,12 @@ func TestReliabilityCorpusThroughput(t *testing.T) {
 	bugTotal, corruptTotal, okTotal, unsupportedTotal := 0, 0, 0, 0
 	for _, label := range labelOrder {
 		st := stats[label]
-		bugTotal += len(st.failures)
+		bugTotal += len(st.Failures)
 		corruptTotal += st.corrupt
 		okTotal += st.ok
 		unsupportedTotal += st.unsupported
 		t.Logf("%-14s 样本 %3d | 成功 %3d | 样本损坏 %2d | 不支持 %2d | bug %d",
-			label, st.total, st.ok, st.corrupt, st.unsupported, len(st.failures))
+			label, st.total, st.ok, st.corrupt, st.unsupported, len(st.Failures))
 	}
 	t.Logf("合计: 成功 %d / 损坏 %d / 不支持 %d / bug %d", okTotal, corruptTotal, unsupportedTotal, bugTotal)
 

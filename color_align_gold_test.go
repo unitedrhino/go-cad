@@ -11,6 +11,7 @@ package cad
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"os"
 	"testing"
@@ -80,9 +81,9 @@ func buildEntityColorIndex(doc *Document) map[uint64]*entity.EntColor {
 			}
 		}
 	}
-	walk(doc.modelSpace)
-	walk(doc.pspaceSpace)
-	for _, list := range doc.blocks {
+	walk(doc.ModelSpace)
+	walk(doc.PspaceSpace)
+	for _, list := range doc.Blocks {
 		walk(list)
 	}
 	return out
@@ -111,7 +112,7 @@ func entityColorMatches(got *entity.EntColor, g *goldColor) (bool, bool) {
 // layerColorMatches 图层颜色对照（渲染取色语义）：gold rgb 高字节非 0 时
 // 低 24 位 ≤0xFF 为 ACI 索引形（期望本库取色等价 aciColor），>0xFF 为真彩
 // 形（期望 hasTrue 且真彩一致）；rgb 为 0 时按 gold index 比索引。
-func layerColorMatches(lc layerColor, g *goldColor) (bool, bool) {
+func layerColorMatches(lc drawing.LayerColor, g *goldColor) (bool, bool) {
 	if g.RGB == nil {
 		return true, false
 	}
@@ -120,8 +121,8 @@ func layerColorMatches(lc layerColor, g *goldColor) (bool, bool) {
 		return true, false
 	}
 	if rgb>>24 == 0 {
-		if g.Index != nil && *g.Index >= 1 && *g.Index <= 255 && !lc.hasTrue {
-			return lc.index == uint16(*g.Index), true
+		if g.Index != nil && *g.Index >= 1 && *g.Index <= 255 && !lc.HasTrue {
+			return lc.Index == uint16(*g.Index), true
 		}
 		return true, false
 	}
@@ -132,10 +133,10 @@ func layerColorMatches(lc layerColor, g *goldColor) (bool, bool) {
 		if !gok {
 			return false, true
 		}
-		r, g, b, _ := aciColor(uint16(low), true)
+		r, g, b, _ := drawing.AciColor(uint16(low), true)
 		return got.R == r && got.G == g && got.B == b, true
 	}
-	return lc.hasTrue && lc.trueColor&0x00FFFFFF == low, true
+	return lc.HasTrue && lc.TrueColor&0x00FFFFFF == low, true
 }
 
 // TestColorAlignGold 全案例颜色批量对照：实体直接色与图层色两路统计，
@@ -156,7 +157,7 @@ func TestColorAlignGold(t *testing.T) {
 		}
 		checkedSamples++
 		if s.gold == "" {
-			t.Logf("[%s] 无 gold，仅解析冒烟（实体 %d，图层 %d）", s.name, len(doc.modelSpace), len(doc.layerColors))
+			t.Logf("[%s] 无 gold，仅解析冒烟（实体 %d，图层 %d）", s.name, len(doc.ModelSpace), len(doc.LayerColors))
 			continue
 		}
 		raw, err := os.ReadFile(s.gold)
@@ -182,7 +183,7 @@ func TestColorAlignGold(t *testing.T) {
 			hf, _ := hv[len(hv)-1].(float64)
 			h := uint64(hf)
 			if o.Object == "LAYER" {
-				lc, has := doc.layerColors[h]
+				lc, has := doc.LayerColors[h]
 				if !has {
 					continue
 				}
@@ -198,7 +199,7 @@ func TestColorAlignGold(t *testing.T) {
 					layerBad++
 					if layerFails == "" || layerBad <= 5 {
 						layerFails += fmt.Sprintf("\n  h=%d name=%v gold={idx:%v rgb:%v} got=(idx=%d tc=%#x hasTrue=%v)",
-							h, doc.layerColors[h].name, *o.Color.Index, *o.Color.RGB, lc.index, lc.trueColor, lc.hasTrue)
+							h, doc.LayerColors[h].Name, *o.Color.Index, *o.Color.RGB, lc.Index, lc.TrueColor, lc.HasTrue)
 					}
 				}
 				continue

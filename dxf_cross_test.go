@@ -181,7 +181,7 @@ func TestLibreDWGDXFCross(t *testing.T) {
 			continue
 		}
 		byHandle := map[uint64]any{}
-		for _, e := range doc.modelSpace {
+		for _, e := range doc.ModelSpace {
 			if b := entity.EntityBase(e); b != nil {
 				byHandle[b.Handle] = e
 			}

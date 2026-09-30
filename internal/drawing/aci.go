@@ -2,7 +2,7 @@
 // 索引语义分四段：1-9 为固定标准色；10-249 为 24 色相 × 10 明暗带的 HSV
 // 近似色（包初始化时一次性预展开为查找表）；250-255 为线性灰阶；
 // 0/256/257 及其余值表示随块/随层/未定义语义，不产生具体颜色。
-package cad
+package drawing
 
 import "fmt"
 
@@ -23,7 +23,7 @@ func init() {
 		if val < 0.28 {
 			val = 0.28
 		}
-		aciExtendedTable[slot][0], aciExtendedTable[slot][1], aciExtendedTable[slot][2] = hsvTint(hue, sat, val)
+		aciExtendedTable[slot][0], aciExtendedTable[slot][1], aciExtendedTable[slot][2] = HsvTint(hue, sat, val)
 	}
 }
 
@@ -44,7 +44,7 @@ var aciStandardTable = [10][3]uint8{
 
 // aciColor 将 ACI 索引换算为 RGB；found 表示索引携带具体颜色。
 // 索引 7 在白底上翻转为黑色以保证可见性。
-func aciColor(index uint16, backgroundIsWhite bool) (uint8, uint8, uint8, bool) {
+func AciColor(index uint16, backgroundIsWhite bool) (uint8, uint8, uint8, bool) {
 	switch {
 	case index == 7:
 		if backgroundIsWhite {
@@ -67,7 +67,7 @@ func aciColor(index uint16, backgroundIsWhite bool) (uint8, uint8, uint8, bool) 
 
 // hsvTint HSV（h∈[0,1)）转 8bit RGB：按色相扇区在 v/t/p/q 四个亮度基值间
 // 选取 RGB 三通道（标准 HSV→RGB 展开），四舍五入量化。
-func hsvTint(h, s, v float64) (uint8, uint8, uint8) {
+func HsvTint(h, s, v float64) (uint8, uint8, uint8) {
 	sector := int(h*6) % 6
 	frac := h*6 - float64(int(h*6))
 	p := v * (1 - s)
@@ -92,11 +92,11 @@ func hsvTint(h, s, v float64) (uint8, uint8, uint8) {
 }
 
 // splitTrueColor 将 0x00RRGGBB 真彩值拆为字节分量。
-func splitTrueColor(rgb uint32) (uint8, uint8, uint8) {
+func SplitTrueColor(rgb uint32) (uint8, uint8, uint8) {
 	return uint8(rgb >> 16), uint8(rgb >> 8), uint8(rgb)
 }
 
 // hexColor 调试用：颜色十六进制串。
-func hexColor(r, g, b uint8) string {
+func HexColor(r, g, b uint8) string {
 	return fmt.Sprintf("#%02X%02X%02X", r, g, b)
 }

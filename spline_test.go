@@ -4,6 +4,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
@@ -53,7 +54,7 @@ func TestDecodeSplineControlMode(t *testing.T) {
 		t.Fatalf("控制点: %v", sp.ControlPoints)
 	}
 	// 渲染细分：De Boor 求值应落在控制点凸包内
-	strokes := tessSpline(sp, identityXform())
+	strokes := drawing.TessSpline(sp, drawing.IdentityXform())
 	if len(strokes) == 0 {
 		t.Fatal("SPLINE 渲染细分无输出")
 	}
@@ -84,11 +85,11 @@ func TestDecodeSplineFitMode(t *testing.T) {
 		t.Fatalf("拟合模式: scenario=%d tol=%v pts=%v", sp.Scenario, sp.FitTolerance, sp.FitPoints)
 	}
 	// Catmull-Rom 细分：首末点应与拟合点重合
-	strokes := tessSpline(sp, identityXform())
+	strokes := drawing.TessSpline(sp, drawing.IdentityXform())
 	if len(strokes) == 0 {
 		t.Fatal("拟合模式渲染无输出")
 	}
-	if math.Abs(strokes[0].x1-0) > 1e-9 || math.Abs(strokes[len(strokes)-1].y2-5) > 1e-9 {
+	if math.Abs(strokes[0].X1-0) > 1e-9 || math.Abs(strokes[len(strokes)-1].Y2-5) > 1e-9 {
 		t.Fatalf("端点不重合: first=%v last=%v", strokes[0], strokes[len(strokes)-1])
 	}
 }

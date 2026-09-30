@@ -12,6 +12,7 @@ package cad
 import (
 	"bufio"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
@@ -366,7 +367,7 @@ func TestWriteDXFEntityTypesVsLibreDWGDXF(t *testing.T) {
 		}
 		// pre-R13 豁免：dwgread 对 pre-R13 的 ENTITIES 遍历受 owner 链限制，输出不全
 		data, _ := os.ReadFile(f)
-		if doc, err := Parse(data); err == nil && doc.version.PreR13() {
+		if doc, err := Parse(data); err == nil && doc.Ver.PreR13() {
 			t.Logf("%s: pre-R13 样本豁免（dwgread 输出受限）", name)
 			continue
 		}
@@ -451,7 +452,7 @@ func TestWriteDXFDxf2dwgRoundtrip(t *testing.T) {
 		}
 		doc, err := Parse(dwgData)
 		if err != nil {
-			t.Errorf("%s: 转出 DWG 无法 Parse（版本 %q）: %v", name, dxfTargetVersion(nil), err)
+			t.Errorf("%s: 转出 DWG 无法 Parse（版本 %q）: %v", name, drawing.DxfTargetVersion(nil), err)
 			failCount++
 			failed = append(failed, name+"/parse")
 			continue
@@ -835,7 +836,7 @@ func TestWriteDXFImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	var src *entity.EntImage
-	for _, e := range doc.modelSpace {
+	for _, e := range doc.ModelSpace {
 		if im, ok := e.(*entity.EntImage); ok {
 			src = im
 			break
@@ -878,8 +879,8 @@ func TestWriteDXFImage(t *testing.T) {
 	if v := mustF(g.first(70)); v != float64(src.DisplayProps) {
 		t.Errorf("70 display_props=%v（期望 %d）", v, src.DisplayProps)
 	}
-	if v := mustF(g.first(280)); v != float64(boolToInt(src.Clipping)) {
-		t.Errorf("280 clipping=%v（期望 %d）", v, boolToInt(src.Clipping))
+	if v := mustF(g.first(280)); v != float64(drawing.BoolToInt(src.Clipping)) {
+		t.Errorf("280 clipping=%v（期望 %d）", v, drawing.BoolToInt(src.Clipping))
 	}
 	if v := mustF(g.first(281)); v != float64(src.Brightness) {
 		t.Errorf("281 brightness=%v（期望 %d）", v, src.Brightness)
@@ -923,7 +924,7 @@ func TestWriteDXFWipeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	var src *entity.EntWipeout
-	for _, e := range doc.modelSpace {
+	for _, e := range doc.ModelSpace {
 		if w, ok := e.(*entity.EntWipeout); ok {
 			src = w
 			break
@@ -1023,7 +1024,7 @@ func TestWriteDXFViewport(t *testing.T) {
 		t.Fatal(err)
 	}
 	var src *entity.EntViewport
-	for _, e := range doc.modelSpace {
+	for _, e := range doc.ModelSpace {
 		if vp, ok := e.(*entity.EntViewport); ok {
 			src = vp
 			break
@@ -1118,7 +1119,7 @@ func TestWriteDXFPfaceMesh(t *testing.T) {
 		t.Fatal(err)
 	}
 	var pf *entity.EntPolylinePface
-	for _, e := range doc.modelSpace {
+	for _, e := range doc.ModelSpace {
 		if p, ok := e.(*entity.EntPolylinePface); ok {
 			pf = p
 			break
@@ -1177,10 +1178,10 @@ func TestWriteDXFPfaceMesh(t *testing.T) {
 	}
 	vert := &entity.EntVertexPface{
 		BaseEntity: entity.BaseEntity{Handle: 0x9A, Owner: 0x99, Mode: 0},
-		Flag:       192, Position: entity.Point3{1, 2, 3},
+		Flag:       192, Position: entity.Point3{X: 1, Y: 2, Z: 3},
 	}
-	meshDoc := &Document{version: container.VerR2000}
-	meshDoc.modelSpace = []any{mesh, vert}
+	meshDoc := &Document{Ver: container.VerR2000}
+	meshDoc.ModelSpace = []any{mesh, vert}
 	var mb strings.Builder
 	if err := WriteDXF(meshDoc, &mb); err != nil {
 		t.Fatal(err)
@@ -1279,8 +1280,8 @@ func TestWriteDXFAcis(t *testing.T) {
 		BaseEntity: entity.BaseEntity{Handle: 0x77, Layer: 0, Mode: 2},
 		Kind:       "3DSOLID", Version: 1, AcisData: []byte(sat),
 	}
-	doc := &Document{version: container.VerR2000}
-	doc.modelSpace = []any{body}
+	doc := &Document{Ver: container.VerR2000}
+	doc.ModelSpace = []any{body}
 	var buf strings.Builder
 	if err := WriteDXF(doc, &buf); err != nil {
 		t.Fatal(err)
@@ -1391,8 +1392,8 @@ func TestWriteDXFOle2Frame(t *testing.T) {
 		BaseEntity: entity.BaseEntity{Handle: 0x31, Layer: 0, Mode: 2},
 		OleType:    1, Mode: 0, LockAspect: 1, DataSize: uint32(len(data)), Data: data,
 	}
-	doc := &Document{version: container.VerR2000}
-	doc.modelSpace = []any{ole}
+	doc := &Document{Ver: container.VerR2000}
+	doc.ModelSpace = []any{ole}
 	var buf strings.Builder
 	if err := WriteDXF(doc, &buf); err != nil {
 		t.Fatal(err)
@@ -1448,8 +1449,8 @@ func TestWriteDXFProxyEntity(t *testing.T) {
 		ProxyDataSize: uint32(len(proxyData)), ProxyData: proxyData,
 		DataNumBits: 17, Data: rawBits,
 	}
-	doc := &Document{version: container.VerR2000}
-	doc.modelSpace = []any{px}
+	doc := &Document{Ver: container.VerR2000}
+	doc.ModelSpace = []any{px}
 	var buf strings.Builder
 	if err := WriteDXF(doc, &buf); err != nil {
 		t.Fatal(err)

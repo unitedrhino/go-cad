@@ -5,6 +5,7 @@ package cad
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
@@ -231,7 +232,7 @@ func TestStripMTextFormat(t *testing.T) {
 		"100\\S上+下;mm":   "100mm",        // 分数指令剥离到分号
 	}
 	for in, want := range cases {
-		if got := stripMTextFormat(in); got != want {
+		if got := drawing.StripMTextFormat(in); got != want {
 			t.Errorf("stripMTextFormat(%q) = %q，期望 %q", in, got, want)
 		}
 	}
@@ -247,28 +248,28 @@ func TestScoreText(t *testing.T) {
 }
 
 func TestACIRGB(t *testing.T) {
-	r, g, b, ok := aciColor(1, true)
+	r, g, b, ok := drawing.AciColor(1, true)
 	if !ok || r != 255 || g != 0 || b != 0 {
 		t.Fatalf("ACI 1 应为红色: (%d,%d,%d,%v)", r, g, b, ok)
 	}
 	// ACI 7 白底输出黑色
-	r, _, _, _ = aciColor(7, true)
+	r, _, _, _ = drawing.AciColor(7, true)
 	if r != 0 {
 		t.Fatalf("白底 ACI 7 应输出黑色，得到 %d", r)
 	}
 	// ByLayer/ByBlock 无颜色
-	if _, _, _, ok := aciColor(256, true); ok {
+	if _, _, _, ok := drawing.AciColor(256, true); ok {
 		t.Error("ACI 256 不应产生颜色")
 	}
 	// 灰阶
-	r, _, _, _ = aciColor(255, true)
+	r, _, _, _ = drawing.AciColor(255, true)
 	if r != 255 {
 		t.Fatalf("ACI 255 应为白色，得到 %d", r)
 	}
 }
 
 func TestTrueColorRGB(t *testing.T) {
-	r, g, b := splitTrueColor(0x1F2E3D)
+	r, g, b := drawing.SplitTrueColor(0x1F2E3D)
 	if r != 0x1F || g != 0x2E || b != 0x3D {
 		t.Fatalf("true color 拆分错误: (%#x,%#x,%#x)", r, g, b)
 	}
@@ -276,9 +277,9 @@ func TestTrueColorRGB(t *testing.T) {
 
 func TestXformCompose(t *testing.T) {
 	// 外层平移 (10,20)，内层缩放 2 + 平移 (1,1)：点 (1,1) → 内层 (3,3) → 外层 (13,23)
-	outer := xform{sx: 1, sy: 1, cos: 1, tx: 10, ty: 20}
-	inner := xform{sx: 2, sy: 2, cos: 1, tx: 1, ty: 1}
-	got := outer.compose(inner).apply(entity.Point2{1, 1})
+	outer := drawing.Xform{Sx: 1, Sy: 1, Cos: 1, Tx: 10, Ty: 20}
+	inner := drawing.Xform{Sx: 2, Sy: 2, Cos: 1, Tx: 1, Ty: 1}
+	got := outer.Compose(inner).Apply(entity.Point2{X: 1, Y: 1})
 	if math.Abs(got.X-13) > 1e-9 || math.Abs(got.Y-23) > 1e-9 {
 		t.Fatalf("复合变换错误: (%v,%v)", got.X, got.Y)
 	}

@@ -83,11 +83,11 @@ func TestWriteReadR2000(t *testing.T) {
 				t.Errorf("模型空间图元不一致:\n源: %s\n写: %s", d1, d2)
 			}
 			// ⑤ 图层集合一致（句柄 → 颜色索引/真彩色）
-			if len(doc2.layerColors) != len(doc1.layerColors) {
-				t.Errorf("图层数不一致: %d != %d", len(doc2.layerColors), len(doc1.layerColors))
+			if len(doc2.LayerColors) != len(doc1.LayerColors) {
+				t.Errorf("图层数不一致: %d != %d", len(doc2.LayerColors), len(doc1.LayerColors))
 			}
-			for h, lc1 := range doc1.layerColors {
-				lc2, ok := doc2.layerColors[h]
+			for h, lc1 := range doc1.LayerColors {
+				lc2, ok := doc2.LayerColors[h]
 				if !ok {
 					t.Errorf("写出文件缺少图层句柄 %d", h)
 					continue

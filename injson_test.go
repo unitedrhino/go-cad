@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
@@ -158,7 +159,7 @@ func TestParseJSONRoundtripNineSamples(t *testing.T) {
 				goldEnts++
 			}
 		}
-		if got := len(jdoc.entityByHandle); got != goldEnts {
+		if got := len(jdoc.ByHandle); got != goldEnts {
 			t.Errorf("%s: 实体数不一致 json=%d gold(非ATTDEF)=%d", s.alias, got, goldEnts)
 		}
 		if jdoc.Skipped() != 0 {
@@ -173,14 +174,14 @@ func TestParseJSONRoundtripNineSamples(t *testing.T) {
 				continue
 			}
 			h := jsonTestHandle(o["handle"])
-			je := jdoc.entityByHandle[h]
+			je := jdoc.ByHandle[h]
 			if je == nil {
 				t.Errorf("%s: JSON 侧缺实体 h=%d (%s)", s.alias, h, ename)
 				continue
 			}
 			flat := map[string]any{}
 			flattenJSONGold("", o, &flat)
-			de := ddoc.entityByHandle[h]
+			de := ddoc.ByHandle[h]
 			if de == nil {
 				dwgOnly++
 			}
@@ -328,13 +329,13 @@ func TestParseJSONRoundtripNineSamples(t *testing.T) {
 							s.alias, h, ename, i, dl.Angle, gf)
 					}
 					if pa, ok := gm["pt0"].([]any); ok {
-						if !entity.NearF(dl.Pt0.X, jsonNumAt(pa, 0)) || !entity.NearF(dl.Pt0.Y, jsonNumAt(pa, 1)) {
+						if !entity.NearF(dl.Pt0.X, drawing.JsonNumAt(pa, 0)) || !entity.NearF(dl.Pt0.Y, drawing.JsonNumAt(pa, 1)) {
 							t.Errorf("%s: h=%d %s deflines[%d].pt0 json=(%v,%v) gold=%v",
 								s.alias, h, ename, i, dl.Pt0.X, dl.Pt0.Y, pa)
 						}
 					}
 					if pa, ok := gm["offset"].([]any); ok {
-						if !entity.NearF(dl.Offset.X, jsonNumAt(pa, 0)) || !entity.NearF(dl.Offset.Y, jsonNumAt(pa, 1)) {
+						if !entity.NearF(dl.Offset.X, drawing.JsonNumAt(pa, 0)) || !entity.NearF(dl.Offset.Y, drawing.JsonNumAt(pa, 1)) {
 							t.Errorf("%s: h=%d %s deflines[%d].offset json=(%v,%v) gold=%v",
 								s.alias, h, ename, i, dl.Offset.X, dl.Offset.Y, pa)
 						}
@@ -388,7 +389,7 @@ func TestParseJSONRoundtripNineSamples(t *testing.T) {
 				continue
 			}
 			if ename == "MTEXT" {
-				text = stripMTextFormat(text)
+				text = drawing.StripMTextFormat(text)
 			}
 			ins, _ := flat["ins_pt"].([]any)
 			if len(ins) < 2 {
@@ -445,7 +446,7 @@ func TestParseJSONConsumers(t *testing.T) {
 		t.Errorf("JSON 正向写出实体数越界: %d（原 %d）", n, doc.EntityCount())
 	}
 	// 图层颜色：LAYER 对象 → layerColors
-	if len(doc.layerColors) == 0 {
+	if len(doc.LayerColors) == 0 {
 		t.Fatal("LAYER 对象未映射到 layerColors")
 	}
 }
@@ -476,13 +477,13 @@ func TestParseJSONBadInput(t *testing.T) {
 	if doc.Skipped() != 2 { // 未知实体类 + junk 条目
 		t.Errorf("skipped=%d, 期望 2（未知实体类 + 非对象条目）", doc.Skipped())
 	}
-	if doc.entityByHandle[10] == nil {
+	if doc.ByHandle[10] == nil {
 		t.Error("已知实体（LINE）应正常入文档")
 	}
-	if doc.internalObjects[11] == nil {
+	if doc.InternalObjs[11] == nil {
 		t.Error("未知对象名应以 objGeneric 兜底入 internalObjects")
 	}
-	if l, ok := doc.entityByHandle[10].(*entity.EntLine); !ok || l.End.X != 10 {
+	if l, ok := doc.ByHandle[10].(*entity.EntLine); !ok || l.End.X != 10 {
 		t.Errorf("LINE 几何还原错误: %#v", l)
 	}
 }
@@ -500,13 +501,13 @@ func TestParseJSONLayers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(doc.layerColors) != 2 {
-		t.Fatalf("layerColors=%d, 期望 2", len(doc.layerColors))
+	if len(doc.LayerColors) != 2 {
+		t.Fatalf("layerColors=%d, 期望 2", len(doc.LayerColors))
 	}
-	if lc := doc.layerColors[16]; lc.index != 7 || lc.hasTrue {
+	if lc := doc.LayerColors[16]; lc.Index != 7 || lc.HasTrue {
 		t.Errorf("标量 color 还原错误: %+v", lc)
 	}
-	if lc := doc.layerColors[17]; !lc.hasTrue || lc.trueColor != 0x00ff00 {
+	if lc := doc.LayerColors[17]; !lc.HasTrue || lc.TrueColor != 0x00ff00 {
 		t.Errorf("CMC color 还原错误: %+v", lc)
 	}
 }
@@ -671,24 +672,24 @@ func TestParseJSONHeaderVars(t *testing.T) {
 	if !ok || len(want) < 2 {
 		t.Fatalf("HeaderVars 缺 EXTMIN")
 	}
-	if doc.extMin.X != want[0].(float64) || doc.extMin.Y != want[1].(float64) {
-		t.Errorf("extMin 与 EXTMIN 不一致: %v vs %v", doc.extMin, want)
+	if doc.ExtMin.X != want[0].(float64) || doc.ExtMin.Y != want[1].(float64) {
+		t.Errorf("extMin 与 EXTMIN 不一致: %v vs %v", doc.ExtMin, want)
 	}
 	maxArr := doc.HeaderVars["EXTMAX"].([]any)
-	if doc.extMax.X != maxArr[0].(float64) || doc.extMax.Y != maxArr[1].(float64) {
-		t.Errorf("extMax 与 EXTMAX 不一致: %v vs %v", doc.extMax, maxArr)
+	if doc.ExtMax.X != maxArr[0].(float64) || doc.ExtMax.Y != maxArr[1].(float64) {
+		t.Errorf("extMax 与 EXTMAX 不一致: %v vs %v", doc.ExtMax, maxArr)
 	}
 	// INSBASE/LTSCALE 提升与 $ 前缀容错查询
 	if v, ok := doc.HeaderVar("$INSBASE"); !ok {
 		t.Errorf("HeaderVar($INSBASE) 未命中")
-	} else if arr := v.([]any); doc.insbase.X != arr[0].(float64) {
-		t.Errorf("insbase 与 INSBASE 不一致: %v vs %v", doc.insbase, arr)
+	} else if arr := v.([]any); doc.Insbase.X != arr[0].(float64) {
+		t.Errorf("insbase 与 INSBASE 不一致: %v vs %v", doc.Insbase, arr)
 	}
-	if v, ok := doc.HeaderVar("LTSCALE"); !ok || v.(float64) != doc.ltscale {
-		t.Errorf("LTSCALE 提升不符: %v %v", v, doc.ltscale)
+	if v, ok := doc.HeaderVar("LTSCALE"); !ok || v.(float64) != doc.Ltscale {
+		t.Errorf("LTSCALE 提升不符: %v %v", v, doc.Ltscale)
 	}
-	if doc.ltscale != 1 {
-		t.Errorf("gold LTSCALE 应为 1: %v", doc.ltscale)
+	if doc.Ltscale != 1 {
+		t.Errorf("gold LTSCALE 应为 1: %v", doc.Ltscale)
 	}
 	// 缺键与未知键（ex 系 gold 的 ACADVER 在 FILEHEADER.version，HEADER
 	// 段无该键，HeaderVar 应容错返回未命中）
@@ -716,7 +717,7 @@ func TestParseJSONHeaderVarsEmpty(t *testing.T) {
 	if _, ok := doc.HeaderVar("$EXTMIN"); ok {
 		t.Errorf("空文档不应命中 EXTMIN")
 	}
-	if doc.ltscale != 1 {
-		t.Errorf("缺省 ltscale 应为 1: %v", doc.ltscale)
+	if doc.Ltscale != 1 {
+		t.Errorf("缺省 ltscale 应为 1: %v", doc.Ltscale)
 	}
 }

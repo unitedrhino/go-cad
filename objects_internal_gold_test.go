@@ -70,9 +70,9 @@ func TestDictionaryXrecordGold2018(t *testing.T) {
 	}
 
 	// DICTIONARY h=0xC
-	dic, ok := doc.dictionaries[goldDictionary2018TextHandle()]
+	dic, ok := doc.Dictionaries[goldDictionary2018TextHandle()]
 	if !ok {
-		t.Fatalf("DICTIONARY h=12 未解析到（当前字典数=%d）", len(doc.dictionaries))
+		t.Fatalf("DICTIONARY h=12 未解析到（当前字典数=%d）", len(doc.Dictionaries))
 	}
 	if dic.NumItems != goldDictionary2018.numItems {
 		t.Errorf("DICTIONARY numitems=%d, 期望 %d", dic.NumItems, goldDictionary2018.numItems)
@@ -104,9 +104,9 @@ func TestDictionaryXrecordGold2018(t *testing.T) {
 	}
 
 	// XRECORD h=0x26B
-	xr, ok := doc.xrecords[goldXrecord2018.handle]
+	xr, ok := doc.Xrecs[goldXrecord2018.handle]
 	if !ok {
-		t.Fatalf("XRECORD h=619 未解析到（当前 XRECORD 数=%d）", len(doc.xrecords))
+		t.Fatalf("XRECORD h=619 未解析到（当前 XRECORD 数=%d）", len(doc.Xrecs))
 	}
 	if xr.ObjSizeBit != goldXrecord2018.bitsize {
 		t.Errorf("XRECORD bitsize=%d, 期望 %d", xr.ObjSizeBit, goldXrecord2018.bitsize)

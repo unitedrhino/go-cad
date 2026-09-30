@@ -106,7 +106,7 @@ func TestRenderOptionsDefaults(t *testing.T) {
 func TestLargestBlockHeaderDeterminism(t *testing.T) {
 	d1 := parseSample(t, "lw_example2018.dwg")
 	d2 := parseSample(t, "lw_example2018.dwg")
-	if d1.largestBlockHeader() != d2.largestBlockHeader() {
+	if d1.LargestBlockHeader() != d2.LargestBlockHeader() {
 		t.Fatal("最大块头应确定")
 	}
 	if d1.EntityCount() != d2.EntityCount() {
@@ -186,7 +186,7 @@ func TestEncodeEntityReplayGuards(t *testing.T) {
 	}
 	// 真实样本实体：版本参数不影响回放输出
 	doc := parseSample(t, "lw_example2018.dwg")
-	for _, e := range doc.modelSpace {
+	for _, e := range doc.ModelSpace {
 		b := entity.EntityBase(e)
 		if b == nil || b.HeadRawBits == "" || b.RawHandleBits == "" {
 			continue

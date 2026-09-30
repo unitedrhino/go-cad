@@ -27,6 +27,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"image/color"
 	"math"
 	"sort"
@@ -59,18 +60,18 @@ func RenderSVG(doc *Document, opts RenderOptions) ([]byte, error) {
 	// 展开预算单独放宽（PNG 路径保持 20 万不动，金标输出不受影响）：
 	// SVG 的核心价值是文字可读，预算不足时嵌套块内文本不会被展开，
 	// 大图纸（十万级实体）需全量展开才能覆盖全部标注文字。
-	prim := newTessellator(doc)
-	prim.budget = svgExpandBudget
-	prims := prim.expandAll()
+	prim := drawing.NewTessellator(doc)
+	prim.Budget = svgExpandBudget
+	prims := prim.ExpandAll()
 	prims = filterRadiatingStrokes(prims)
-	bbox := robustBounds(prims)
-	if bbox.invalid() {
-		bbox = box2{0, 0, 1, 1}
+	bbox := drawing.RobustBounds(prims)
+	if bbox.Invalid() {
+		bbox = drawing.Box2{0, 0, 1, 1}
 	}
 	prims = dropOriginAnchored(prims, bbox)
 
-	marginX := (bbox.maxX - bbox.minX) * 0.05
-	marginY := (bbox.maxY - bbox.minY) * 0.05
+	marginX := (bbox.MaxX - bbox.MinX) * 0.05
+	marginY := (bbox.MaxY - bbox.MinY) * 0.05
 	if marginX == 0 && marginY == 0 {
 		marginX, marginY = 1, 1 // 退化（单点/空图）兜底
 	} else if marginX == 0 {
@@ -78,12 +79,12 @@ func RenderSVG(doc *Document, opts RenderOptions) ([]byte, error) {
 	} else if marginY == 0 {
 		marginY = marginX
 	}
-	bbox.minX -= marginX
-	bbox.maxX += marginX
-	bbox.minY -= marginY
-	bbox.maxY += marginY
-	vw := bbox.maxX - bbox.minX
-	vh := bbox.maxY - bbox.minY
+	bbox.MinX -= marginX
+	bbox.MaxX += marginX
+	bbox.MinY -= marginY
+	bbox.MaxY += marginY
+	vw := bbox.MaxX - bbox.MinX
+	vh := bbox.MaxY - bbox.MinY
 	width := float64(opts.Width)
 	height := int(vh/vw*width + 0.5)
 	if height < 1 {
@@ -141,7 +142,7 @@ type svgDocMeta struct {
 // svgEmitter SVG 序列化器：线段按「颜色×图层」分组收集 path，文本收集为
 // <text> 片段（文本置于线段之上输出，避免被线盖住）。
 type svgEmitter struct {
-	bbox       box2
+	bbox       drawing.Box2
 	strokeW    float64
 	bg         color.RGBA
 	groups     []*svgStrokeGroup
@@ -154,7 +155,7 @@ type svgEmitter struct {
 	meta       *svgDocMeta         // 图纸摘要（nil 不输出 metadata）
 }
 
-func newSVGEmitter(bbox box2, strokeW float64, bg color.RGBA, meta *svgDocMeta) *svgEmitter {
+func newSVGEmitter(bbox drawing.Box2, strokeW float64, bg color.RGBA, meta *svgDocMeta) *svgEmitter {
 	return &svgEmitter{
 		bbox: bbox, strokeW: strokeW, bg: bg, meta: meta,
 		groupIdx:   make(map[svgGroupKey]int, 16),
@@ -167,8 +168,8 @@ func newSVGEmitter(bbox box2, strokeW float64, bg color.RGBA, meta *svgDocMeta) 
 // xy 世界坐标 → SVG 视口毫单位坐标：平移到包围盒原点、Y 翻转、量化到
 // 0.001（整数毫单位参与 path 连续性判断与相对增量计算，无浮点漂移）。
 func (em *svgEmitter) xy(x, y float64) (int64, int64) {
-	return int64(math.Round((x - em.bbox.minX) * 1000)),
-		int64(math.Round((em.bbox.maxY - y) * 1000))
+	return int64(math.Round((x - em.bbox.MinX) * 1000)),
+		int64(math.Round((em.bbox.MaxY - y) * 1000))
 }
 
 // layerID 图层句柄 → 分组 id 片段：有名图层用真名（doc.layerColors 解析
@@ -178,8 +179,8 @@ func (em *svgEmitter) layerID(doc *Document, h uint64) string {
 		return id
 	}
 	id := ""
-	if lc, ok := doc.layerColors[h]; ok && lc.name != "" {
-		id = lc.name
+	if lc, ok := doc.LayerColors[h]; ok && lc.Name != "" {
+		id = lc.Name
 	} else {
 		id = fmt.Sprintf("handle-%X", h)
 	}
@@ -265,13 +266,13 @@ func absI64(v int64) int64 {
 //   - 数字去尾零与小数点前导零（0.087 → .087），负号隐式分隔坐标对；
 //   - 大数值降小数位（千单位级线段上 0.01 的绝对误差不可见）；
 //   - 同向共线连续段累加合并为一段（折线共线顶点、密集插值段）。
-func (em *svgEmitter) emit(doc *Document, p *primitive, bgWhite bool) {
-	switch p.kind {
+func (em *svgEmitter) emit(doc *Document, p *drawing.Primitive, bgWhite bool) {
+	switch p.Kind {
 	case 0:
-		if len(p.strokes) == 0 {
+		if len(p.Strokes) == 0 {
 			return
 		}
-		g := em.groupFor(doc, p.layer, rgbKeyOf(entityColor(doc, p, bgWhite)))
+		g := em.groupFor(doc, p.Layer, rgbKeyOf(entityColor(doc, p, bgWhite)))
 		curX, curY := int64(0), int64(0) // 已输出位置（毫单位；pending 段逻辑上已到达）
 		hasCur := false
 		// pending 段：暂不落盘，下一段同向共线则累加延长，异向时才写出；
@@ -300,12 +301,12 @@ func (em *svgEmitter) emit(doc *Document, p *primitive, bgWhite bool) {
 			}
 			lastCmd = cmd
 		}
-		for _, s := range p.strokes {
-			if !plausible(s.x1, s.y1) || !plausible(s.x2, s.y2) {
+		for _, s := range p.Strokes {
+			if !drawing.Plausible(s.X1, s.Y1) || !drawing.Plausible(s.X2, s.Y2) {
 				continue
 			}
-			x1, y1 := em.xy(s.x1, s.y1)
-			x2, y2 := em.xy(s.x2, s.y2)
+			x1, y1 := em.xy(s.X1, s.Y1)
+			x2, y2 := em.xy(s.X2, s.Y2)
 			if !hasCur || x1 != curX || y1 != curY {
 				flush()
 				g.buf = append(g.buf, 'M')
@@ -338,12 +339,12 @@ func (em *svgEmitter) emit(doc *Document, p *primitive, bgWhite bool) {
 		}
 		flush()
 	case 1:
-		if !plausible(p.lb.x, p.lb.y) || p.lb.h <= 0 {
+		if !drawing.Plausible(p.Lb.X, p.Lb.Y) || p.Lb.H <= 0 {
 			return
 		}
 		col := rgbKeyOf(entityColor(doc, p, bgWhite))
-		em.layersSeen[em.layerID(doc, p.layer)] = struct{}{} // 文本图层也进 metadata 清单
-		if p.lb.text != "" {
+		em.layersSeen[em.layerID(doc, p.Layer)] = struct{}{} // 文本图层也进 metadata 清单
+		if p.Lb.Text != "" {
 			em.texts = append(em.texts, em.textElement(p, col))
 			return
 		}
@@ -416,14 +417,14 @@ func svgAutoDigits(v int64) int {
 
 // appendLabelBox 输出文字占位框：基线左端为原点、向上半高，随 rot 旋转
 // （几何口径与 canvas.drawLabel 一致），d 数据并入同色×图层组。
-func (em *svgEmitter) appendLabelBox(doc *Document, p *primitive, k rgbKey) {
-	g := em.groupFor(doc, p.layer, k)
-	lb := &p.lb
-	cos, sin := math.Cos(lb.rot), math.Sin(lb.rot)
-	half := lb.h / 2
+func (em *svgEmitter) appendLabelBox(doc *Document, p *drawing.Primitive, k rgbKey) {
+	g := em.groupFor(doc, p.Layer, k)
+	lb := &p.Lb
+	cos, sin := math.Cos(lb.Rot), math.Sin(lb.Rot)
+	half := lb.H / 2
 	curX, curY := int64(0), int64(0)
-	for i, c := range [4][2]float64{{0, 0}, {lb.w, 0}, {lb.w, half}, {0, half}} {
-		x, y := em.xy(lb.x+c[0]*cos-c[1]*sin, lb.y+c[0]*sin+c[1]*cos)
+	for i, c := range [4][2]float64{{0, 0}, {lb.W, 0}, {lb.W, half}, {0, half}} {
+		x, y := em.xy(lb.X+c[0]*cos-c[1]*sin, lb.Y+c[0]*sin+c[1]*cos)
 		if i == 0 {
 			g.buf = append(g.buf, 'M')
 			dx0 := svgAutoDigits(x)
@@ -442,30 +443,30 @@ func (em *svgEmitter) appendLabelBox(doc *Document, p *primitive, k rgbKey) {
 // 绕基线起点旋转（Y 翻转后角度取负）；小角度省略 transform 减少体积。
 // AI 元数据：data-type 文本类型（TEXT/ATTRIB/MTEXT）、data-h 源实体句柄
 // 十六进制（AI 可回查原始实体；占位回退路径无句柄则省略）。
-func (em *svgEmitter) textElement(p *primitive, k rgbKey) []byte {
-	lb := &p.lb
-	x, y := em.xy(lb.x, lb.y)
-	b := make([]byte, 0, 96+len(lb.text)*3)
+func (em *svgEmitter) textElement(p *drawing.Primitive, k rgbKey) []byte {
+	lb := &p.Lb
+	x, y := em.xy(lb.X, lb.Y)
+	b := make([]byte, 0, 96+len(lb.Text)*3)
 	b = append(b, `<text x="`...)
 	b = appendFixed(b, x, 3)
 	b = append(b, `" y="`...)
 	b = appendFixed(b, y, 3)
 	b = append(b, `" font-size="`...)
-	b = appendFixed(b, int64(math.Round(lb.h*1000)), 3)
+	b = appendFixed(b, int64(math.Round(lb.H*1000)), 3)
 	b = append(b, `" fill="`...)
 	b = append(b, hexFromRGB(k)...)
 	b = append(b, '"')
-	if p.kind0 != "" {
+	if p.Kind0 != "" {
 		b = append(b, ` data-type="`...)
-		b = svgAppendAttrEscaped(b, p.kind0)
+		b = svgAppendAttrEscaped(b, p.Kind0)
 		b = append(b, '"')
 	}
-	if lb.handle != 0 {
+	if lb.Handle != 0 {
 		b = append(b, ` data-h="`...)
-		b = append(b, fmt.Sprintf("%X", lb.handle)...)
+		b = append(b, fmt.Sprintf("%X", lb.Handle)...)
 		b = append(b, '"')
 	}
-	if deg := math.Round(-lb.rot*18000/math.Pi) / 100; math.Abs(deg) >= 0.05 {
+	if deg := math.Round(-lb.Rot*18000/math.Pi) / 100; math.Abs(deg) >= 0.05 {
 		b = append(b, ` transform="rotate(`...)
 		b = appendFixed(b, int64(deg*100), 2)
 		b = append(b, ' ')
@@ -474,7 +475,7 @@ func (em *svgEmitter) textElement(p *primitive, k rgbKey) []byte {
 		b = appendFixed(b, y, 3)
 		b = append(b, `)"`...)
 	}
-	switch lb.anchor {
+	switch lb.Anchor {
 	case 1:
 		b = append(b, ` text-anchor="middle"`...)
 	case 2:
@@ -484,7 +485,7 @@ func (em *svgEmitter) textElement(p *primitive, k rgbKey) []byte {
 	// MTEXT 多行（\P 剥离为 \n）拆为 tspan 行：行距取 1.2×字高（工程近似，
 	// 与 AutoCAD 默认行距因子的视觉密度接近）；后续行相对上一行下移，
 	// tspan 继承 text 的 transform，旋转文本整体跟随旋转
-	lines := strings.Split(lb.text, "\n")
+	lines := strings.Split(lb.Text, "\n")
 	for i, ln := range lines {
 		if i == 0 {
 			b = svgAppendEscaped(b, ln)
@@ -493,7 +494,7 @@ func (em *svgEmitter) textElement(p *primitive, k rgbKey) []byte {
 		b = append(b, `<tspan x="`...)
 		b = appendFixed(b, x, 3)
 		b = append(b, `" dy="`...)
-		b = appendFixed(b, int64(math.Round(lb.h*1200)), 3)
+		b = appendFixed(b, int64(math.Round(lb.H*1200)), 3)
 		b = append(b, `">`...)
 		b = svgAppendEscaped(b, ln)
 		b = append(b, `</tspan>`...)

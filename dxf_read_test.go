@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"math"
 	"os"
@@ -129,12 +130,12 @@ func TestParseDXFCrossSameSourceDWG(t *testing.T) {
 			_, waiveAll := dxfWaiveAllSamples[pair.dxf]
 			// 1. 逐实体几何对照（含 blocks 归属实体：ATTRIB），返回豁免数
 			compared, waived := 0, 0
-			for _, ent := range dxfDoc.modelSpace {
+			for _, ent := range dxfDoc.ModelSpace {
 				n, w := dxfCrossCompare(t, pair.dxf, dwgDoc, dxfDoc, ent, gaps, waiveAll)
 				compared += n
 				waived += w
 			}
-			for h, a := range dxfDoc.attribs {
+			for h, a := range dxfDoc.Attribs {
 				ge := dwgDoc.EntityByHandle(h)
 				if dxfCrossAttrib(t, pair.dxf, ge, a, gaps, waiveAll) {
 					waived++
@@ -146,8 +147,8 @@ func TestParseDXFCrossSameSourceDWG(t *testing.T) {
 			}
 			// 2. 模型空间类型分布（支持集合内必须一致；有豁免时降级为日志）
 			strict := gaps == nil && !waiveAll
-			dwgDist := dxfKindDist(dwgDoc.modelSpace)
-			dxfDist := dxfKindDist(dxfDoc.modelSpace)
+			dwgDist := dxfKindDist(dwgDoc.ModelSpace)
+			dxfDist := dxfKindDist(dxfDoc.ModelSpace)
 			distOK := true
 			for kind, n := range dxfDist {
 				if dwgDist[kind] != n {
@@ -192,8 +193,8 @@ func TestParseDXFCrossSameSourceDWG(t *testing.T) {
 				}
 			}
 			// 4. 图层集合：DWG 侧解析出的每个图层必须出现在 DXF LAYER 表
-			for h := range dwgDoc.layerColors {
-				if _, ok := dxfDoc.layerColors[h]; !ok {
+			for h := range dwgDoc.LayerColors {
+				if _, ok := dxfDoc.LayerColors[h]; !ok {
 					t.Errorf("图层 %d 在 DXF LAYER 表缺失（DWG 侧已解析）", h)
 				}
 			}
@@ -322,8 +323,8 @@ func dxfCrossCompare(t *testing.T, sample string, dwgDoc, dxfDoc *Document, ent 
 	}
 	// 图层归属一致（同源句柄；DWG 侧图层未解出/无效时不误报）
 	dwgBase := entity.EntityBase(ge)
-	_, dwgLayerKnown := dwgDoc.layerColors[dwgBase.Layer]
-	_, dxfLayerKnown := dxfDoc.layerColors[base.Layer]
+	_, dwgLayerKnown := dwgDoc.LayerColors[dwgBase.Layer]
+	_, dxfLayerKnown := dxfDoc.LayerColors[base.Layer]
 	if dwgBase.Layer != base.Layer && dwgLayerKnown && dxfLayerKnown && !dxfLayerNameWaive[sample][base.Handle] {
 		t.Errorf("%s h=%X %s: 图层不一致 DXF=%X DWG=%X", sample, base.Handle, kind, base.Layer, dwgBase.Layer)
 	}
@@ -666,13 +667,13 @@ func TestParseDXFBinaryMatchesASCII(t *testing.T) {
 	if da.Version() != db.Version() {
 		t.Errorf("版本不一致: ASCII=%s 二进制=%s", da.Version(), db.Version())
 	}
-	if len(da.modelSpace) != len(db.modelSpace) {
-		t.Errorf("实体数不一致: ASCII=%d 二进制=%d", len(da.modelSpace), len(db.modelSpace))
+	if len(da.ModelSpace) != len(db.ModelSpace) {
+		t.Errorf("实体数不一致: ASCII=%d 二进制=%d", len(da.ModelSpace), len(db.ModelSpace))
 	}
 	// 逐实体类型与几何一致（二进制 REAL 为 8 字节 double，ASCII 为十进制
 	// 文本，比较允许相对 1e-6 误差）
-	for i, ea := range da.modelSpace {
-		eb := db.modelSpace[i]
+	for i, ea := range da.ModelSpace {
+		eb := db.ModelSpace[i]
 		if dxfKindOf(ea) != dxfKindOf(eb) {
 			t.Errorf("实体 %d 类型不一致: ASCII=%s 二进制=%s", i, dxfKindOf(ea), dxfKindOf(eb))
 			continue
@@ -689,8 +690,8 @@ func TestParseDXFBinaryMatchesASCII(t *testing.T) {
 		}
 	}
 	// 图层集合一致
-	if len(da.layerColors) != len(db.layerColors) {
-		t.Errorf("图层数不一致: ASCII=%d 二进制=%d", len(da.layerColors), len(db.layerColors))
+	if len(da.LayerColors) != len(db.LayerColors) {
+		t.Errorf("图层数不一致: ASCII=%d 二进制=%d", len(da.LayerColors), len(db.LayerColors))
 	}
 }
 
@@ -737,7 +738,7 @@ func TestParseDXFBinary2018StaleSample(t *testing.T) {
 // dxfLinesOf LINE 几何集合（handle → 6 坐标）。
 func dxfLinesOf(d *Document) map[uint64][6]float64 {
 	out := map[uint64][6]float64{}
-	for _, e := range d.modelSpace {
+	for _, e := range d.ModelSpace {
 		if l, ok := e.(*entity.EntLine); ok {
 			out[l.Handle] = [6]float64{l.Start.X, l.Start.Y, l.Start.Z, l.End.X, l.End.Y, l.End.Z}
 		}
@@ -1108,19 +1109,19 @@ func TestParseDXFSyntheticMinimal(t *testing.T) {
 	if doc.Version() != "AC1015" {
 		t.Errorf("版本期望 AC1015 得到 %s", doc.Version())
 	}
-	if doc.codepage != 30 {
-		t.Errorf("codepage 期望 30 得到 %d", doc.codepage)
+	if doc.Codepage != 30 {
+		t.Errorf("codepage 期望 30 得到 %d", doc.Codepage)
 	}
 	// LAYER 表：Wall → 0x10，颜色 3
-	lc, ok := doc.layerColors[0x10]
+	lc, ok := doc.LayerColors[0x10]
 	if !ok {
-		t.Fatalf("LAYER 表缺 Wall(0x10): %v", doc.layerColors)
+		t.Fatalf("LAYER 表缺 Wall(0x10): %v", doc.LayerColors)
 	}
-	if lc.index != 3 {
-		t.Errorf("Wall 颜色期望 3 得到 %d", lc.index)
+	if lc.Index != 3 {
+		t.Errorf("Wall 颜色期望 3 得到 %d", lc.Index)
 	}
 	byKind := map[string][]any{}
-	for _, e := range doc.modelSpace {
+	for _, e := range doc.ModelSpace {
 		byKind[dxfKindOf(e)] = append(byKind[dxfKindOf(e)], e)
 	}
 	// LINE
@@ -1201,7 +1202,7 @@ func TestParseDXFSyntheticMinimal(t *testing.T) {
 		if len(i.Attribs) != 1 || i.Attribs[0] != 0x31 {
 			t.Errorf("INSERT 属性句柄不符: %v", i.Attribs)
 		}
-		if a, ok := doc.attribs[0x31]; !ok {
+		if a, ok := doc.Attribs[0x31]; !ok {
 			t.Errorf("ATTRIB 0x31 未注册")
 		} else if a.Text != "tag-value" || a.Tag != "TAG1" {
 			t.Errorf("ATTRIB 内容不符: %q/%q", a.Text, a.Tag)
@@ -1220,7 +1221,7 @@ func TestParseDXFSyntheticMinimal(t *testing.T) {
 		t.Errorf("INSERT 数期望 1 得到 %d", len(ins))
 	}
 	// 块内 CIRCLE
-	if bl := doc.blocks[0x20]; len(bl) != 1 {
+	if bl := doc.Blocks[0x20]; len(bl) != 1 {
 		t.Errorf("块 SYM1 内容数期望 1 得到 %d", len(bl))
 	} else if c, ok := bl[0].(*entity.EntCircle); !ok {
 		t.Errorf("块内容类型不符: %T", bl[0])
@@ -1272,26 +1273,26 @@ func TestParseDXFR12PolylineVertex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("解析失败: %v", err)
 	}
-	if len(doc.modelSpace) != 1 {
-		t.Fatalf("模型空间实体数期望 1 得到 %d", len(doc.modelSpace))
+	if len(doc.ModelSpace) != 1 {
+		t.Fatalf("模型空间实体数期望 1 得到 %d", len(doc.ModelSpace))
 	}
-	p, ok := doc.modelSpace[0].(*entity.EntPolyline2d)
+	p, ok := doc.ModelSpace[0].(*entity.EntPolyline2d)
 	if !ok {
-		t.Fatalf("类型期望 entPolyline2d 得到 %T", doc.modelSpace[0])
+		t.Fatalf("类型期望 entPolyline2d 得到 %T", doc.ModelSpace[0])
 	}
 	if len(p.OwnedHandles) != 3 || p.OwnedHandles[0] != 0xA1 || p.OwnedHandles[2] != 0xA3 {
 		t.Errorf("顶点句柄表不符: %v", p.OwnedHandles)
 	}
 	// VERTEX 归属宿主（blocks[A0]），不直挂模型空间；SEQEND 终止标记
 	// 同宿主归属（极限批次 A 口径，与 DWG 侧 entBlockLike 一致）
-	if bl := doc.blocks[0xA0]; len(bl) != 4 {
+	if bl := doc.Blocks[0xA0]; len(bl) != 4 {
 		t.Fatalf("宿主 blocks 内实体数期望 4 得到 %d", len(bl))
 	}
-	if v, ok := doc.blocks[0xA0][1].(*entity.EntVertex2d); !ok || v.Bulge != 0.5 {
-		t.Errorf("第二顶点凸度/类型不符: %T %+v", doc.blocks[0xA0][1], doc.blocks[0xA0][1])
+	if v, ok := doc.Blocks[0xA0][1].(*entity.EntVertex2d); !ok || v.Bulge != 0.5 {
+		t.Errorf("第二顶点凸度/类型不符: %T %+v", doc.Blocks[0xA0][1], doc.Blocks[0xA0][1])
 	}
-	if sq, ok := doc.blocks[0xA0][3].(*entity.EntBlockLike); !ok || sq.Owner != 0xA0 {
-		t.Errorf("SEQEND 未归宿主: %T %+v", doc.blocks[0xA0][3], doc.blocks[0xA0][3])
+	if sq, ok := doc.Blocks[0xA0][3].(*entity.EntBlockLike); !ok || sq.Owner != 0xA0 {
+		t.Errorf("SEQEND 未归宿主: %T %+v", doc.Blocks[0xA0][3], doc.Blocks[0xA0][3])
 	}
 	// 渲染走顶点句柄表展开
 	if _, err := RenderPNG(doc, RenderOptions{Width: 256}); err != nil {
@@ -1341,7 +1342,7 @@ func TestParseDXFBinarySynthetic(t *testing.T) {
 	build := func(preR14 bool) []byte {
 		w := &dxfBinWriter{preR14: preR14}
 		var out bytes.Buffer
-		out.Write(dxfBinaryMagic)
+		out.Write(drawing.DxfBinaryMagic)
 		w.buf.Reset()
 		w.str(0, "SECTION")
 		w.str(2, "ENTITIES")
@@ -1368,12 +1369,12 @@ func TestParseDXFBinarySynthetic(t *testing.T) {
 		t.Fatalf("pre-R14 二进制解析失败: %v", err)
 	}
 	for _, doc := range []*Document{doc2, docP} {
-		if len(doc.modelSpace) != 1 {
-			t.Fatalf("实体数期望 1 得到 %d", len(doc.modelSpace))
+		if len(doc.ModelSpace) != 1 {
+			t.Fatalf("实体数期望 1 得到 %d", len(doc.ModelSpace))
 		}
-		l, ok := doc.modelSpace[0].(*entity.EntLine)
+		l, ok := doc.ModelSpace[0].(*entity.EntLine)
 		if !ok {
-			t.Fatalf("类型期望 LINE 得到 %T", doc.modelSpace[0])
+			t.Fatalf("类型期望 LINE 得到 %T", doc.ModelSpace[0])
 		}
 		if l.Handle != 0xAA {
 			t.Errorf("句柄期望 AA 得到 %X", l.Handle)
@@ -1385,12 +1386,12 @@ func TestParseDXFBinarySynthetic(t *testing.T) {
 		if l.Layer == 0 {
 			t.Errorf("LINE 图层句柄为 0")
 		}
-		if _, ok := doc.layerColors[l.Layer]; !ok {
+		if _, ok := doc.LayerColors[l.Layer]; !ok {
 			t.Errorf("LINE 图层未注册到 layerColors")
 		}
 	}
 	// 两种编码结果必须一致
-	l2, lp := doc2.modelSpace[0].(*entity.EntLine), docP.modelSpace[0].(*entity.EntLine)
+	l2, lp := doc2.ModelSpace[0].(*entity.EntLine), docP.ModelSpace[0].(*entity.EntLine)
 	if l2.Start != lp.Start || l2.End != lp.End {
 		t.Errorf("两种二进制编码解析结果不一致")
 	}
@@ -1405,8 +1406,8 @@ func TestParseDXFUnknownSectionSkipped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("未知段应被跳过: %v", err)
 	}
-	if len(doc.modelSpace) != 1 {
-		t.Errorf("实体数期望 1 得到 %d", len(doc.modelSpace))
+	if len(doc.ModelSpace) != 1 {
+		t.Errorf("实体数期望 1 得到 %d", len(doc.ModelSpace))
 	}
 }
 
@@ -1421,9 +1422,9 @@ func TestParseDXFErrors(t *testing.T) {
 		{"无 SECTION", []byte("  0\nJUNK\n  0\nOTHER\n")},
 		{"组码后截断", []byte("  0\nSECTION\n  2\nENTITIES\n  0\n")},
 		{"组码行非法", []byte("  0\nSECTION\n  2\nHEADER\nxx\nbad\n")},
-		{"二进制头不完整", dxfBinaryMagic[:12]},
-		{"二进制值截断", append(append([]byte{}, dxfBinaryMagic...), 0x00, 0x00)},
-		{"二进制字符串无 NUL", append(append([]byte{}, dxfBinaryMagic...), 0x00, 0x00, 'S', 'E', 'C')},
+		{"二进制头不完整", drawing.DxfBinaryMagic[:12]},
+		{"二进制值截断", append(append([]byte{}, drawing.DxfBinaryMagic...), 0x00, 0x00)},
+		{"二进制字符串无 NUL", append(append([]byte{}, drawing.DxfBinaryMagic...), 0x00, 0x00, 'S', 'E', 'C')},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -1470,7 +1471,7 @@ func dxfSyntheticDoc(t *testing.T, entities string) *Document {
 // dxfSyntheticByName 取模型空间首个指定类型实体。
 func dxfSyntheticByName(t *testing.T, doc *Document, typ string) any {
 	t.Helper()
-	for _, e := range doc.modelSpace {
+	for _, e := range doc.ModelSpace {
 		if fmt.Sprintf("%T", e) == typ {
 			return e
 		}
@@ -2445,7 +2446,7 @@ func TestParseDXFAttdef(t *testing.T) {
 	if err != nil {
 		t.Fatalf("解析失败: %v", err)
 	}
-	blk := doc.blocks[0xB0]
+	blk := doc.Blocks[0xB0]
 	if len(blk) != 1 {
 		t.Fatalf("块定义内容数期望 1 得到 %d", len(blk))
 	}
@@ -2484,15 +2485,15 @@ func TestParseDXFSeqendOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatalf("解析失败: %v", err)
 	}
-	if len(doc.modelSpace) != 1 {
-		t.Fatalf("模型空间实体数期望 1（INSERT）得到 %d", len(doc.modelSpace))
+	if len(doc.ModelSpace) != 1 {
+		t.Fatalf("模型空间实体数期望 1（INSERT）得到 %d", len(doc.ModelSpace))
 	}
-	ins := doc.modelSpace[0].(*entity.EntInsert)
+	ins := doc.ModelSpace[0].(*entity.EntInsert)
 	if len(ins.Attribs) != 1 || ins.Attribs[0] != 0xD1 {
 		t.Fatalf("INSERT 属性链不符: %v", ins.Attribs)
 	}
 	// blocks[D0]：ATTRIB + SEQEND 都归宿主
-	hosted := doc.blocks[0xD0]
+	hosted := doc.Blocks[0xD0]
 	if len(hosted) != 2 {
 		t.Fatalf("宿主 blocks 内实体数期望 2 得到 %d", len(hosted))
 	}
@@ -2528,7 +2529,7 @@ func TestParseDXFR12CodepageGBK(t *testing.T) {
 		return doc
 	}
 	textOf := func(doc *Document) string {
-		for _, e := range doc.modelSpace {
+		for _, e := range doc.ModelSpace {
 			if txt, ok := e.(*entity.EntText); ok {
 				return txt.Text
 			}
@@ -2578,7 +2579,7 @@ func TestParseDXFCodepageValue(t *testing.T) {
 		{"GBK", 31},
 	}
 	for _, c := range cases {
-		if got := dxfCodepageValue(c.in); got != c.want {
+		if got := drawing.DxfCodepageValue(c.in); got != c.want {
 			t.Errorf("dxfCodepageValue(%q) = %d, want %d", c.in, got, c.want)
 		}
 	}
