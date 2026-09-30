@@ -5,7 +5,7 @@
 // gold JSON 中 pab.values/nodes 等数组以扁平键 pab.values[i].x 存取，
 // 与 flattenGold 的展平口径一致。
 
-package cad
+package object
 
 import (
 	"fmt"
@@ -20,7 +20,7 @@ import (
 // deps[i].is_owned B×N + R2010+ 追加 4 个未收录字段（BS + BL
 // num_owned_params + BS + BL num_values，v9 实测同 ASSOCNETWORK）。
 // owningnetwork/actionbody/deps 句柄在 handle 流。
-func decodeAssocActionFields(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) (int, error) {
+func decodeAssocActionFields(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) (int, error) {
 	if err := fr.BS("class_version", g); err != nil {
 		return 0, err
 	}
@@ -45,7 +45,7 @@ func decodeAssocActionFields(r *bitstream.BitStream, ver container.DwgVersion, f
 			return 0, err
 		}
 	}
-	if ver >= container.VerR2010 {
+	if Ver >= container.VerR2010 {
 		if err := fr.BS("assoc_unknown_bs1", g); err != nil {
 			return 0, err
 		}
@@ -64,9 +64,9 @@ func decodeAssocActionFields(r *bitstream.BitStream, ver container.DwgVersion, f
 
 // decodeAssocActionHandles AcDbAssocAction_fields 的附加 handle 流：
 // owningnetwork + actionbody + deps×num_deps。
-func decodeAssocActionHandles(r *bitstream.BitStream, g *objGeneric, numDeps int) error {
+func decodeAssocActionHandles(R *bitstream.BitStream, g *ObjGeneric, numDeps int) error {
 	for i := 0; i < 2+numDeps; i++ {
-		h, e := objrec.ReadHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(R, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -78,7 +78,7 @@ func decodeAssocActionHandles(r *bitstream.BitStream, g *objGeneric, numDeps int
 // dwgResbufValueType 复刻 LibreDWG dwg_resbuf_value_type 的 DXF 组码
 // → 值类型判定（'R'=REAL、'I'=INT32、'S'=INT16、'C'=INT8、'T'=STRING、
 // 'H'=HANDLE、'O'=OBJECTID(不读)、'X'=INVALID(不读)）。
-func dwgResbufValueType(gc int64) byte {
+func DwgResbufValueType(gc int64) byte {
 	switch {
 	case gc >= 300:
 		switch {
@@ -194,39 +194,39 @@ func dwgResbufValueType(gc int64) byte {
 // + 按组码类型的值（REAL→u.bd、INT32→u.bl、INT16→u.bs、INT8→u.rc、
 // STRING→u.text、HANDLE→u.handle 占 handle 流；OBJECTID 等类型
 // LibreDWG default 分支不读）。返回 handle 流是否占位。
-func decodeEvalVariantFields(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric, prefix string) (bool, error) {
-	raw, err := r.ReadBS()
+func decodeEvalVariantFields(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric, prefix string) (bool, error) {
+	raw, err := R.ReadBS()
 	if err != nil {
 		return false, err
 	}
 	code := int64(int16(raw))
-	g.Fields = append(g.Fields, objField{prefix + "code", code})
+	g.Fields = append(g.Fields, ObjField{prefix + "code", code})
 	isHandle := false
-	switch dwgResbufValueType(code) {
+	switch DwgResbufValueType(code) {
 	case 'R':
-		v, e := r.ReadBD()
+		v, e := R.ReadBD()
 		if e != nil {
 			return false, e
 		}
-		g.Fields = append(g.Fields, objField{prefix + "u.bd", v})
+		g.Fields = append(g.Fields, ObjField{prefix + "u.bd", v})
 	case 'I':
-		v, e := r.ReadBL()
+		v, e := R.ReadBL()
 		if e != nil {
 			return false, e
 		}
-		g.Fields = append(g.Fields, objField{prefix + "u.bl", int64(v)})
+		g.Fields = append(g.Fields, ObjField{prefix + "u.bl", int64(v)})
 	case 'S':
-		v, e := r.ReadBS()
+		v, e := R.ReadBS()
 		if e != nil {
 			return false, e
 		}
-		g.Fields = append(g.Fields, objField{prefix + "u.bs", int64(v)})
+		g.Fields = append(g.Fields, ObjField{prefix + "u.bs", int64(v)})
 	case 'C':
-		v, e := r.ReadRC()
+		v, e := R.ReadRC()
 		if e != nil {
 			return false, e
 		}
-		g.Fields = append(g.Fields, objField{prefix + "u.rc", int64(v)})
+		g.Fields = append(g.Fields, ObjField{prefix + "u.rc", int64(v)})
 	case 'T':
 		if err := fr.T(prefix+"u.text", g); err != nil {
 			return false, err
@@ -244,8 +244,8 @@ func decodeEvalVariantFields(r *bitstream.BitStream, ver container.DwgVersion, f
 // num_actions BL（actions handle 向量）+ num_nodes BL +
 // nodes×N（nodeid BLd + status RC（pre-R2013b）+ num_connections BL +
 // connections BL 向量；R2013b+ status 后置）。
-func decodeGenericASSOC2DCONSTRAINTGROUP(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
-	if _, err := decodeAssocActionFields(r, ver, fr, g); err != nil {
+func decodeGenericASSOC2DCONSTRAINTGROUP(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
+	if _, err := decodeAssocActionFields(R, Ver, fr, g); err != nil {
 		return err
 	}
 	if err := fr.BL("version", g); err != nil {
@@ -273,20 +273,20 @@ func decodeGenericASSOC2DCONSTRAINTGROUP(r *bitstream.BitStream, ver container.D
 	if nn < 0 || nn > 1_000_000 {
 		return fmt.Errorf("cad: 2DCONSTRAINTGROUP nodes 数异常 %d", nn)
 	}
-	preR2013 := ver < container.VerR2013
+	preR2013 := Ver < container.VerR2013
 	for i := 0; i < int(nn); i++ {
 		if err := fr.BLd(fmt.Sprintf("nodes[%d].nodeid", i), g); err != nil {
 			return err
 		}
 		var status int64
 		if preR2013 {
-			v, e := r.ReadRC()
+			v, e := R.ReadRC()
 			if e != nil {
 				return e
 			}
 			status = int64(v)
 		}
-		nc, err := r.ReadBL()
+		nc, err := R.ReadBL()
 		if err != nil {
 			return err
 		}
@@ -295,34 +295,34 @@ func decodeGenericASSOC2DCONSTRAINTGROUP(r *bitstream.BitStream, ver container.D
 		}
 		conns := make([]int64, 0, nc)
 		for j := uint32(0); j < nc; j++ {
-			cv, e := r.ReadBL()
+			cv, e := R.ReadBL()
 			if e != nil {
 				return e
 			}
 			conns = append(conns, int64(cv))
 		}
 		if !preR2013 {
-			v, e := r.ReadRC()
+			v, e := R.ReadRC()
 			if e != nil {
 				return e
 			}
 			status = int64(v)
 		}
 		g.Fields = append(g.Fields,
-			objField{fmt.Sprintf("nodes[%d].status", i), status},
-			objField{fmt.Sprintf("nodes[%d].connections", i), conns})
+			ObjField{fmt.Sprintf("nodes[%d].status", i), status},
+			ObjField{fmt.Sprintf("nodes[%d].connections", i), conns})
 	}
 	return nil
 }
 
 // decodeGenericASSOC2DCONSTRAINTGROUP_HDL handle 流：owningnetwork +
 // actionbody + deps×N + h1 + actions×num_actions。
-func decodeGenericASSOC2DCONSTRAINTGROUP_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericASSOC2DCONSTRAINTGROUP_HDL(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
 	numDeps, _ := g.Field("num_deps").(int64)
 	numActions, _ := g.Field("num_actions").(int64)
 	total := 2 + int(numDeps) + 1 + int(numActions)
 	for i := 0; i < total; i++ {
-		h, e := objrec.ReadHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(R, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -336,8 +336,8 @@ func decodeGenericASSOC2DCONSTRAINTGROUP_HDL(r *bitstream.BitStream, ver contain
 // decodeGenericASSOCVARIABLE 解析 ASSOCVARIABLE：AcDbAssocAction_fields
 // + av_class_version BL + name/t58/evaluator/desc T + AcDbEvalVariant
 // （code + u.*，顶层键）+ has_t78 B + t78 T + b290 B。
-func decodeGenericASSOCVARIABLE(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
-	if _, err := decodeAssocActionFields(r, ver, fr, g); err != nil {
+func decodeGenericASSOCVARIABLE(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
+	if _, err := decodeAssocActionFields(R, Ver, fr, g); err != nil {
 		return err
 	}
 	if err := fr.BL("av_class_version", g); err != nil {
@@ -348,11 +348,11 @@ func decodeGenericASSOCVARIABLE(r *bitstream.BitStream, ver container.DwgVersion
 			return err
 		}
 	}
-	isHandle, err := decodeEvalVariantFields(r, ver, fr, g, "")
+	isHandle, err := decodeEvalVariantFields(R, Ver, fr, g, "")
 	if err != nil {
 		return err
 	}
-	g.valueHandle91 = isHandle // 复用 ACSH 占位标志传递 u.handle
+	g.ValueHandle91 = isHandle // 复用 ACSH 占位标志传递 u.handle
 	if err := fr.B("has_t78", g); err != nil {
 		return err
 	}
@@ -364,13 +364,13 @@ func decodeGenericASSOCVARIABLE(r *bitstream.BitStream, ver container.DwgVersion
 
 // decodeGenericASSOCVARIABLE_HDL handle 流：owningnetwork + actionbody +
 // deps×N + u.handle（code 为 HANDLE 类型时）。
-func decodeGenericASSOCVARIABLE_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericASSOCVARIABLE_HDL(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
 	numDeps, _ := g.Field("num_deps").(int64)
-	if err := decodeAssocActionHandles(r, g, int(numDeps)); err != nil {
+	if err := decodeAssocActionHandles(R, g, int(numDeps)); err != nil {
 		return err
 	}
-	if g.valueHandle91 {
-		h, e := objrec.ReadHandleReference(r, g.Handle)
+	if g.ValueHandle91 {
+		h, e := objrec.ReadHandleReference(R, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -384,8 +384,8 @@ func decodeGenericASSOCVARIABLE_HDL(r *bitstream.BitStream, ver container.DwgVer
 // decodeGenericASSOCVALUEDEPENDENCY 解析 ASSOCVALUEDEPENDENCY：与
 // ASSOCGEOMDEPENDENCY 同用 AcDbAssocDependency_fields（assocdep. 前缀）
 // + 尾部 depbodyid BLd；handle 流 dep_on/readdep/node/dep_body（4 个）。
-func decodeGenericASSOCVALUEDEPENDENCY(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
-	if err := decodeGenericASSOCDEPENDENCY_body(r, ver, fr, g, "assocdep."); err != nil {
+func decodeGenericASSOCVALUEDEPENDENCY(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
+	if err := decodeGenericASSOCDEPENDENCY_body(R, Ver, fr, g, "assocdep."); err != nil {
 		return err
 	}
 	return fr.BL("assocdep.depbodyid", g)
@@ -394,7 +394,7 @@ func decodeGenericASSOCVALUEDEPENDENCY(r *bitstream.BitStream, ver container.Dwg
 // decodeGenericASSOCDIMDEPENDENCYBODY 解析 ASSOCDIMDEPENDENCYBODY：
 // adb_version BS + dimbase_version BS + name T + class_version BS
 // （spec 均注 always 1/1/…）；无附加 handle。
-func decodeGenericASSOCDIMDEPENDENCYBODY(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericASSOCDIMDEPENDENCYBODY(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
 	if err := fr.BS("adb_version", g); err != nil {
 		return err
 	}
@@ -413,11 +413,11 @@ func decodeGenericASSOCDIMDEPENDENCYBODY(r *bitstream.BitStream, ver container.D
 // is_r2013 BS（R2013b+ 置 1）+ [aap_version BL（R2013b+）] + name T +
 // class_version BS + bs1 BS + num_params BL（params handle 向量；
 // has_child_param 恒 0 跳过）+ version BL。
-func decodeGenericASSOCPATHACTIONPARAM(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericASSOCPATHACTIONPARAM(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
 	if err := fr.BS("is_r2013", g); err != nil {
 		return err
 	}
-	if ver >= container.VerR2013 {
+	if Ver >= container.VerR2013 {
 		if err := fr.BL("aap_version", g); err != nil {
 			return err
 		}
@@ -438,10 +438,10 @@ func decodeGenericASSOCPATHACTIONPARAM(r *bitstream.BitStream, ver container.Dwg
 }
 
 // decodeGenericASSOCPATHACTIONPARAM_HDL handle 流：params×num_params。
-func decodeGenericASSOCPATHACTIONPARAM_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericASSOCPATHACTIONPARAM_HDL(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
 	numParams, _ := g.Field("num_params").(int64)
 	for i := 0; i < int(numParams); i++ {
-		h, e := objrec.ReadHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(R, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -456,7 +456,7 @@ func decodeGenericASSOCPATHACTIONPARAM_HDL(r *bitstream.BitStream, ver container
 // "pab.values[0]."）：class_version BL + name T + unit_type BL +
 // num_vars BL + vars×N（AcDbEvalVariant + vars[j].handle handle 流）+
 // controlled_objdep handle 流。
-func decodeAcisValueParam(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric, prefix string, hdlCount *int) error {
+func decodeAcisValueParam(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric, prefix string, HdlCount *int) error {
 	if err := fr.BL(prefix+"class_version", g); err != nil {
 		return err
 	}
@@ -475,15 +475,15 @@ func decodeAcisValueParam(r *bitstream.BitStream, ver container.DwgVersion, fr *
 	}
 	for j := 0; j < int(nv); j++ {
 		vp := prefix + "vars[" + itoa(j) + "]."
-		isHandle, e := decodeEvalVariantFields(r, ver, fr, g, vp)
+		isHandle, e := decodeEvalVariantFields(R, Ver, fr, g, vp)
 		if e != nil {
 			return e
 		}
 		if isHandle {
-			*hdlCount++
+			*HdlCount++
 		}
 	}
-	*hdlCount++ // controlled_objdep
+	*HdlCount++ // controlled_objdep
 	return nil
 }
 
@@ -491,8 +491,8 @@ func decodeAcisValueParam(r *bitstream.BitStream, ver container.DwgVersion, fr *
 // （仅 pre-R2013b 有此段）：version/minor/num_deps BL + l4/num_values BL
 // + [num_values=0：l5 BL] + values×num_values（AcDbValueParam）。
 // deps/pab.assocdep/values 内部句柄在 handle 流，hdlCount 累加。
-func decodeAcisParamBasedActionBody(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric, hdlCount *int) error {
-	if ver >= container.VerR2013 { // PRE (R_2013b)：R2013b+ 整段不存在
+func decodeAcisParamBasedActionBody(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric, HdlCount *int) error {
+	if Ver >= container.VerR2013 { // PRE (R_2013b)：R2013b+ 整段不存在
 		return nil
 	}
 	if err := fr.BL("version", g); err != nil {
@@ -508,7 +508,7 @@ func decodeAcisParamBasedActionBody(r *bitstream.BitStream, ver container.DwgVer
 	if nd < 0 || nd > 1_000_000 {
 		return fmt.Errorf("cad: pab deps 数异常 %d", nd)
 	}
-	*hdlCount += int(nd)
+	*HdlCount += int(nd)
 	if err := fr.BL("l4", g); err != nil {
 		return err
 	}
@@ -523,10 +523,10 @@ func decodeAcisParamBasedActionBody(r *bitstream.BitStream, ver container.DwgVer
 		if err := fr.BL("l5", g); err != nil {
 			return err
 		}
-		*hdlCount++ // pab.assocdep
+		*HdlCount++ // pab.assocdep
 	}
 	for i := 0; i < int(nv); i++ {
-		if err := decodeAcisValueParam(r, ver, fr, g, "pab.values["+itoa(i)+"].", hdlCount); err != nil {
+		if err := decodeAcisValueParam(R, Ver, fr, g, "pab.values["+itoa(i)+"].", HdlCount); err != nil {
 			return err
 		}
 	}
@@ -536,11 +536,11 @@ func decodeAcisParamBasedActionBody(r *bitstream.BitStream, ver container.DwgVer
 // decodeAcisSurfaceActionBody 读 AcDbAssocSurfaceActionBody_fields：
 // version BL + is_semi_assoc B + l2 BL + is_semi_ovr B + grip_status BS
 // （sab.assocdep 句柄占 handle 流 1 个）。
-func decodeAcisSurfaceActionBody(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric, hdlCount *int) error {
+func decodeAcisSurfaceActionBody(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric, HdlCount *int) error {
 	if err := fr.BL("version", g); err != nil {
 		return err
 	}
-	*hdlCount++ // sab.assocdep
+	*HdlCount++ // sab.assocdep
 	if err := fr.B("is_semi_assoc", g); err != nil {
 		return err
 	}
@@ -556,31 +556,31 @@ func decodeAcisSurfaceActionBody(r *bitstream.BitStream, ver container.DwgVersio
 // makeGenericSURFACEACTIONBODY 生成 SURFACEACTIONBODY 族解码器：
 // AcDbAssocActionBody（aab_version BL）+ ParamBased + Surface 体 +
 // pbsab_status BL + 各类尾部 class_version BL。
-func makeGenericSURFACEACTIONBODY(tail func(*bitstream.BitStream, container.DwgVersion, *gfRead, *objGeneric) error) func(*bitstream.BitStream, container.DwgVersion, *gfRead, *objGeneric) error {
-	return func(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
+func makeGenericSURFACEACTIONBODY(tail func(*bitstream.BitStream, container.DwgVersion, *GfRead, *ObjGeneric) error) func(*bitstream.BitStream, container.DwgVersion, *GfRead, *ObjGeneric) error {
+	return func(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
 		if err := fr.BL("aab_version", g); err != nil {
 			return err
 		}
-		hdlCount := 0
-		if err := decodeAcisParamBasedActionBody(r, ver, fr, g, &hdlCount); err != nil {
+		HdlCount := 0
+		if err := decodeAcisParamBasedActionBody(R, Ver, fr, g, &HdlCount); err != nil {
 			return err
 		}
-		if err := decodeAcisSurfaceActionBody(r, ver, fr, g, &hdlCount); err != nil {
+		if err := decodeAcisSurfaceActionBody(R, Ver, fr, g, &HdlCount); err != nil {
 			return err
 		}
 		if err := fr.BL("pbsab_status", g); err != nil {
 			return err
 		}
-		g.hdlCount = hdlCount
-		return tail(r, ver, fr, g)
+		g.HdlCount = HdlCount
+		return tail(R, Ver, fr, g)
 	}
 }
 
 // decodeGenericSURFACEACTIONBODY_HDL SURFACEACTIONBODY 族 handle 流：
 // pab.deps/pab.assocdep/values 句柄/sab.assocdep（按 hdlCount）。
-func decodeGenericSURFACEACTIONBODY_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
-	for i := 0; i < g.hdlCount; i++ {
-		h, e := objrec.ReadHandleReference(r, g.Handle)
+func decodeGenericSURFACEACTIONBODY_HDL(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
+	for i := 0; i < g.HdlCount; i++ {
+		h, e := objrec.ReadHandleReference(R, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -593,21 +593,21 @@ func decodeGenericSURFACEACTIONBODY_HDL(r *bitstream.BitStream, ver container.Dw
 // 专有字段按 dwg2.spec 实现（NETWORK 无尾字段）。
 func init() {
 	// EXTEND：class_version BL + option RC
-	extendTail := func(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
+	extendTail := func(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
 		if err := fr.BL("class_version", g); err != nil {
 			return err
 		}
 		return fr.RC("option", g)
 	}
 	// OFFSET：class_version BL + b1 B
-	offsetTail := func(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
+	offsetTail := func(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
 		if err := fr.BL("class_version", g); err != nil {
 			return err
 		}
 		return fr.B("b1", g)
 	}
 	// TRIM：class_version BL + b1/b2 B + distance BD
-	trimTail := func(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
+	trimTail := func(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
 		if err := fr.BL("class_version", g); err != nil {
 			return err
 		}
@@ -621,7 +621,7 @@ func init() {
 	}
 	// BLEND：class_version BL + b1/b2/b3 B + blend_options BS +
 	// b4/b5 B + bs2 BS
-	blendTail := func(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
+	blendTail := func(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
 		if err := fr.BL("class_version", g); err != nil {
 			return err
 		}
@@ -645,26 +645,26 @@ func init() {
 		}
 		return fr.BS("bs2", g)
 	}
-	cvTail := func(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
+	cvTail := func(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
 		return fr.BL("class_version", g)
 	}
-	surfaceSpec := func(d func(*bitstream.BitStream, container.DwgVersion, *gfRead, *objGeneric) error) internalObjectSpec {
+	surfaceSpec := func(d func(*bitstream.BitStream, container.DwgVersion, *GfRead, *ObjGeneric) error) internalObjectSpec {
 		return internalObjectSpec{
-			decode: makeGenericSURFACEACTIONBODY(d),
-			hdl:    decodeGenericSURFACEACTIONBODY_HDL,
+			Decode: makeGenericSURFACEACTIONBODY(d),
+			Hdl:    decodeGenericSURFACEACTIONBODY_HDL,
 		}
 	}
 	for name, spec := range map[string]internalObjectSpec{
-		"ASSOC2DCONSTRAINTGROUP":             {decode: decodeGenericASSOC2DCONSTRAINTGROUP, hdl: decodeGenericASSOC2DCONSTRAINTGROUP_HDL},
-		"ACDBASSOC2DCONSTRAINTGROUP":         {decode: decodeGenericASSOC2DCONSTRAINTGROUP, hdl: decodeGenericASSOC2DCONSTRAINTGROUP_HDL},
-		"ASSOCVARIABLE":                      {decode: decodeGenericASSOCVARIABLE, hdl: decodeGenericASSOCVARIABLE_HDL},
-		"ACDBASSOCVARIABLE":                  {decode: decodeGenericASSOCVARIABLE, hdl: decodeGenericASSOCVARIABLE_HDL},
-		"ASSOCVALUEDEPENDENCY":               {decode: decodeGenericASSOCVALUEDEPENDENCY, hdl: decodeGenericASSOCDEPENDENCY_HDL},
-		"ACDBASSOCVALUEDEPENDENCY":           {decode: decodeGenericASSOCVALUEDEPENDENCY, hdl: decodeGenericASSOCDEPENDENCY_HDL},
-		"ASSOCDIMDEPENDENCYBODY":             {decode: decodeGenericASSOCDIMDEPENDENCYBODY},
-		"ACDBASSOCDIMDEPENDENCYBODY":         {decode: decodeGenericASSOCDIMDEPENDENCYBODY},
-		"ASSOCPATHACTIONPARAM":               {decode: decodeGenericASSOCPATHACTIONPARAM, hdl: decodeGenericASSOCPATHACTIONPARAM_HDL},
-		"ACDBASSOCPATHACTIONPARAM":           {decode: decodeGenericASSOCPATHACTIONPARAM, hdl: decodeGenericASSOCPATHACTIONPARAM_HDL},
+		"ASSOC2DCONSTRAINTGROUP":             {Decode: decodeGenericASSOC2DCONSTRAINTGROUP, Hdl: decodeGenericASSOC2DCONSTRAINTGROUP_HDL},
+		"ACDBASSOC2DCONSTRAINTGROUP":         {Decode: decodeGenericASSOC2DCONSTRAINTGROUP, Hdl: decodeGenericASSOC2DCONSTRAINTGROUP_HDL},
+		"ASSOCVARIABLE":                      {Decode: decodeGenericASSOCVARIABLE, Hdl: decodeGenericASSOCVARIABLE_HDL},
+		"ACDBASSOCVARIABLE":                  {Decode: decodeGenericASSOCVARIABLE, Hdl: decodeGenericASSOCVARIABLE_HDL},
+		"ASSOCVALUEDEPENDENCY":               {Decode: decodeGenericASSOCVALUEDEPENDENCY, Hdl: decodeGenericASSOCDEPENDENCY_HDL},
+		"ACDBASSOCVALUEDEPENDENCY":           {Decode: decodeGenericASSOCVALUEDEPENDENCY, Hdl: decodeGenericASSOCDEPENDENCY_HDL},
+		"ASSOCDIMDEPENDENCYBODY":             {Decode: decodeGenericASSOCDIMDEPENDENCYBODY},
+		"ACDBASSOCDIMDEPENDENCYBODY":         {Decode: decodeGenericASSOCDIMDEPENDENCYBODY},
+		"ASSOCPATHACTIONPARAM":               {Decode: decodeGenericASSOCPATHACTIONPARAM, Hdl: decodeGenericASSOCPATHACTIONPARAM_HDL},
+		"ACDBASSOCPATHACTIONPARAM":           {Decode: decodeGenericASSOCPATHACTIONPARAM, Hdl: decodeGenericASSOCPATHACTIONPARAM_HDL},
 		"ASSOCPLANESURFACEACTIONBODY":        surfaceSpec(cvTail),
 		"ACDBASSOCPLANESURFACEACTIONBODY":    surfaceSpec(cvTail),
 		"ASSOCEXTRUDEDSURFACEACTIONBODY":     surfaceSpec(cvTail),
@@ -673,8 +673,8 @@ func init() {
 		"ACDBASSOCLOFTEDSURFACEACTIONBODY":   surfaceSpec(cvTail),
 		"ASSOCREVOLVEDSURFACEACTIONBODY":     surfaceSpec(cvTail),
 		"ACDBASSOCREVOLVEDSURFACEACTIONBODY": surfaceSpec(cvTail),
-		"ASSOCNETWORKSURFACEACTIONBODY":      surfaceSpec(func(*bitstream.BitStream, container.DwgVersion, *gfRead, *objGeneric) error { return nil }),
-		"ACDBASSOCNETWORKSURFACEACTIONBODY":  surfaceSpec(func(*bitstream.BitStream, container.DwgVersion, *gfRead, *objGeneric) error { return nil }),
+		"ASSOCNETWORKSURFACEACTIONBODY":      surfaceSpec(func(*bitstream.BitStream, container.DwgVersion, *GfRead, *ObjGeneric) error { return nil }),
+		"ACDBASSOCNETWORKSURFACEACTIONBODY":  surfaceSpec(func(*bitstream.BitStream, container.DwgVersion, *GfRead, *ObjGeneric) error { return nil }),
 		"ASSOCEXTENDSURFACEACTIONBODY":       surfaceSpec(extendTail),
 		"ACDBASSOCEXTENDSURFACEACTIONBODY":   surfaceSpec(extendTail),
 		"ASSOCOFFSETSURFACEACTIONBODY":       surfaceSpec(offsetTail),
@@ -684,6 +684,6 @@ func init() {
 		"ASSOCBLENDSURFACEACTIONBODY":        surfaceSpec(blendTail),
 		"ACDBASSOCBLENDSURFACEACTIONBODY":    surfaceSpec(blendTail),
 	} {
-		internalClassDecoders[name] = spec
+		InternalClassDecoders[name] = spec
 	}
 }

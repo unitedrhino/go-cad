@@ -1,7 +1,7 @@
 // objects_tablecontent_test TABLECONTENT/DATATABLE 解码器的合成位流
 // 门禁测试：手工构造已知内容的位流，解码后逐字段断言（含嵌套
 // cols/rows/cells/cell_contents 与 handle 流句柄数）。
-package cad
+package object
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
@@ -16,8 +16,8 @@ import (
 // handle 流 = owner + xdic + tablestyle。
 func TestTableContentSynthetic(t *testing.T) {
 	// TABLECONTENT 属 DEBUG_CLASSES 类未注册进解码表，测试内临时注册
-	internalClassDecoders["TABLECONTENT"] = internalObjectSpec{decode: decodeGenericTABLECONTENT, hdl: decodeGenericTABLECONTENT_HDL}
-	defer delete(internalClassDecoders, "TABLECONTENT")
+	InternalClassDecoders["TABLECONTENT"] = internalObjectSpec{Decode: DecodeGenericTABLECONTENT, Hdl: decodeGenericTABLECONTENT_HDL}
+	defer delete(InternalClassDecoders, "TABLECONTENT")
 	w := bitstream.NewEncWriter()
 	w.WriteRL(0) // bitsize 占位
 	w.WriteH(0, 1, 0x64)
@@ -75,7 +75,7 @@ func TestTableContentSynthetic(t *testing.T) {
 	original[3] = uint8(datEnd >> 24)
 
 	rec := &objrec.ObjectRecord{Body: original, BodyBitOffset: 0, Size: uint32(len(original))}
-	g, err := decodeInternalObject(rec.BodyBitStream(), rec, container.VerR2000, false, 537, "TABLECONTENT", 30)
+	g, err := DecodeInternalObject(rec.BodyBitStream(), rec, container.VerR2000, false, 537, "TABLECONTENT", 30)
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
@@ -96,8 +96,8 @@ func TestTableContentSynthetic(t *testing.T) {
 // TestDataTableSynthetic 合成 R2000 DATATABLE 位流：2 列 × 1 行，
 // 行值按 spec 无条件读三键。
 func TestDataTableSynthetic(t *testing.T) {
-	internalClassDecoders["DATATABLE"] = internalObjectSpec{decode: decodeGenericDATATABLE}
-	defer delete(internalClassDecoders, "DATATABLE")
+	InternalClassDecoders["DATATABLE"] = internalObjectSpec{Decode: decodeGenericDATATABLE}
+	defer delete(InternalClassDecoders, "DATATABLE")
 	w := bitstream.NewEncWriter()
 	w.WriteRL(0)
 	w.WriteH(0, 1, 0x64)
@@ -133,7 +133,7 @@ func TestDataTableSynthetic(t *testing.T) {
 	original[3] = uint8(datEnd >> 24)
 
 	rec := &objrec.ObjectRecord{Body: original, BodyBitOffset: 0, Size: uint32(len(original))}
-	g, err := decodeInternalObject(rec.BodyBitStream(), rec, container.VerR2000, false, 541, "DATATABLE", 30)
+	g, err := DecodeInternalObject(rec.BodyBitStream(), rec, container.VerR2000, false, 541, "DATATABLE", 30)
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestDataTableSynthetic(t *testing.T) {
 
 // assertField 断言 objGeneric 字段值：got 与 want 做数值归一化比较
 // （int64/float64 互转，float 容差），字符串直接比较。
-func assertField(t *testing.T, g *objGeneric, key string, want any) {
+func assertField(t *testing.T, g *ObjGeneric, key string, want any) {
 	t.Helper()
 	got := g.Field(key)
 	if got == nil {

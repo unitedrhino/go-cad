@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/entity"
+	"github.com/unitedrhino/go-cad/internal/object"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
@@ -61,7 +62,7 @@ func roundTripAll(t *testing.T, sample string, ver container.DwgVersion) {
 		if err0 != nil {
 			t.Logf("bodySnap: AcDbObjects 加载失败: %v", err0)
 		} else {
-			index, err1 := buildObjectIndex(data)
+			index, err1 := object.BuildObjectIndex(data)
 			if err1 != nil {
 				t.Logf("bodySnap: 索引失败: %v", err1)
 			} else {
@@ -106,7 +107,7 @@ func roundTripAll(t *testing.T, sample string, ver container.DwgVersion) {
 							db2, derr := encodeDictionaryR2000(d, ver, false)
 							if derr == nil {
 								drec := &objrec.ObjectRecord{Body: db2, BodyBitOffset: 0, Size: uint32(len(db2))}
-								if _, derr = decodeDictionaryObjectFull(drec.BodyBitStream(), drec, ver, false, false); derr == nil {
+								if _, derr = object.DecodeDictionaryObjectFull(drec.BodyBitStream(), drec, ver, false, false); derr == nil {
 									pass++
 									return
 								}
@@ -122,15 +123,15 @@ func roundTripAll(t *testing.T, sample string, ver container.DwgVersion) {
 				}
 				return
 			}
-			rec2 := &objrec.ObjectRecord{Body: body2, BodyBitOffset: g.bodyBitOff, Size: g.sizeBytes,
-				R2010Plus: g.r2010Plus, HandleSizeFieldBits: g.hSizeField, HandleStreamSizeBits: g.hssBits}
-			if !g.r2010Plus {
+			rec2 := &objrec.ObjectRecord{Body: body2, BodyBitOffset: g.BodyBitOff, Size: g.SizeBytes,
+				R2010Plus: g.R2010Plus, HandleSizeFieldBits: g.HSizeField, HandleStreamSizeBits: g.HssBits}
+			if !g.R2010Plus {
 				rec2.Size = uint32(len(body2))
 			}
 			rr := rec2.BodyBitStream()
-			if g.r2010Plus {
+			if g.R2010Plus {
 				// 调用契约：调用方需定位到 dataStartBit（记录头之后）
-				rr.SetBitPos(g.bodyBitOff + uint64(len(g.preBits)))
+				rr.SetBitPos(g.BodyBitOff + uint64(len(g.PreBits)))
 			}
 			// 位级对照：body2 与原 body 快照的首个差异位
 			if snap := bodySnaps[h]; snap != nil {
@@ -149,7 +150,7 @@ func roundTripAll(t *testing.T, sample string, ver container.DwgVersion) {
 			} else {
 				t.Logf("%s h=%d snap缺失", g.Name, h)
 			}
-			g2, err := decodeInternalObject(rr, rec2, ver, ver >= container.VerR2013, typeCode, g.Name, 30)
+			g2, err := object.DecodeInternalObject(rr, rec2, ver, ver >= container.VerR2013, typeCode, g.Name, 30)
 			if err != nil {
 				t.Logf("%s h=%d 重解码失败: %v", g.Name, h, err)
 				fails[g.Name+"(重解码)"]++

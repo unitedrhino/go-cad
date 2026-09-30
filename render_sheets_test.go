@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/entity"
+	"github.com/unitedrhino/go-cad/internal/object"
 	"image/png"
 	"math"
 	"os"
@@ -36,7 +37,7 @@ func buildSheetDoc(t *testing.T, sheets []struct {
 		blocks:          map[uint64][]any{},
 		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
-		internalObjects: map[uint64]*objGeneric{},
+		internalObjects: map[uint64]*object.ObjGeneric{},
 	}
 	for _, s := range sheets {
 		w, hgt := s.w, s.hgt
@@ -52,9 +53,9 @@ func buildSheetDoc(t *testing.T, sheets []struct {
 			})
 		}
 		doc.blocks[s.h] = frame
-		doc.internalObjects[s.h] = &objGeneric{
+		doc.internalObjects[s.h] = &object.ObjGeneric{
 			Name:   "BLOCK_HEADER",
-			Fields: []objField{{Key: "name", Val: s.name}},
+			Fields: []object.ObjField{{Key: "name", Val: s.name}},
 		}
 		ins := &entity.EntInsert{
 			Position:    entity.Point3{s.offset[0], s.offset[1], 0},
@@ -194,7 +195,7 @@ func TestDetectSheetsTitleFallback(t *testing.T) {
 		t.Fatalf("块名回退失败: %+v", sheets)
 	}
 	// 匿名块名（* 前缀）→ 序号回退
-	doc.internalObjects[100] = &objGeneric{Fields: []objField{{Key: "name", Val: "*Model_Space"}}}
+	doc.internalObjects[100] = &object.ObjGeneric{Fields: []object.ObjField{{Key: "name", Val: "*Model_Space"}}}
 	sheets = DetectSheets(doc)
 	if len(sheets) != 1 || sheets[0].Name != "图 1" {
 		t.Fatalf("序号回退失败: %+v", sheets)
@@ -213,7 +214,7 @@ func TestDetectSheetsNestedInsert(t *testing.T) {
 		},
 		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
-		internalObjects: map[uint64]*objGeneric{},
+		internalObjects: map[uint64]*object.ObjGeneric{},
 	}
 	doc.modelSpace = []any{
 		&entity.EntInsert{Position: entity.Point3{0, 0, 0}, Scale: entity.Point3{1, 1, 1}, BlockHeader: 200},
@@ -243,7 +244,7 @@ func TestDetectSheetsAttribTitle(t *testing.T) {
 			900: {Text: "属性图名", Insertion: entity.Point3{950, 60, 0}, Height: 30},
 		},
 		layerColors:     map[uint64]layerColor{},
-		internalObjects: map[uint64]*objGeneric{},
+		internalObjects: map[uint64]*object.ObjGeneric{},
 	}
 	doc.modelSpace = []any{
 		&entity.EntInsert{
@@ -292,7 +293,7 @@ func TestDetectSheetsFallbackNoInsert(t *testing.T) {
 		blocks:          map[uint64][]any{},
 		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
-		internalObjects: map[uint64]*objGeneric{},
+		internalObjects: map[uint64]*object.ObjGeneric{},
 		modelSpace: []any{
 			&entity.EntLine{Start: entity.Point3{0, 0, 0}, End: entity.Point3{1000, 600, 0}},
 		},
@@ -485,7 +486,7 @@ func TestRenderAllSheetsFallbackSingle(t *testing.T) {
 		blocks:          map[uint64][]any{},
 		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
-		internalObjects: map[uint64]*objGeneric{},
+		internalObjects: map[uint64]*object.ObjGeneric{},
 		modelSpace: []any{
 			&entity.EntLine{Start: entity.Point3{0, 0, 0}, End: entity.Point3{500, 300, 0}},
 		},
@@ -527,7 +528,7 @@ func buildSheetNoDoc(t *testing.T, no, name string, extra func(block []any) []an
 		blocks:          map[uint64][]any{},
 		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
-		internalObjects: map[uint64]*objGeneric{},
+		internalObjects: map[uint64]*object.ObjGeneric{},
 	}
 	block := []any{
 		&entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {1189, 0}, {1189, 841}, {0, 841}, {0, 0}}},
@@ -545,7 +546,7 @@ func buildSheetNoDoc(t *testing.T, no, name string, extra func(block []any) []an
 		block = extra(block)
 	}
 	doc.blocks[100] = block
-	doc.internalObjects[100] = &objGeneric{Name: "BLOCK_HEADER", Fields: []objField{{Key: "name", Val: "图框"}}}
+	doc.internalObjects[100] = &object.ObjGeneric{Name: "BLOCK_HEADER", Fields: []object.ObjField{{Key: "name", Val: "图框"}}}
 	doc.modelSpace = []any{
 		&entity.EntInsert{Position: entity.Point3{0, 0, 0}, Scale: entity.Point3{1, 1, 1}, BlockHeader: 100},
 		// 框内直属内容（内容密度判据，4 条线 = 8 点）
@@ -694,7 +695,7 @@ func TestDetectSheetsFallbackQuantileBox(t *testing.T) {
 		blocks:          map[uint64][]any{},
 		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
-		internalObjects: map[uint64]*objGeneric{},
+		internalObjects: map[uint64]*object.ObjGeneric{},
 	}
 	for i := 0; i < 100; i++ {
 		x := float64(i%10) * 100
@@ -725,12 +726,12 @@ func buildResidualDoc(t *testing.T) *Document {
 		blocks:          map[uint64][]any{},
 		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
-		internalObjects: map[uint64]*objGeneric{},
+		internalObjects: map[uint64]*object.ObjGeneric{},
 	}
 	doc.blocks[100] = []any{
 		&entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {1189000, 0}, {1189000, 841000}, {0, 841000}, {0, 0}}},
 	}
-	doc.internalObjects[100] = &objGeneric{Name: "BLOCK_HEADER", Fields: []objField{{Key: "name", Val: "A1图框"}}}
+	doc.internalObjects[100] = &object.ObjGeneric{Name: "BLOCK_HEADER", Fields: []object.ObjField{{Key: "name", Val: "A1图框"}}}
 	doc.modelSpace = append(doc.modelSpace,
 		&entity.EntInsert{Position: entity.Point3{0, 0, 0}, Scale: entity.Point3{1, 1, 1}, BlockHeader: 100},
 		&entity.EntLine{Start: entity.Point3{100000, 400000, 0}, End: entity.Point3{900000, 400000, 0}},
@@ -842,7 +843,7 @@ func TestResidualSheetsOverlapDrop(t *testing.T) {
 		blocks:          map[uint64][]any{},
 		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
-		internalObjects: map[uint64]*objGeneric{},
+		internalObjects: map[uint64]*object.ObjGeneric{},
 	}
 	sd := newSheetDetector(doc)
 	// 环绕框 (0,0,1000,700) 一圈的高密度点云（每格多点达 cellMin）
@@ -891,7 +892,7 @@ func buildMicroTextDoc(t *testing.T, w, h, hWorld float64) *Document {
 		blocks:          map[uint64][]any{},
 		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
-		internalObjects: map[uint64]*objGeneric{},
+		internalObjects: map[uint64]*object.ObjGeneric{},
 		modelSpace: []any{
 			&entity.EntText{Text: "微缩标注", Insertion: entity.Point3{w / 4, h / 2, 0}, Height: hWorld},
 		},

@@ -2,7 +2,7 @@
 // 重复句柄候选消解（selectBestDuplicateHandles）。记录模型/对象图解码/
 // 记录头定位/类型码命名等最底层记录原语已上提 internal/objrec（打破
 // entity↔object 循环依赖），本文件保留依赖实体扫描的对象层逻辑。
-package cad
+package object
 
 import (
 	"github.com/unitedrhino/go-cad/internal/container"
@@ -12,7 +12,7 @@ import (
 )
 
 // buildObjectIndex 解析 AcDb:Handles 段，构建 handle→offset 对象索引。
-func buildObjectIndex(fileData []byte) ([]objrec.ObjectRef, error) {
+func BuildObjectIndex(fileData []byte) ([]objrec.ObjectRef, error) {
 	handlesData, err := container.LoadNamedSectionData(fileData, "AcDb:Handles")
 	if err != nil {
 		return nil, err
@@ -24,7 +24,7 @@ func buildObjectIndex(fileData []byte) ([]objrec.ObjectRef, error) {
 
 // dedupeSelect 信息：单个候选记录的解析摘要。
 type dedupeSelect struct {
-	parsedOK      bool
+	ParsedOK      bool
 	typeCode      uint16
 	dataSize      uint32
 	isEntity      bool
@@ -50,13 +50,13 @@ const (
 const layerTypeCode = 0x33
 
 // selectBestDuplicateHandles 对重复句柄的候选记录评分择优，输出保持原顺序。
-func selectBestDuplicateHandles(objectsData []byte, refs []objrec.ObjectRef, ver container.DwgVersion, dynamicTypes map[uint16]string) []objrec.ObjectRef {
+func SelectBestDuplicateHandles(objectsData []byte, refs []objrec.ObjectRef, Ver container.DwgVersion, dynamicTypes map[uint16]string) []objrec.ObjectRef {
 	grouped := map[uint64][]objrec.ObjectRef{}
-	for _, r := range refs {
-		grouped[r.Handle] = append(grouped[r.Handle], r)
+	for _, R := range refs {
+		grouped[R.Handle] = append(grouped[R.Handle], R)
 	}
 	type candKey struct {
-		handle uint64
+		Handle uint64
 		offset uint32
 	}
 	infos := map[candKey]dedupeSelect{}
@@ -65,7 +65,7 @@ func selectBestDuplicateHandles(objectsData []byte, refs []objrec.ObjectRef, ver
 			continue
 		}
 		for _, c := range cands {
-			infos[candKey{c.Handle, c.Offset}] = inspectCandidate(objectsData, c, ver, dynamicTypes)
+			infos[candKey{c.Handle, c.Offset}] = InspectCandidate(objectsData, c, Ver, dynamicTypes)
 		}
 	}
 	nearLayer := func(target uint64, offset uint32, cands []objrec.ObjectRef, self uint64) bool {
@@ -74,7 +74,7 @@ func selectBestDuplicateHandles(objectsData []byte, refs []objrec.ObjectRef, ver
 				continue
 			}
 			info, ok := infos[candKey{c.Handle, c.Offset}]
-			if !ok || !info.parsedOK || uint64(info.typeCode) != target {
+			if !ok || !info.ParsedOK || uint64(info.typeCode) != target {
 				continue
 			}
 			diff := int64(c.Offset) - int64(offset)
@@ -88,9 +88,9 @@ func selectBestDuplicateHandles(objectsData []byte, refs []objrec.ObjectRef, ver
 		return false
 	}
 	selected := map[uint64]uint32{}
-	for handle, cands := range grouped {
+	for Handle, cands := range grouped {
 		if len(cands) == 1 {
-			selected[handle] = cands[0].Offset
+			selected[Handle] = cands[0].Offset
 			continue
 		}
 		bestScore := math.MinInt32
@@ -100,7 +100,7 @@ func selectBestDuplicateHandles(objectsData []byte, refs []objrec.ObjectRef, ver
 			if !ok {
 				continue
 			}
-			if !info.parsedOK {
+			if !info.ParsedOK {
 				if bestScore == math.MinInt32 {
 					bestScore = math.MinInt32 / 4
 				}
@@ -128,10 +128,10 @@ func selectBestDuplicateHandles(objectsData []byte, refs []objrec.ObjectRef, ver
 			if info.typeCode == layerTypeCode {
 				// LAYER 表连续性加分：与前/后一句柄的同类型候选相邻
 				matching := 0
-				if nearLayer(layerTypeCode, c.Offset, grouped[handle-1], handle) {
+				if nearLayer(layerTypeCode, c.Offset, grouped[Handle-1], Handle) {
 					matching++
 				}
-				if nearLayer(layerTypeCode, c.Offset, grouped[handle+1], handle) {
+				if nearLayer(layerTypeCode, c.Offset, grouped[Handle+1], Handle) {
 					matching++
 				}
 				switch matching {
@@ -146,14 +146,14 @@ func selectBestDuplicateHandles(objectsData []byte, refs []objrec.ObjectRef, ver
 				bestOffset = c.Offset
 			}
 		}
-		selected[handle] = bestOffset
+		selected[Handle] = bestOffset
 	}
 	out := make([]objrec.ObjectRef, 0, len(refs))
 	seen := map[uint64]bool{}
-	for _, r := range refs {
-		if sel, ok := selected[r.Handle]; ok && sel == r.Offset && !seen[r.Handle] {
-			out = append(out, r)
-			seen[r.Handle] = true
+	for _, R := range refs {
+		if sel, ok := selected[R.Handle]; ok && sel == R.Offset && !seen[R.Handle] {
+			out = append(out, R)
+			seen[R.Handle] = true
 		}
 	}
 	return out
@@ -161,9 +161,9 @@ func selectBestDuplicateHandles(objectsData []byte, refs []objrec.ObjectRef, ver
 
 // inspectCandidate 解析单个候选记录的摘要信息：类型码/数据量/实体归类，
 // 实体类再解公共头验证句柄一致性（仅常见实体类型码）。
-func inspectCandidate(objectsData []byte, c objrec.ObjectRef, ver container.DwgVersion, dynamicTypes map[uint16]string) dedupeSelect {
+func InspectCandidate(objectsData []byte, c objrec.ObjectRef, Ver container.DwgVersion, dynamicTypes map[uint16]string) dedupeSelect {
 	var info dedupeSelect
-	rec, err := objrec.ParseObjectRecord(objectsData, c, ver.R2010Plus())
+	rec, err := objrec.ParseObjectRecord(objectsData, c, Ver.R2010Plus())
 	if err != nil {
 		return info
 	}
@@ -171,14 +171,14 @@ func inspectCandidate(objectsData []byte, c objrec.ObjectRef, ver container.DwgV
 	if err != nil {
 		return info
 	}
-	info.parsedOK = true
+	info.ParsedOK = true
 	info.typeCode = h.TypeCode
 	info.dataSize = rec.Size
 	info.isEntity = objrec.IsEntityType(h.TypeCode, dynamicTypes)
 	if info.isEntity {
-		r := rec.BodyBitStream()
-		r.SetBitPos(h.DataStartBit)
-		if head, err := entity.ParseCommonEntityHeadR2013(r, rec.DataEndBit()); err == nil {
+		R := rec.BodyBitStream()
+		R.SetBitPos(h.DataStartBit)
+		if head, err := entity.ParseCommonEntityHeadR2013(R, rec.DataEndBit()); err == nil {
 			info.decodedHandle = head.Handle
 			info.hasDecoded = true
 		}

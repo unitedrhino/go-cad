@@ -7,6 +7,7 @@ package cad
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/object"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
@@ -82,29 +83,29 @@ func TestDictionaryXrecordFullJSON(t *testing.T) {
 				continue
 			}
 			bad := ""
-			if got, want := dic.numItems, jsonNum(o["numitems"]); got != want {
+			if got, want := dic.NumItems, jsonNum(o["numitems"]); got != want {
 				bad += fmt.Sprintf(" numitems=%d(want %d)", got, want)
 			}
-			if got, want := int(dic.objSizeBit), jsonNum(o["bitsize"]); got != want {
+			if got, want := int(dic.ObjSizeBit), jsonNum(o["bitsize"]); got != want {
 				bad += fmt.Sprintf(" bitsize=%d(want %d)", got, want)
 			}
-			if got, want := dic.cloning, uint16(jsonNum(o["cloning"])); got != want {
+			if got, want := dic.Cloning, uint16(jsonNum(o["cloning"])); got != want {
 				bad += fmt.Sprintf(" cloning=%d(want %d)", got, want)
 			}
-			if got, want := dic.xdicMissing, jsonNum(o["is_xdic_missing"]) == 1; got != want {
+			if got, want := dic.XdicMissing, jsonNum(o["is_xdic_missing"]) == 1; got != want {
 				bad += fmt.Sprintf(" xdic_missing=%v(want %v)", got, want)
 			}
 			// items map：键名 + 句柄（集合对照，JSON map 无序）。
 			// gold 的 items 为 map，重复键（如多个空串键名）会被去重，
 			// 数量以记录自身的 numitems 为准，items 仅校验键句柄匹配。
 			if items, ok := o["items"].(map[string]any); ok {
-				if want, ok2 := o["numitems"]; ok2 && len(dic.texts) != jsonNum(want) {
-					bad += fmt.Sprintf(" numitems=%d(want %d)", len(dic.texts), jsonNum(want))
+				if want, ok2 := o["numitems"]; ok2 && len(dic.Texts) != jsonNum(want) {
+					bad += fmt.Sprintf(" numitems=%d(want %d)", len(dic.Texts), jsonNum(want))
 				}
 				gotSet := map[string]uint64{}
-				for i, k := range dic.texts {
-					if i < len(dic.itemHandles) {
-						gotSet[k] = dic.itemHandles[i]
+				for i, k := range dic.Texts {
+					if i < len(dic.ItemHandles) {
+						gotSet[k] = dic.ItemHandles[i]
 					}
 				}
 				for k, hv := range items {
@@ -129,29 +130,29 @@ func TestDictionaryXrecordFullJSON(t *testing.T) {
 				continue
 			}
 			bad := ""
-			if got, want := int(xr.objSizeBit), jsonNum(o["bitsize"]); got != want {
+			if got, want := int(xr.ObjSizeBit), jsonNum(o["bitsize"]); got != want {
 				bad += fmt.Sprintf(" bitsize=%d(want %d)", got, want)
 			}
-			if got, want := xr.cloning, uint16(jsonNum(o["cloning"])); got != want {
+			if got, want := xr.Cloning, uint16(jsonNum(o["cloning"])); got != want {
 				bad += fmt.Sprintf(" cloning=%d(want %d)", got, want)
 			}
-			if got, want := xr.xdicMissing, jsonNum(o["is_xdic_missing"]) == 1; got != want {
+			if got, want := xr.XdicMissing, jsonNum(o["is_xdic_missing"]) == 1; got != want {
 				bad += fmt.Sprintf(" xdic_missing=%v(want %v)", got, want)
 			}
-			if got, want := xr.xdataSize, jsonNum(o["xdata_size"]); got != want {
+			if got, want := xr.XdataSize, jsonNum(o["xdata_size"]); got != want {
 				bad += fmt.Sprintf(" xdata_size=%d(want %d)", got, want)
 			}
 			// xdata 类型化值逐项对照（gold 每项 [code, value]）
 			if goldXdata, ok := o["xdata"].([]any); ok {
-				if len(goldXdata) != len(xr.xdata) {
-					bad += fmt.Sprintf(" xdata=%d 项(want %d)", len(xr.xdata), len(goldXdata))
+				if len(goldXdata) != len(xr.Xdata) {
+					bad += fmt.Sprintf(" xdata=%d 项(want %d)", len(xr.Xdata), len(goldXdata))
 				} else {
 					for i, gv := range goldXdata {
 						gp, ok := gv.([]any)
 						if !ok || len(gp) != 2 {
 							continue
 						}
-						got := xr.xdata[i]
+						got := xr.Xdata[i]
 						if got.Code != jsonNum(gp[0]) {
 							bad += fmt.Sprintf(" xdata[%d].code=%d(want %d)", i, got.Code, jsonNum(gp[0]))
 							continue
@@ -167,7 +168,7 @@ func TestDictionaryXrecordFullJSON(t *testing.T) {
 			if reactors, ok := o["reactors"].([]any); ok {
 				wantReactors = len(reactors)
 			}
-			if got, want := xr.numReactors, wantReactors; got != want {
+			if got, want := xr.NumReactors, wantReactors; got != want {
 				bad += fmt.Sprintf(" numreactors=%d(want %d)", got, want)
 			}
 			if bad != "" {
@@ -185,13 +186,13 @@ func TestDictionaryXrecordFullJSON(t *testing.T) {
 }
 
 // xdataValueEqual 比较 Go xdata 值与 gold JSON 值是否同形同值
-func xdataValueEqual(it xdataItem, gold any) bool {
+func xdataValueEqual(it object.XdataItem, gold any) bool {
 	switch it.Kind {
-	case xdataReal:
+	case object.XdataReal:
 		// LibreDWG JSON 以 %.14f 输出 REAL（去尾零），完整精度值需按容差比较
 		g, ok := gold.(float64)
 		return ok && math.Abs(it.Float-g) <= 5e-14*math.Max(1, math.Abs(g))
-	case xdataPoint3D:
+	case object.XdataPoint3D:
 		g, ok := gold.([]any)
 		if !ok || len(g) != 3 {
 			return false
@@ -203,10 +204,10 @@ func xdataValueEqual(it xdataItem, gold any) bool {
 			}
 		}
 		return true
-	case xdataString:
+	case object.XdataString:
 		g, ok := gold.(string)
 		return ok && it.Str == g
-	case xdataBinary:
+	case object.XdataBinary:
 		g, ok := gold.(string)
 		return ok && fmt.Sprintf("%X", it.Bytes) == g
 	default:

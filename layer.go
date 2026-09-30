@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/object"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
@@ -257,7 +258,7 @@ func readR2010PlusLayerName(rec *objrec.ObjectRecord) string {
 	libreBase := uint64(rec.HandleSizeFieldBits) + rec.BodyBitOffset
 	r.SetBitPos(libreBase + bitsize - 1)
 	if has, e := r.ReadB(); e == nil && has == 1 {
-		if strs := readStringAreaBitRange(r, libreBase+bitsize, 1, true); len(strs) > 0 {
+		if strs := object.ReadStringAreaBitRange(r, libreBase+bitsize, 1, true); len(strs) > 0 {
 			return strs[0]
 		}
 	}
@@ -365,7 +366,7 @@ func readLayerNameStringStream(rec *objrec.ObjectRecord) (string, bool) {
 	}
 	r := rec.BodyBitStream()
 	r.SetBitPos(h.DataStartBit)
-	bitsize, err := readInlineBitsize(r)
+	bitsize, err := object.ReadInlineBitsize(r)
 	if err != nil {
 		return "", false
 	}
@@ -375,7 +376,7 @@ func readLayerNameStringStream(rec *objrec.ObjectRecord) (string, bool) {
 	if err != nil || has != 1 {
 		return "", false
 	}
-	strs := readStringAreaBitRange(r, base+bitsize, 1, false)
+	strs := object.ReadStringAreaBitRange(r, base+bitsize, 1, false)
 	if len(strs) == 0 {
 		return "", false
 	}

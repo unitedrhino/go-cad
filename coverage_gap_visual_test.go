@@ -8,6 +8,7 @@ import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/entity"
+	"github.com/unitedrhino/go-cad/internal/object"
 	"os"
 	"strings"
 	"testing"
@@ -74,18 +75,18 @@ func TestOle2FrameAuditField(t *testing.T) {
 func TestResbufValueType(t *testing.T) {
 	cases := []struct {
 		gc   int
-		want xdataKind
+		want object.XdataKind
 	}{
-		{-1, xdataHandle}, {0, xdataString}, {4, xdataString}, {5, xdataHandle},
-		{8, xdataString}, {10, xdataPoint3D}, {40, xdataReal}, {60, xdataInt16},
-		{90, xdataInt32}, {100, xdataString}, {105, xdataHandle}, {107, xdataInvalid},
-		{110, xdataPoint3D}, {140, xdataReal}, {160, xdataInt64}, {170, xdataInt16},
-		{200, xdataInvalid}, {210, xdataPoint3D}, {270, xdataInt16}, {280, xdataInt8},
-		{290, xdataBool}, {300, xdataString}, {310, xdataBinary}, {320, xdataHandle},
-		{330, xdataHandle}, {340, xdataHandle}, {370, xdataInt16},
+		{-1, object.XdataHandle}, {0, object.XdataString}, {4, object.XdataString}, {5, object.XdataHandle},
+		{8, object.XdataString}, {10, object.XdataPoint3D}, {40, object.XdataReal}, {60, object.XdataInt16},
+		{90, object.XdataInt32}, {100, object.XdataString}, {105, object.XdataHandle}, {107, object.XdataInvalid},
+		{110, object.XdataPoint3D}, {140, object.XdataReal}, {160, object.XdataInt64}, {170, object.XdataInt16},
+		{200, object.XdataInvalid}, {210, object.XdataPoint3D}, {270, object.XdataInt16}, {280, object.XdataInt8},
+		{290, object.XdataBool}, {300, object.XdataString}, {310, object.XdataBinary}, {320, object.XdataHandle},
+		{330, object.XdataHandle}, {340, object.XdataHandle}, {370, object.XdataInt16},
 	}
 	for _, c := range cases {
-		if got := resbufValueType(c.gc); got != c.want {
+		if got := object.ResbufValueType(c.gc); got != c.want {
 			t.Errorf("resbufValueType(%d) = %v, 期望 %v", c.gc, got, c.want)
 		}
 	}
@@ -227,9 +228,9 @@ func TestDecodeGenericSUN(t *testing.T) {
 	w.WriteBL(1)    // shadow_type
 	w.WriteBS(512)  // shadow_mapsize
 	w.WriteRC(3)    // shadow_softness
-	g := &objGeneric{}
-	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: container.VerR2000}
-	if err := decodeGenericSUN(fr.r, fr.ver, fr, g); err != nil {
+	g := &object.ObjGeneric{}
+	fr := &object.GfRead{R: bitstream.NewBitStream(w.Bytes()), Ver: container.VerR2000}
+	if err := object.DecodeGenericSUN(fr.R, fr.Ver, fr, g); err != nil {
 		t.Fatalf("decodeGenericSUN 失败: %v", err)
 	}
 	if g.Field("intensity") != 0.8 {
@@ -245,9 +246,9 @@ func TestDecodeGenericACSHHistory(t *testing.T) {
 	w.WriteBL(3) // h_nodeid
 	w.WriteB(true)
 	w.WriteB(false)
-	g := &objGeneric{}
-	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: container.VerR2000}
-	if err := decodeGenericACSH_HISTORY_CLASS(fr.r, fr.ver, fr, g); err != nil {
+	g := &object.ObjGeneric{}
+	fr := &object.GfRead{R: bitstream.NewBitStream(w.Bytes()), Ver: container.VerR2000}
+	if err := object.DecodeGenericACSH_HISTORY_CLASS(fr.R, fr.Ver, fr, g); err != nil {
 		t.Fatalf("decodeGenericACSH_HISTORY_CLASS 失败: %v", err)
 	}
 	if g.Field("major") != int64(1) || g.Field("minor") != int64(2) {
@@ -262,10 +263,10 @@ func TestReadCellStyleFields(t *testing.T) {
 	w := bitstream.NewEncWriter()
 	w.WriteBL(1) // type
 	w.WriteBS(0) // data_flags
-	g := &objGeneric{}
-	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: container.VerR2000}
+	g := &object.ObjGeneric{}
+	fr := &object.GfRead{R: bitstream.NewBitStream(w.Bytes()), Ver: container.VerR2000}
 	nHdl := 0
-	if err := readCellStyleFields(fr.r, fr, g, "", &nHdl); err != nil {
+	if err := object.ReadCellStyleFields(fr.R, fr, g, "", &nHdl); err != nil {
 		t.Fatalf("短路径失败: %v", err)
 	}
 
@@ -306,9 +307,9 @@ func TestReadCellStyleFields(t *testing.T) {
 	w2.WriteRC(0)  // CMTC flag
 	w2.WriteBL(25) // linewt（读 BLd 有符号）
 	// 尾部可能还有字段，失败时仅记录（当前只要求不 panic）
-	g2 := &objGeneric{}
-	fr2 := &gfRead{r: bitstream.NewBitStream(w2.Bytes()), ver: container.VerR2000}
-	if err := readCellStyleFields(fr2.r, fr2, g2, "", &nHdl); err != nil {
+	g2 := &object.ObjGeneric{}
+	fr2 := &object.GfRead{R: bitstream.NewBitStream(w2.Bytes()), Ver: container.VerR2000}
+	if err := object.ReadCellStyleFields(fr2.R, fr2, g2, "", &nHdl); err != nil {
 		t.Logf("完整结构尾部截断（可接受）: %v", err)
 	}
 }
@@ -504,9 +505,9 @@ func TestDecodeGenericTABLECONTENT(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		w.WriteBL(0) // top_row/left_col/bottom_row/right_col
 	}
-	g := &objGeneric{}
-	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: container.VerR2004}
-	if err := decodeGenericTABLECONTENT(fr.r, fr.ver, fr, g); err != nil {
+	g := &object.ObjGeneric{}
+	fr := &object.GfRead{R: bitstream.NewBitStream(w.Bytes()), Ver: container.VerR2004}
+	if err := object.DecodeGenericTABLECONTENT(fr.R, fr.Ver, fr, g); err != nil {
 		t.Fatalf("decodeGenericTABLECONTENT 失败: %v", err)
 	}
 	if g.Field("tdata.num_cols") != int64(1) || g.Field("tdata.num_rows") != int64(1) {

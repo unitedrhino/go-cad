@@ -10,6 +10,7 @@ import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/entity"
+	"github.com/unitedrhino/go-cad/internal/object"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"os"
@@ -53,11 +54,11 @@ type Document struct {
 	// 渲染，仅保证解码结果可见（审计/对照）。
 	pspaceSpace []any
 	// R2013+ 内部对象：命名字典与扩展记录（键 = 对象句柄）
-	dictionaries    map[uint64]*objDictionary
-	internalObjects map[uint64]*objGeneric
-	xrecords        map[uint64]*objXrecord // LAYER handle → 颜色
-	skipped         int                    // 解码失败被跳过的对象数
-	entityByHandle  map[uint64]any         // 实体句柄 → 实体对象（审计/round-trip 用）
+	dictionaries    map[uint64]*object.ObjDictionary
+	internalObjects map[uint64]*object.ObjGeneric
+	xrecords        map[uint64]*object.ObjXrecord // LAYER handle → 颜色
+	skipped         int                           // 解码失败被跳过的对象数
+	entityByHandle  map[uint64]any                // 实体句柄 → 实体对象（审计/round-trip 用）
 	// debugFailures 调试：按句柄记录解码失败原因。
 	debugFailures map[uint64]string
 	// r2000Raw R2000/R13/R14 容器的原始写出素材（段整段字节、对象区整块
@@ -94,7 +95,7 @@ func (d *Document) EntityByHandle(h uint64) any { return d.entityByHandle[h] }
 func (d *Document) objRecordR2010Plus() bool { return d.version.R2010Plus() }
 
 // InternalObjects 返回通用内部对象解码结果（SCALE/DICTIONARYVAR/APPID 等）。
-func (d *Document) InternalObjects() map[uint64]*objGeneric { return d.internalObjects }
+func (d *Document) InternalObjects() map[uint64]*object.ObjGeneric { return d.internalObjects }
 
 // decodeInternalObjectOK 判断类型码/类名是否命中通用内部对象解码器。
 func decodeInternalObjectOK(typeCode uint16, className string) bool {
@@ -107,11 +108,11 @@ func decodeInternalObjectOK(typeCode uint16, className string) bool {
 	if typeCode >= 500 || className == "UNKNOWN_OBJ" || className == "ACDBASSOCPERSSUBENTMANAGER" {
 		return true
 	}
-	if _, ok := internalFixedDecoders[typeCode]; ok {
+	if _, ok := object.InternalFixedDecoders[typeCode]; ok {
 		return true
 	}
 	if className != "" {
-		if _, ok := internalClassDecoders[className]; ok {
+		if _, ok := object.InternalClassDecoders[className]; ok {
 			return true
 		}
 	}
@@ -122,7 +123,7 @@ func decodeInternalObjectOK(typeCode uint16, className string) bool {
 func (d *Document) Skipped() int { return d.skipped }
 
 // Xrecords 返回全部 XRECORD 对象（含结构化 xdata）。
-func (d *Document) Xrecords() map[uint64]*objXrecord { return d.xrecords }
+func (d *Document) Xrecords() map[uint64]*object.ObjXrecord { return d.xrecords }
 
 // Parse 解析 DWG 字节流。首版支持 AC1032（R2018）。
 func Parse(data []byte) (*Document, error) {
@@ -145,9 +146,9 @@ func Parse(data []byte) (*Document, error) {
 		blocks:          make(map[uint64][]any),
 		attribs:         make(map[uint64]*entity.EntAttrib),
 		layerColors:     make(map[uint64]layerColor),
-		dictionaries:    make(map[uint64]*objDictionary),
-		xrecords:        make(map[uint64]*objXrecord),
-		internalObjects: make(map[uint64]*objGeneric),
+		dictionaries:    make(map[uint64]*object.ObjDictionary),
+		xrecords:        make(map[uint64]*object.ObjXrecord),
+		internalObjects: make(map[uint64]*object.ObjGeneric),
 	}
 	switch version {
 	case container.VerR2007:
@@ -174,7 +175,7 @@ func Parse(data []byte) (*Document, error) {
 // 失败静默返回空串（按非光度基线解码）。
 func probeLightingUnits(refs []objrec.ObjectRef, objectsData []byte, d *Document, dynamicTypes map[uint16]string) string {
 	vars := map[uint64]string{}
-	dicts := map[uint64]*objDictionary{}
+	dicts := map[uint64]*object.ObjDictionary{}
 	for _, ref := range refs {
 		rec, err := objrec.ParseObjectRecord(objectsData, ref, d.objRecordR2010Plus())
 		if err != nil {
@@ -188,13 +189,13 @@ func probeLightingUnits(refs []objrec.ObjectRef, objectsData []byte, d *Document
 		switch h.TypeCode {
 		case 0x2A:
 			r.SetBitPos(h.DataStartBit)
-			if dd, err := decodeDictionaryObject(r, rec, d.version, d.version >= container.VerR2013); err == nil {
+			if dd, err := object.DecodeDictionaryObject(r, rec, d.version, d.version >= container.VerR2013); err == nil {
 				dicts[ref.Handle] = dd
 			}
 		default:
 			if objrec.EntityTypeName(h.TypeCode, dynamicTypes) == "DICTIONARYVAR" {
 				r.SetBitPos(h.DataStartBit)
-				if g, err := decodeInternalObject(r, rec, d.version, d.version >= container.VerR2013, h.TypeCode, "DICTIONARYVAR", d.codepage); err == nil {
+				if g, err := object.DecodeInternalObject(r, rec, d.version, d.version >= container.VerR2013, h.TypeCode, "DICTIONARYVAR", d.codepage); err == nil {
 					if v, ok := g.Field("strvalue").(string); ok {
 						vars[ref.Handle] = v
 					}
@@ -203,11 +204,11 @@ func probeLightingUnits(refs []objrec.ObjectRef, objectsData []byte, d *Document
 		}
 	}
 	for _, dic := range dicts {
-		for i, txt := range dic.texts {
-			if txt != "LIGHTINGUNITS" || i >= len(dic.itemHandles) {
+		for i, txt := range dic.Texts {
+			if txt != "LIGHTINGUNITS" || i >= len(dic.ItemHandles) {
 				continue
 			}
-			if v, ok := vars[dic.itemHandles[i]]; ok {
+			if v, ok := vars[dic.ItemHandles[i]]; ok {
 				return v
 			}
 		}
@@ -221,7 +222,7 @@ func (d *Document) decodeObjects(fileData []byte) error {
 	if err != nil {
 		return fmt.Errorf("cad: 加载对象数据段失败: %w", err)
 	}
-	index, err := buildObjectIndex(fileData)
+	index, err := object.BuildObjectIndex(fileData)
 	if err != nil {
 		return fmt.Errorf("cad: 加载对象索引段失败: %w", err)
 	}
@@ -254,7 +255,7 @@ func (d *Document) decodeObjects(fileData []byte) error {
 		case 0x2A: // DICTIONARY
 			r := rec.BodyBitStream()
 			r.SetBitPos(h.DataStartBit)
-			if dd, err := decodeDictionaryObject(r, rec, d.version, d.version >= container.VerR2013); err == nil {
+			if dd, err := object.DecodeDictionaryObject(r, rec, d.version, d.version >= container.VerR2013); err == nil {
 				d.dictionaries[ref.Handle] = dd
 			} else if os.Getenv("CAD_DECODE_DBG") != "" {
 				fmt.Fprintf(os.Stderr, "[dic] h=%d %v\n", ref.Handle, err)
@@ -263,7 +264,7 @@ func (d *Document) decodeObjects(fileData []byte) error {
 		case 0x4F: // XRECORD
 			r := rec.BodyBitStream()
 			r.SetBitPos(h.DataStartBit)
-			if xx, err := decodeXrecordObject(r, rec, d.version, d.version >= container.VerR2013); err == nil {
+			if xx, err := object.DecodeXrecordObject(r, rec, d.version, d.version >= container.VerR2013); err == nil {
 				d.xrecords[ref.Handle] = xx
 			} else if os.Getenv("CAD_DECODE_DBG") != "" {
 				fmt.Fprintf(os.Stderr, "[xrec] h=%d %v\n", ref.Handle, err)
@@ -276,7 +277,7 @@ func (d *Document) decodeObjects(fileData []byte) error {
 			if decodeInternalObjectOK(h.TypeCode, name) {
 				r := rec.BodyBitStream()
 				r.SetBitPos(h.DataStartBit)
-				if g, err := decodeInternalObject(r, rec, d.version, d.version >= container.VerR2013, h.TypeCode, name, d.codepage); err == nil {
+				if g, err := object.DecodeInternalObject(r, rec, d.version, d.version >= container.VerR2013, h.TypeCode, name, d.codepage); err == nil {
 					d.internalObjects[ref.Handle] = g
 				} else if os.Getenv("CAD_DECODE_DBG") != "" {
 					fmt.Fprintf(os.Stderr, "[obj] h=%d type=%X %v\n", ref.Handle, h.TypeCode, err)
@@ -591,9 +592,9 @@ func parseR2000Document(data []byte) (*Document, error) {
 		attribs:     make(map[uint64]*entity.EntAttrib),
 		layerColors: make(map[uint64]layerColor),
 	}
-	doc.dictionaries = make(map[uint64]*objDictionary)
-	doc.xrecords = make(map[uint64]*objXrecord)
-	doc.internalObjects = make(map[uint64]*objGeneric)
+	doc.dictionaries = make(map[uint64]*object.ObjDictionary)
+	doc.xrecords = make(map[uint64]*object.ObjXrecord)
+	doc.internalObjects = make(map[uint64]*object.ObjGeneric)
 	objectMap, err := container.ReadR2000Section(data, container.R2000SecObjectMap)
 	if err != nil {
 		return nil, fmt.Errorf("cad: 加载对象图失败: %w", err)
@@ -630,14 +631,14 @@ func parseR2000Document(data []byte) (*Document, error) {
 		case 0x2A: // DICTIONARY
 			r := rec.BodyBitStream()
 			r.SetBitPos(h.DataStartBit)
-			if dd, err := decodeDictionaryObject(r, rec, doc.version, false); err == nil {
+			if dd, err := object.DecodeDictionaryObject(r, rec, doc.version, false); err == nil {
 				doc.dictionaries[ref.Handle] = dd
 			}
 			continue
 		case 0x4F: // XRECORD
 			r := rec.BodyBitStream()
 			r.SetBitPos(h.DataStartBit)
-			if xx, err := decodeXrecordObject(r, rec, doc.version, false); err == nil {
+			if xx, err := object.DecodeXrecordObject(r, rec, doc.version, false); err == nil {
 				doc.xrecords[ref.Handle] = xx
 			}
 			continue
@@ -647,7 +648,7 @@ func parseR2000Document(data []byte) (*Document, error) {
 			// R13/R14 的 XRECORD 为类类型（type≥500 经类名表解析），非固定 0x4F
 			r := rec.BodyBitStream()
 			r.SetBitPos(h.DataStartBit)
-			if xx, err := decodeXrecordObject(r, rec, doc.version, false); err == nil {
+			if xx, err := object.DecodeXrecordObject(r, rec, doc.version, false); err == nil {
 				doc.xrecords[ref.Handle] = xx
 			}
 			continue
@@ -658,7 +659,7 @@ func parseR2000Document(data []byte) (*Document, error) {
 		} else if decodeInternalObjectOK(h.TypeCode, name) {
 			r := rec.BodyBitStream()
 			r.SetBitPos(h.DataStartBit)
-			if g, err := decodeInternalObject(r, rec, doc.version, false, h.TypeCode, name, doc.codepage); err == nil {
+			if g, err := object.DecodeInternalObject(r, rec, doc.version, false, h.TypeCode, name, doc.codepage); err == nil {
 				doc.internalObjects[ref.Handle] = g
 			} else if os.Getenv("CAD_DECODE_DBG") != "" {
 				fmt.Fprintf(os.Stderr, "[obj] h=%d type=%X %v\n", ref.Handle, h.TypeCode, err)
@@ -707,7 +708,7 @@ func DebugObjectIndexExport(data []byte) ([]struct {
 	Handle uint64
 	Offset uint32
 }, error) {
-	refs, err := buildObjectIndex(data)
+	refs, err := object.BuildObjectIndex(data)
 	if err != nil {
 		return nil, err
 	}
@@ -1323,7 +1324,7 @@ func DebugObjectBody(data []byte, handle uint64) (body []byte, bitOffset uint64,
 	if err != nil {
 		return nil, 0, err
 	}
-	index, err := buildObjectIndex(data)
+	index, err := object.BuildObjectIndex(data)
 	if err != nil {
 		return nil, 0, err
 	}

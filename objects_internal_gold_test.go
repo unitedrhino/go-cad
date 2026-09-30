@@ -74,32 +74,32 @@ func TestDictionaryXrecordGold2018(t *testing.T) {
 	if !ok {
 		t.Fatalf("DICTIONARY h=12 未解析到（当前字典数=%d）", len(doc.dictionaries))
 	}
-	if dic.numItems != goldDictionary2018.numItems {
-		t.Errorf("DICTIONARY numitems=%d, 期望 %d", dic.numItems, goldDictionary2018.numItems)
+	if dic.NumItems != goldDictionary2018.numItems {
+		t.Errorf("DICTIONARY numitems=%d, 期望 %d", dic.NumItems, goldDictionary2018.numItems)
 	}
-	if dic.objSizeBit != goldDictionary2018.bitsize {
-		t.Errorf("DICTIONARY bitsize=%d, 期望 %d", dic.objSizeBit, goldDictionary2018.bitsize)
+	if dic.ObjSizeBit != goldDictionary2018.bitsize {
+		t.Errorf("DICTIONARY bitsize=%d, 期望 %d", dic.ObjSizeBit, goldDictionary2018.bitsize)
 	}
-	if dic.cloning != goldDictionary2018.cloning {
-		t.Errorf("DICTIONARY cloning=%d, 期望 %d", dic.cloning, goldDictionary2018.cloning)
+	if dic.Cloning != goldDictionary2018.cloning {
+		t.Errorf("DICTIONARY cloning=%d, 期望 %d", dic.Cloning, goldDictionary2018.cloning)
 	}
-	if dic.xdicMissing != goldDictionary2018.xdicMissing {
-		t.Errorf("DICTIONARY xdic_missing=%v, 期望 %v", dic.xdicMissing, goldDictionary2018.xdicMissing)
+	if dic.XdicMissing != goldDictionary2018.xdicMissing {
+		t.Errorf("DICTIONARY xdic_missing=%v, 期望 %v", dic.XdicMissing, goldDictionary2018.xdicMissing)
 	}
-	if len(dic.texts) != len(goldDictionary2018.texts) {
-		t.Fatalf("DICTIONARY texts=%d 项, 期望 %d: %v", len(dic.texts), len(goldDictionary2018.texts), dic.texts)
+	if len(dic.Texts) != len(goldDictionary2018.texts) {
+		t.Fatalf("DICTIONARY texts=%d 项, 期望 %d: %v", len(dic.Texts), len(goldDictionary2018.texts), dic.Texts)
 	}
 	for i, want := range goldDictionary2018.texts {
-		if dic.texts[i] != want {
-			t.Errorf("DICTIONARY text[%d]=%q, 期望 %q", i, dic.texts[i], want)
+		if dic.Texts[i] != want {
+			t.Errorf("DICTIONARY text[%d]=%q, 期望 %q", i, dic.Texts[i], want)
 		}
 	}
-	if len(dic.itemHandles) != len(goldDictionary2018.itemHandles) {
-		t.Fatalf("DICTIONARY itemHandles=%d 项, 期望 %d: %v", len(dic.itemHandles), len(goldDictionary2018.itemHandles), dic.itemHandles)
+	if len(dic.ItemHandles) != len(goldDictionary2018.itemHandles) {
+		t.Fatalf("DICTIONARY itemHandles=%d 项, 期望 %d: %v", len(dic.ItemHandles), len(goldDictionary2018.itemHandles), dic.ItemHandles)
 	}
 	for i, want := range goldDictionary2018.itemHandles {
-		if dic.itemHandles[i] != want {
-			t.Errorf("DICTIONARY itemHandle[%d]=%d, 期望 %d", i, dic.itemHandles[i], want)
+		if dic.ItemHandles[i] != want {
+			t.Errorf("DICTIONARY itemHandle[%d]=%d, 期望 %d", i, dic.ItemHandles[i], want)
 		}
 	}
 
@@ -108,23 +108,23 @@ func TestDictionaryXrecordGold2018(t *testing.T) {
 	if !ok {
 		t.Fatalf("XRECORD h=619 未解析到（当前 XRECORD 数=%d）", len(doc.xrecords))
 	}
-	if xr.objSizeBit != goldXrecord2018.bitsize {
-		t.Errorf("XRECORD bitsize=%d, 期望 %d", xr.objSizeBit, goldXrecord2018.bitsize)
+	if xr.ObjSizeBit != goldXrecord2018.bitsize {
+		t.Errorf("XRECORD bitsize=%d, 期望 %d", xr.ObjSizeBit, goldXrecord2018.bitsize)
 	}
-	if xr.cloning != goldXrecord2018.cloning {
-		t.Errorf("XRECORD cloning=%d, 期望 %d", xr.cloning, goldXrecord2018.cloning)
+	if xr.Cloning != goldXrecord2018.cloning {
+		t.Errorf("XRECORD cloning=%d, 期望 %d", xr.Cloning, goldXrecord2018.cloning)
 	}
-	if xr.xdicMissing != goldXrecord2018.xdicMissing {
-		t.Errorf("XRECORD xdic_missing=%v, 期望 %v", xr.xdicMissing, goldXrecord2018.xdicMissing)
+	if xr.XdicMissing != goldXrecord2018.xdicMissing {
+		t.Errorf("XRECORD xdic_missing=%v, 期望 %v", xr.XdicMissing, goldXrecord2018.xdicMissing)
 	}
-	if xr.owner != goldXrecord2018.owner {
-		t.Errorf("XRECORD owner=%d, 期望 %d", xr.owner, goldXrecord2018.owner)
+	if xr.Owner != goldXrecord2018.owner {
+		t.Errorf("XRECORD owner=%d, 期望 %d", xr.Owner, goldXrecord2018.owner)
 	}
-	if xr.numReactors != goldXrecord2018.numReactors {
-		t.Errorf("XRECORD numreactors=%d, 期望 %d", xr.numReactors, goldXrecord2018.numReactors)
+	if xr.NumReactors != goldXrecord2018.numReactors {
+		t.Errorf("XRECORD numreactors=%d, 期望 %d", xr.NumReactors, goldXrecord2018.numReactors)
 	}
-	if xr.xdataSize != goldXrecord2018.xdataSize {
-		t.Errorf("XRECORD xdata_size=%d, 期望 %d", xr.xdataSize, goldXrecord2018.xdataSize)
+	if xr.XdataSize != goldXrecord2018.xdataSize {
+		t.Errorf("XRECORD xdata_size=%d, 期望 %d", xr.XdataSize, goldXrecord2018.xdataSize)
 	}
 }
 

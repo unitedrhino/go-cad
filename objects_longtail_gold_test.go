@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/entity"
+	"github.com/unitedrhino/go-cad/internal/object"
 	"math"
 	"os"
 	"path/filepath"
@@ -72,7 +73,7 @@ func goldHandleRef(v any) (uint64, bool) {
 
 // checkNumField 断言 objGeneric 标量字段与 gold 数值一致（不一致记入 bad；
 // bool 字段按 0/1 归一，与审计框架 auditValueMatch 同规则）。
-func checkNumField(bad *string, g *objGeneric, key string, want float64) {
+func checkNumField(bad *string, g *object.ObjGeneric, key string, want float64) {
 	switch got := g.Field(key).(type) {
 	case int64:
 		if math.Abs(float64(got)-want) >= 1e-6 {
@@ -88,7 +89,7 @@ func checkNumField(bad *string, g *objGeneric, key string, want float64) {
 }
 
 // checkHandleField 断言 objGeneric 单句柄字段与 gold 句柄数组末位一致。
-func checkHandleField(bad *string, g *objGeneric, key string, goldVal any) {
+func checkHandleField(bad *string, g *object.ObjGeneric, key string, goldVal any) {
 	want, ok := goldHandleRef(goldVal)
 	if !ok {
 		return
@@ -104,7 +105,7 @@ func checkHandleField(bad *string, g *objGeneric, key string, goldVal any) {
 }
 
 // checkHandleVector 断言 objGeneric 展开键（key[i]）句柄向量与 gold 数组逐项一致。
-func checkHandleVector(bad *string, g *objGeneric, key string, goldArr []any) {
+func checkHandleVector(bad *string, g *object.ObjGeneric, key string, goldArr []any) {
 	for i, gv := range goldArr {
 		want, ok := goldHandleRef(gv)
 		if !ok {
@@ -215,7 +216,7 @@ func goldFloat(v any) float64 {
 }
 
 // checkStrField 断言 objGeneric 字符串字段与 gold 一致。
-func checkStrField(bad *string, g *objGeneric, key string, want any) {
+func checkStrField(bad *string, g *object.ObjGeneric, key string, want any) {
 	w, ok := want.(string)
 	if !ok {
 		return
@@ -231,7 +232,7 @@ func checkStrField(bad *string, g *objGeneric, key string, want any) {
 }
 
 // checkPoint2Field 断言 objGeneric 2RD 字段（[]float64{x y}）与 gold 数组一致。
-func checkPoint2Field(bad *string, g *objGeneric, key string, goldVal any) {
+func checkPoint2Field(bad *string, g *object.ObjGeneric, key string, goldVal any) {
 	arr, ok := goldVal.([]any)
 	if !ok || len(arr) != 2 {
 		return
@@ -595,7 +596,7 @@ func jsonHandleNum(v any) uint64 {
 
 // checkNum1 断言浮点字段（BD angle/ltype_scale 等），经 FieldPath 取值
 // （支持 color.index 这类嵌套 map 键下钻；int64/float64 均接受）。
-func checkNum1(bad *string, g *objGeneric, key string, want float64) {
+func checkNum1(bad *string, g *object.ObjGeneric, key string, want float64) {
 	var got float64
 	switch v := g.FieldPath(key).(type) {
 	case float64:
@@ -612,7 +613,7 @@ func checkNum1(bad *string, g *objGeneric, key string, want float64) {
 }
 
 // checkPoint3Field 断言 3BD 字段（[]float64{x y z}）与 gold 数组一致。
-func checkPoint3Field(bad *string, g *objGeneric, key string, goldVal any) {
+func checkPoint3Field(bad *string, g *object.ObjGeneric, key string, goldVal any) {
 	arr, ok := goldVal.([]any)
 	if !ok || len(arr) != 3 {
 		return
@@ -631,7 +632,7 @@ func checkPoint3Field(bad *string, g *objGeneric, key string, goldVal any) {
 }
 
 // checkClipVerts 断言 2RD 顶点数组（clip_verts[i] 键）与 gold 嵌套数组一致。
-func checkClipVerts(bad *string, g *objGeneric, key string, goldVal any) {
+func checkClipVerts(bad *string, g *object.ObjGeneric, key string, goldVal any) {
 	arr, ok := goldVal.([]any)
 	if !ok {
 		return

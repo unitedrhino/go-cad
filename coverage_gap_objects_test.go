@@ -8,6 +8,7 @@ import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/entity"
+	"github.com/unitedrhino/go-cad/internal/object"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"os"
 	"path/filepath"
@@ -40,10 +41,10 @@ func TestReadTableValueFields(t *testing.T) {
 	for _, tc := range cases {
 		w := bitstream.NewEncWriter()
 		tc.build(w)
-		g := &objGeneric{}
+		g := &object.ObjGeneric{}
 		nHdl := 0
-		fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: container.VerR2004}
-		err := readTableValueFields(fr.r, fr, g, "", &nHdl)
+		fr := &object.GfRead{R: bitstream.NewBitStream(w.Bytes()), Ver: container.VerR2004}
+		err := object.ReadTableValueFields(fr.R, fr, g, "", &nHdl)
 		if tc.failed {
 			if err == nil {
 				t.Errorf("%s: 应返回错误", tc.name)
@@ -70,9 +71,9 @@ func TestReadTableValueFields(t *testing.T) {
 	// R2007+ has_strings=0 时尾部三串为 TU 内联（fr2.hasStrings=false）
 	w2.WriteTU("FMT")
 	w2.WriteTU("VAL")
-	g2 := &objGeneric{}
-	fr2 := &gfRead{r: bitstream.NewBitStream(w2.Bytes()), ver: container.VerR2018}
-	if err := readTableValueFields(fr2.r, fr2, g2, "v.", new(int)); err != nil {
+	g2 := &object.ObjGeneric{}
+	fr2 := &object.GfRead{R: bitstream.NewBitStream(w2.Bytes()), Ver: container.VerR2018}
+	if err := object.ReadTableValueFields(fr2.R, fr2, g2, "v.", new(int)); err != nil {
 		t.Fatalf("R2007 skip 分支失败: %v", err)
 	}
 	if g2.Field("v.value_string") == nil {
@@ -86,9 +87,9 @@ func TestReadTableValueFields(t *testing.T) {
 	w3.WriteBL(42)  // data_long
 	w3.WriteBL(12)  // unit_type = 12（不读 value_string）
 	w3.WriteTV("F") // format_string
-	g3 := &objGeneric{}
-	fr3 := &gfRead{r: bitstream.NewBitStream(w3.Bytes()), ver: container.VerR2018}
-	if err := readTableValueFields(fr3.r, fr3, g3, "", new(int)); err != nil {
+	g3 := &object.ObjGeneric{}
+	fr3 := &object.GfRead{R: bitstream.NewBitStream(w3.Bytes()), Ver: container.VerR2018}
+	if err := object.ReadTableValueFields(fr3.R, fr3, g3, "", new(int)); err != nil {
 		t.Fatalf("R2007 kLong 分支失败: %v", err)
 	}
 	if v, _ := g3.Field("data_long").(int64); v != 42 {
@@ -102,8 +103,8 @@ func TestReadTableValueFields(t *testing.T) {
 func TestGfReadRL(t *testing.T) {
 	w := bitstream.NewEncWriter()
 	w.WriteRL(0xAABBCCDD)
-	g := &objGeneric{}
-	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: container.VerR2000}
+	g := &object.ObjGeneric{}
+	fr := &object.GfRead{R: bitstream.NewBitStream(w.Bytes()), Ver: container.VerR2000}
 	if err := fr.RL("k", g); err != nil {
 		t.Fatalf("RL 失败: %v", err)
 	}
@@ -116,7 +117,7 @@ func TestGfReadRL(t *testing.T) {
 
 // TestObjGenericFieldPath FieldPath 三级匹配顺序。
 func TestObjGenericFieldPath(t *testing.T) {
-	g := &objGeneric{Fields: []objField{
+	g := &object.ObjGeneric{Fields: []object.ObjField{
 		{"plain", int64(1)},
 		{"cells[0]", map[string]any{"inner": int64(2)}},
 		{"arr", []any{int64(3)}},
@@ -142,22 +143,22 @@ func TestObjGenericFieldPath(t *testing.T) {
 
 // TestXrecordAccessors XdataSize/XdataItems/KindName/Val 全 kind。
 func TestXrecordAccessors(t *testing.T) {
-	items := []xdataItem{
-		{Kind: xdataInvalid},
-		{Code: 1, Kind: xdataString, Str: "txt"},
-		{Code: 10, Kind: xdataReal, Float: 1.5},
-		{Code: 70, Kind: xdataInt8, Int: 1},
-		{Code: 70, Kind: xdataInt16, Int: 2},
-		{Code: 70, Kind: xdataInt32, Int: 3},
-		{Code: 70, Kind: xdataInt64, Int: 4},
-		{Code: 40, Kind: xdataPoint3D, Point: [3]float64{1, 2, 3}},
-		{Code: 310, Kind: xdataBinary, Bytes: []byte{0xBE, 0xEF}},
-		{Code: 330, Kind: xdataHandle, Int: 99},
-		{Code: 0, Kind: xdataKind(len("0123456789") + 10)}, // 越界 kind
+	items := []object.XdataItem{
+		{Kind: object.XdataInvalid},
+		{Code: 1, Kind: object.XdataString, Str: "txt"},
+		{Code: 10, Kind: object.XdataReal, Float: 1.5},
+		{Code: 70, Kind: object.XdataInt8, Int: 1},
+		{Code: 70, Kind: object.XdataInt16, Int: 2},
+		{Code: 70, Kind: object.XdataInt32, Int: 3},
+		{Code: 70, Kind: object.XdataInt64, Int: 4},
+		{Code: 40, Kind: object.XdataPoint3D, Point: [3]float64{1, 2, 3}},
+		{Code: 310, Kind: object.XdataBinary, Bytes: []byte{0xBE, 0xEF}},
+		{Code: 330, Kind: object.XdataHandle, Int: 99},
+		{Code: 0, Kind: object.XdataKind(len("0123456789") + 10)}, // 越界 kind
 	}
-	x := &objXrecord{xdataSize: 42, xdata: items}
-	if x.XdataSize() != 42 {
-		t.Errorf("XdataSize = %d", x.XdataSize())
+	x := &object.ObjXrecord{XdataSize: 42, Xdata: items}
+	if x.XdataSizeBytes() != 42 {
+		t.Errorf("XdataSize = %d", x.XdataSizeBytes())
 	}
 	if len(x.XdataItems()) != len(items) {
 		t.Errorf("XdataItems 长度 = %d", len(x.XdataItems()))
@@ -188,10 +189,10 @@ func TestXrecordAccessors(t *testing.T) {
 // TestDumpBitsAndSkipEEDChain dumpBits 位串输出与 EED 链收集。
 func TestDumpBitsAndSkipEEDChain(t *testing.T) {
 	r := bitstream.NewBitStream([]byte{0b10110000, 0xFF})
-	if got := dumpBits(r, 0, 4); got != "1011" {
+	if got := object.DumpBits(r, 0, 4); got != "1011" {
 		t.Errorf("dumpBits = %q", got)
 	}
-	if got := dumpBits(r, 12, 32); got == "" {
+	if got := object.DumpBits(r, 12, 32); got == "" {
 		t.Error("越界范围应返回空串而非 panic")
 	}
 
@@ -201,7 +202,7 @@ func TestDumpBitsAndSkipEEDChain(t *testing.T) {
 	w.WriteH(4, 1, 0x0A)
 	w.WriteTF([]byte{1, 2, 3})
 	w.WriteBS(0)
-	bits, err := skipEEDChainCollect(bitstream.NewBitStream(w.Bytes()))
+	bits, err := object.SkipEEDChainCollect(bitstream.NewBitStream(w.Bytes()))
 	if err != nil {
 		t.Fatalf("skipEEDChainCollect 失败: %v", err)
 	}
@@ -226,7 +227,7 @@ func TestSelectBestDuplicateHandles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	refs, err := buildObjectIndex(data)
+	refs, err := object.BuildObjectIndex(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,15 +235,15 @@ func TestSelectBestDuplicateHandles(t *testing.T) {
 		t.Fatal("样本对象图为空")
 	}
 	// 单候选摘要
-	info := inspectCandidate(objectsData, refs[0], container.VerR2004, nil)
-	if !info.parsedOK {
+	info := object.InspectCandidate(objectsData, refs[0], container.VerR2004, nil)
+	if !info.ParsedOK {
 		t.Fatal("inspectCandidate 应解析成功")
 	}
 	// 构造重复：首条候选复制一份（同句柄同偏移）
 	dup := make([]objrec.ObjectRef, 0, len(refs)+1)
 	dup = append(dup, refs[0], refs[0])
 	dup = append(dup, refs[1:]...)
-	selected := selectBestDuplicateHandles(objectsData, dup, container.VerR2004, nil)
+	selected := object.SelectBestDuplicateHandles(objectsData, dup, container.VerR2004, nil)
 	if len(selected) == 0 {
 		t.Fatal("择优输出为空")
 	}

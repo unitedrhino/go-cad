@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/object"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
@@ -49,7 +50,7 @@ func TestPlaceHolderRoundTrip(t *testing.T) {
 		Size:          uint32(len(body2)),
 	}
 	// 重解码：className 用首次解码的真实类名（ACDBPLACEHOLDER）
-	g2, err := decodeInternalObject(rec2.BodyBitStream(), rec2, container.VerR2000, false, 0x50, "ACDBPLACEHOLDER", 30)
+	g2, err := object.DecodeInternalObject(rec2.BodyBitStream(), rec2, container.VerR2000, false, 0x50, "ACDBPLACEHOLDER", 30)
 	if err != nil {
 		t.Fatalf("重解码失败: %v", err)
 	}
@@ -102,11 +103,11 @@ func TestXrecordRoundTripSynthetic(t *testing.T) {
 	w.WriteBS(0) // EED 终止
 	w.WriteBL(0) // num_reactors = 0
 	// xdata：4 个 item（INT16 1 / INT16 2 / RC 码页字符串 / POINT 退化为忽略）
-	items := []xdataItem{
-		{Code: 270, Kind: xdataInt16, Int: 1},
-		{Code: 271, Kind: xdataInt16, Int: 2},
-		{Code: 300, Kind: xdataString, Str: "abc"},
-		{Code: 40, Kind: xdataReal, Float: 2.5},
+	items := []object.XdataItem{
+		{Code: 270, Kind: object.XdataInt16, Int: 1},
+		{Code: 271, Kind: object.XdataInt16, Int: 2},
+		{Code: 300, Kind: object.XdataString, Str: "abc"},
+		{Code: 40, Kind: object.XdataReal, Float: 2.5},
 	}
 	xd := bitstream.NewEncWriter()
 	if err := encodeXdataItems(xd, items, false); err != nil {
@@ -138,25 +139,25 @@ func TestXrecordRoundTripSynthetic(t *testing.T) {
 	original[3] = uint8(datEnd >> 24)
 
 	rec := &objrec.ObjectRecord{Body: original, BodyBitOffset: 0, Size: uint32(len(original))}
-	x1, err := decodeXrecordObject(rec.BodyBitStream(), rec, container.VerR2000, false)
+	x1, err := object.DecodeXrecordObject(rec.BodyBitStream(), rec, container.VerR2000, false)
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
 	// 字段断言
-	if x1.xdataSize != len(xdBytes) {
-		t.Errorf("xdataSize: %d != %d", x1.xdataSize, len(xdBytes))
+	if x1.XdataSize != len(xdBytes) {
+		t.Errorf("xdataSize: %d != %d", x1.XdataSize, len(xdBytes))
 	}
-	if len(x1.xdata) != 4 {
-		t.Fatalf("xdata 项数: %d != 4", len(x1.xdata))
+	if len(x1.Xdata) != 4 {
+		t.Fatalf("xdata 项数: %d != 4", len(x1.Xdata))
 	}
-	if x1.xdata[0].Code != 270 || x1.xdata[0].Int != 1 {
-		t.Errorf("xdata[0]: %+v", x1.xdata[0])
+	if x1.Xdata[0].Code != 270 || x1.Xdata[0].Int != 1 {
+		t.Errorf("xdata[0]: %+v", x1.Xdata[0])
 	}
-	for i, it := range x1.xdata {
+	for i, it := range x1.Xdata {
 		t.Logf("xdata[%d] code=%d kind=%d str=%q int=%d float=%v bytes=% X", i, it.Code, it.Kind, it.Str, it.Int, it.Float, it.Bytes)
 	}
-	if x1.xdata[3].Float != 2.5 {
-		t.Errorf("xdata[3].Float: %v", x1.xdata[3].Float)
+	if x1.Xdata[3].Float != 2.5 {
+		t.Errorf("xdata[3].Float: %v", x1.Xdata[3].Float)
 	}
 	// 重编码：合成流句柄均为绝对编码，RawHandleBits 原样写回，
 	// 要求位流逐字节一致
@@ -168,29 +169,29 @@ func TestXrecordRoundTripSynthetic(t *testing.T) {
 		t.Fatalf("重编码位流不一致:\n got % X\nwant % X", body2, original)
 	}
 	rec2 := &objrec.ObjectRecord{Body: body2, BodyBitOffset: 0, Size: uint32(len(body2))}
-	x2, err := decodeXrecordObject(rec2.BodyBitStream(), rec2, container.VerR2000, false)
+	x2, err := object.DecodeXrecordObject(rec2.BodyBitStream(), rec2, container.VerR2000, false)
 	if err != nil {
 		t.Fatalf("重解码失败: %v", err)
 	}
-	if x2.handle != x1.handle {
-		t.Errorf("handle: %d != %d", x2.handle, x1.handle)
+	if x2.Handle != x1.Handle {
+		t.Errorf("handle: %d != %d", x2.Handle, x1.Handle)
 	}
-	if x2.xdataSize != x1.xdataSize || len(x2.xdata) != len(x1.xdata) {
-		t.Fatalf("xdataSize: %d != %d", x2.xdataSize, x1.xdataSize)
+	if x2.XdataSize != x1.XdataSize || len(x2.Xdata) != len(x1.Xdata) {
+		t.Fatalf("xdataSize: %d != %d", x2.XdataSize, x1.XdataSize)
 	}
-	for i := range x1.xdata {
-		a, b := x1.xdata[i], x2.xdata[i]
+	for i := range x1.Xdata {
+		a, b := x1.Xdata[i], x2.Xdata[i]
 		if a.Code != b.Code || a.Kind != b.Kind || a.Int != b.Int ||
 			a.Float != b.Float || a.Str != b.Str ||
 			string(a.Bytes) != string(b.Bytes) {
 			t.Errorf("xdata[%d] 不一致: %+v vs %+v", i, b, a)
 		}
 	}
-	if x2.cloning != x1.cloning {
-		t.Errorf("cloning: %d != %d", x2.cloning, x1.cloning)
+	if x2.Cloning != x1.Cloning {
+		t.Errorf("cloning: %d != %d", x2.Cloning, x1.Cloning)
 	}
-	if x2.numObjidHandles != x1.numObjidHandles {
-		t.Errorf("numObjidHandles: %d != %d", x2.numObjidHandles, x1.numObjidHandles)
+	if x2.NumObjidHandles != x1.NumObjidHandles {
+		t.Errorf("numObjidHandles: %d != %d", x2.NumObjidHandles, x1.NumObjidHandles)
 	}
 }
 
@@ -220,11 +221,11 @@ func TestXrecordRoundTrip(t *testing.T) {
 		}
 		supported := doc.version == container.VerR2000
 		for _, x1 := range doc.xrecords {
-			if x1 == nil || x1.xdataSize <= 0 || len(x1.xdata) == 0 {
+			if x1 == nil || x1.XdataSize <= 0 || len(x1.Xdata) == 0 {
 				continue
 			}
 			if !supported {
-				t.Logf("%s h=%d 版本 %v 编码器未覆盖，跳过", name, x1.handle, doc.version)
+				t.Logf("%s h=%d 版本 %v 编码器未覆盖，跳过", name, x1.Handle, doc.version)
 				skipCnt++
 				continue
 			}
@@ -233,50 +234,50 @@ func TestXrecordRoundTrip(t *testing.T) {
 			// 二进制 xdata 被误作 string 解析，回放必然不对称。此类对象
 			// 记缺陷跳过并留证据；其余任何不一致仍按失败处理。
 			hasBinaryDefect := false
-			for _, it := range x1.xdata {
+			for _, it := range x1.Xdata {
 				if it.Code == 1004 {
 					hasBinaryDefect = true
 					break
 				}
 			}
 			if hasBinaryDefect {
-				t.Logf("%s h=%d 含 1004 binary xdata（resbufValueType 1004 分支不可达缺陷），跳过比对", name, x1.handle)
+				t.Logf("%s h=%d 含 1004 binary xdata（resbufValueType 1004 分支不可达缺陷），跳过比对", name, x1.Handle)
 				defectCnt++
 				continue
 			}
 			body2, err := encodeXrecordR2000(x1, doc.version)
 			if err != nil {
-				t.Errorf("%s h=%d 重编码失败: %v", name, x1.handle, err)
+				t.Errorf("%s h=%d 重编码失败: %v", name, x1.Handle, err)
 				continue
 			}
-			t.Logf("%s h=%d xdataSize=%d items=%d body2=%d 字节", name, x1.handle, x1.xdataSize, len(x1.xdata), len(body2))
+			t.Logf("%s h=%d xdataSize=%d items=%d body2=%d 字节", name, x1.Handle, x1.XdataSize, len(x1.Xdata), len(body2))
 			rec2 := &objrec.ObjectRecord{Body: body2, BodyBitOffset: 0, Size: uint32(len(body2))}
-			x2, err := decodeXrecordObject(rec2.BodyBitStream(), rec2, doc.version, false)
+			x2, err := object.DecodeXrecordObject(rec2.BodyBitStream(), rec2, doc.version, false)
 			if err != nil {
-				t.Errorf("%s h=%d 重解码失败: %v", name, x1.handle, err)
+				t.Errorf("%s h=%d 重解码失败: %v", name, x1.Handle, err)
 				continue
 			}
 			// 逐字段比对
-			if x1.handle != x2.handle {
-				t.Errorf("%s 重解码 handle: %d != %d", name, x2.handle, x1.handle)
+			if x1.Handle != x2.Handle {
+				t.Errorf("%s 重解码 handle: %d != %d", name, x2.Handle, x1.Handle)
 			}
-			if x1.xdataSize != x2.xdataSize {
-				t.Errorf("%s h=%d xdataSize: %d != %d", name, x1.handle, x2.xdataSize, x1.xdataSize)
+			if x1.XdataSize != x2.XdataSize {
+				t.Errorf("%s h=%d xdataSize: %d != %d", name, x1.Handle, x2.XdataSize, x1.XdataSize)
 			}
-			if len(x1.xdata) != len(x2.xdata) {
-				t.Errorf("%s h=%d xdata 项数: %d != %d", name, x1.handle, len(x2.xdata), len(x1.xdata))
+			if len(x1.Xdata) != len(x2.Xdata) {
+				t.Errorf("%s h=%d xdata 项数: %d != %d", name, x1.Handle, len(x2.Xdata), len(x1.Xdata))
 				continue
 			}
-			for i := range x1.xdata {
-				a, b := x1.xdata[i], x2.xdata[i]
+			for i := range x1.Xdata {
+				a, b := x1.Xdata[i], x2.Xdata[i]
 				if a.Code != b.Code || a.Kind != b.Kind || a.Int != b.Int ||
 					a.Float != b.Float || a.Str != b.Str ||
 					string(a.Bytes) != string(b.Bytes) {
-					t.Errorf("%s h=%d xdata[%d] 不一致: %+v vs %+v", name, x1.handle, i, b, a)
+					t.Errorf("%s h=%d xdata[%d] 不一致: %+v vs %+v", name, x1.Handle, i, b, a)
 				}
 			}
-			if x1.cloning != x2.cloning {
-				t.Errorf("%s h=%d cloning: %d != %d", name, x1.handle, x2.cloning, x1.cloning)
+			if x1.Cloning != x2.Cloning {
+				t.Errorf("%s h=%d cloning: %d != %d", name, x1.Handle, x2.Cloning, x1.Cloning)
 			}
 			pass++
 		}
@@ -313,43 +314,43 @@ func TestDictionaryRoundTrip(t *testing.T) {
 		}
 		supported := doc.version == container.VerR2000
 		for _, d1 := range doc.dictionaries {
-			if d1 == nil || d1.numItems == 0 {
+			if d1 == nil || d1.NumItems == 0 {
 				continue
 			}
 			if !supported {
-				t.Logf("%s h=%d 版本 %v 编码器未覆盖，跳过", name, d1.handle, doc.version)
+				t.Logf("%s h=%d 版本 %v 编码器未覆盖，跳过", name, d1.Handle, doc.version)
 				skipCnt++
 				continue
 			}
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						t.Errorf("%s h=%d panic: %v", name, d1.handle, r)
+						t.Errorf("%s h=%d panic: %v", name, d1.Handle, r)
 						fail++
 					}
 				}()
 				body2, err := encodeDictionaryR2000(d1, doc.version, false)
 				if err != nil {
-					t.Errorf("%s h=%d 重编码失败: %v", name, d1.handle, err)
+					t.Errorf("%s h=%d 重编码失败: %v", name, d1.Handle, err)
 					fail++
 					return
 				}
 				rec2 := &objrec.ObjectRecord{Body: body2, BodyBitOffset: 0, Size: uint32(len(body2))}
-				d2, err := decodeDictionaryObjectFull(rec2.BodyBitStream(), rec2, doc.version, false, false)
+				d2, err := object.DecodeDictionaryObjectFull(rec2.BodyBitStream(), rec2, doc.version, false, false)
 				if err != nil {
-					t.Errorf("%s h=%d 重解码失败: %v", name, d1.handle, err)
+					t.Errorf("%s h=%d 重解码失败: %v", name, d1.Handle, err)
 					fail++
 					return
 				}
 				// 逐字段比对
-				if d1.numItems != d2.numItems {
-					t.Errorf("%s h=%d numItems: %d != %d", name, d1.handle, d2.numItems, d1.numItems)
+				if d1.NumItems != d2.NumItems {
+					t.Errorf("%s h=%d numItems: %d != %d", name, d1.Handle, d2.NumItems, d1.NumItems)
 					fail++
 					return
 				}
-				for i := range d1.texts {
-					if d1.texts[i] != d2.texts[i] {
-						t.Errorf("%s h=%d texts[%d]: %q != %q", name, d1.handle, i, d2.texts[i], d1.texts[i])
+				for i := range d1.Texts {
+					if d1.Texts[i] != d2.Texts[i] {
+						t.Errorf("%s h=%d texts[%d]: %q != %q", name, d1.Handle, i, d2.Texts[i], d1.Texts[i])
 						fail++
 						return
 					}

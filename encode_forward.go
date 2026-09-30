@@ -20,6 +20,7 @@ import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/entity"
+	"github.com/unitedrhino/go-cad/internal/object"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"sort"
@@ -1839,12 +1840,12 @@ func encodeForwardBlockHeaderBody(bh forwardBlockHeader, blockEnt, endblkEnt uin
 // encodeForwardDictionaryBody DICTIONARY 对象（对照 decodeDictionaryObject
 // 的 R2000 dat 流）：reactors 原值保留但句柄以空引用占位（解码侧不保留
 // reactor 句柄列表，结构化重建以数量守恒为准）。
-func encodeForwardDictionaryBody(d *objDictionary, ver container.DwgVersion) ([]byte, error) {
+func encodeForwardDictionaryBody(d *object.ObjDictionary, ver container.DwgVersion) ([]byte, error) {
 	w := bitstream.NewEncWriter()
 	w.WriteBS(uint16(0x2A))
 	rlOff := w.TellBits()
 	w.WriteRL(0)
-	writeHdlSelf(w, d.handle)
+	writeHdlSelf(w, d.Handle)
 	if len(d.EedFields) != 0 {
 		if err := encodeEEDFields(w, d.EedFields); err != nil {
 			return nil, err
@@ -1852,15 +1853,15 @@ func encodeForwardDictionaryBody(d *objDictionary, ver container.DwgVersion) ([]
 	} else {
 		w.WriteBS(0)
 	}
-	w.WriteBL(uint32(d.numReactors))
-	w.WriteBL(uint32(d.numItems))
-	w.WriteBS(d.cloning)
-	if d.isHardOwner {
+	w.WriteBL(uint32(d.NumReactors))
+	w.WriteBL(uint32(d.NumItems))
+	w.WriteBS(d.Cloning)
+	if d.IsHardOwner {
 		w.WriteRC(1)
 	} else {
 		w.WriteRC(0)
 	}
-	for _, s := range d.texts {
+	for _, s := range d.Texts {
 		if ver >= container.VerR2007 {
 			w.WriteTU(s)
 		} else {
@@ -1868,12 +1869,12 @@ func encodeForwardDictionaryBody(d *objDictionary, ver container.DwgVersion) ([]
 		}
 	}
 	patchRL(w, rlOff, uint32(w.TellBits()))
-	writeHdlAbs(w, d.owner)
-	for i := 0; i < d.numReactors; i++ {
+	writeHdlAbs(w, d.Owner)
+	for i := 0; i < d.NumReactors; i++ {
 		writeHdlNull(w)
 	}
 	writeHdlNull(w)
-	for _, h := range d.itemHandles {
+	for _, h := range d.ItemHandles {
 		writeHdlAbs(w, h)
 	}
 	w.AlignByte()

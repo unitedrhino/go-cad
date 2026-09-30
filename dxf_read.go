@@ -25,6 +25,7 @@ import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/entity"
+	"github.com/unitedrhino/go-cad/internal/object"
 	"math"
 	"strconv"
 	"strings"
@@ -48,7 +49,7 @@ func ParseDXF(data []byte) (*Document, error) {
 		blocks:          make(map[uint64][]any),
 		attribs:         make(map[uint64]*entity.EntAttrib),
 		layerColors:     make(map[uint64]layerColor),
-		internalObjects: make(map[uint64]*objGeneric),
+		internalObjects: make(map[uint64]*object.ObjGeneric),
 	}
 	st := &dxfState{doc: doc, lexer: lex,
 		layerByName: map[string]uint64{},
@@ -517,12 +518,12 @@ func (st *dxfState) parseBlocks() error {
 		// 块定义元数据（真名 + 基点）以 BLOCK_HEADER 内部对象形态登记，
 		// 与 DWG/JSON 来源统一：DXF 写出侧按句柄从 internalObjects 取
 		// 名称与 base_pt，符号名/块基点三个来源同路消费。
-		bg := &objGeneric{Name: "BLOCK_HEADER", Handle: h,
-			Fields: []objField{{Key: "name", Val: name}}}
+		bg := &object.ObjGeneric{Name: "BLOCK_HEADER", Handle: h,
+			Fields: []object.ObjField{{Key: "name", Val: name}}}
 		if bp, ok := rec.floatVal(10); ok {
 			bpy, _ := rec.floatVal(20)
 			bpz, _ := rec.floatVal(30)
-			bg.Fields = append(bg.Fields, objField{Key: "base_pt", Val: []float64{bp, bpy, bpz}})
+			bg.Fields = append(bg.Fields, object.ObjField{Key: "base_pt", Val: []float64{bp, bpy, bpz}})
 		}
 		st.doc.internalObjects[h] = bg
 		// 收集块内容直到 ENDBLK

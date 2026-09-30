@@ -12,6 +12,7 @@ import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/entity"
+	"github.com/unitedrhino/go-cad/internal/object"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"math/rand"
@@ -26,24 +27,24 @@ const gap2BaseHandle = 0x30
 // execClassDecoder 按类名取注册解码器，用合成 dat 流执行 decode；
 // buildHdl 非空且 spec 带 hdl 时继续执行 handle 流解码。
 // 返回解码产物供字段断言。
-func execClassDecoder(t *testing.T, class string, ver container.DwgVersion, build, buildHdl func(w *bitstream.EncWriter)) *objGeneric {
+func execClassDecoder(t *testing.T, class string, ver container.DwgVersion, build, buildHdl func(w *bitstream.EncWriter)) *object.ObjGeneric {
 	t.Helper()
-	spec, ok := internalClassDecoders[class]
+	spec, ok := object.InternalClassDecoders[class]
 	if !ok {
 		t.Fatalf("无 %s 内部对象解码器", class)
 	}
-	g := &objGeneric{Name: class, Handle: gap2BaseHandle}
+	g := &object.ObjGeneric{Name: class, Handle: gap2BaseHandle}
 	w := bitstream.NewEncWriter()
 	build(w)
-	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: ver}
-	if err := spec.decode(fr.r, ver, fr, g); err != nil {
+	fr := &object.GfRead{R: bitstream.NewBitStream(w.Bytes()), Ver: ver}
+	if err := spec.Decode(fr.R, ver, fr, g); err != nil {
 		t.Fatalf("%s decode 失败: %v", class, err)
 	}
-	if spec.hdl != nil && buildHdl != nil {
+	if spec.Hdl != nil && buildHdl != nil {
 		hw := bitstream.NewEncWriter()
 		buildHdl(hw)
-		hfr := &gfRead{r: bitstream.NewBitStream(hw.Bytes()), ver: ver}
-		if err := spec.hdl(hfr.r, ver, hfr, g); err != nil {
+		hfr := &object.GfRead{R: bitstream.NewBitStream(hw.Bytes()), Ver: ver}
+		if err := spec.Hdl(hfr.R, ver, hfr, g); err != nil {
 			t.Fatalf("%s hdl 失败: %v", class, err)
 		}
 	}
@@ -478,12 +479,12 @@ func TestSynthAcshBrep(t *testing.T) {
 // materials（version>1）、BREP 旧版。
 func TestSynthAcshHdl(t *testing.T) {
 	// 非 BREP + value91：2 个引用
-	g := &objGeneric{Name: "ACSH_BOX_CLASS", Handle: gap2BaseHandle}
-	g.valueHandle91 = true
+	g := &object.ObjGeneric{Name: "ACSH_BOX_CLASS", Handle: gap2BaseHandle}
+	g.ValueHandle91 = true
 	w := bitstream.NewEncWriter()
 	gap2WriteHandles(w, 2)
-	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: container.VerR2004}
-	if err := decodeGenericACSH_HDL(fr.r, container.VerR2004, fr, g); err != nil {
+	fr := &object.GfRead{R: bitstream.NewBitStream(w.Bytes()), Ver: container.VerR2004}
+	if err := object.DecodeGenericACSH_HDL(fr.R, container.VerR2004, fr, g); err != nil {
 		t.Fatalf("hdl: %v", err)
 	}
 	if len(g.Handles) != 2 {
@@ -491,12 +492,12 @@ func TestSynthAcshHdl(t *testing.T) {
 	}
 
 	// BREP version>1（R2007+）：material×num_materials + history_id
-	g2 := &objGeneric{Name: "ACSH_BREP_CLASS", Handle: gap2BaseHandle}
-	g2.Fields = []objField{{"version", int64(2)}, {"num_materials", int64(2)}}
+	g2 := &object.ObjGeneric{Name: "ACSH_BREP_CLASS", Handle: gap2BaseHandle}
+	g2.Fields = []object.ObjField{{"version", int64(2)}, {"num_materials", int64(2)}}
 	w2 := bitstream.NewEncWriter()
 	gap2WriteHandles(w2, 3)
-	fr2 := &gfRead{r: bitstream.NewBitStream(w2.Bytes()), ver: container.VerR2007}
-	if err := decodeGenericACSH_HDL(fr2.r, container.VerR2007, fr2, g2); err != nil {
+	fr2 := &object.GfRead{R: bitstream.NewBitStream(w2.Bytes()), Ver: container.VerR2007}
+	if err := object.DecodeGenericACSH_HDL(fr2.R, container.VerR2007, fr2, g2); err != nil {
 		t.Fatalf("BREP hdl: %v", err)
 	}
 	if len(g2.Handles) != 3 {
@@ -504,12 +505,12 @@ func TestSynthAcshHdl(t *testing.T) {
 	}
 
 	// BREP version<=1：仅 material
-	g3 := &objGeneric{Name: "ACSH_BREP_CLASS", Handle: gap2BaseHandle}
-	g3.Fields = []objField{{"version", int64(1)}}
+	g3 := &object.ObjGeneric{Name: "ACSH_BREP_CLASS", Handle: gap2BaseHandle}
+	g3.Fields = []object.ObjField{{"version", int64(1)}}
 	w3 := bitstream.NewEncWriter()
 	gap2WriteHandles(w3, 1)
-	fr3 := &gfRead{r: bitstream.NewBitStream(w3.Bytes()), ver: container.VerR2004}
-	if err := decodeGenericACSH_HDL(fr3.r, container.VerR2004, fr3, g3); err != nil {
+	fr3 := &object.GfRead{R: bitstream.NewBitStream(w3.Bytes()), Ver: container.VerR2004}
+	if err := object.DecodeGenericACSH_HDL(fr3.R, container.VerR2004, fr3, g3); err != nil {
 		t.Fatalf("BREP v1 hdl: %v", err)
 	}
 	if len(g3.Handles) != 1 {
@@ -685,7 +686,7 @@ func TestDwgResbufValueType(t *testing.T) {
 		{1043, 'X'}, {1069, 'X'}, {1070, 'S'}, {1071, 'I'}, {1072, 'X'},
 	}
 	for _, tc := range cases {
-		if got := dwgResbufValueType(tc.gc); got != tc.want {
+		if got := object.DwgResbufValueType(tc.gc); got != tc.want {
 			t.Errorf("dwgResbufValueType(%d) = %q, 期望 %q", tc.gc, got, tc.want)
 		}
 	}
@@ -1767,7 +1768,7 @@ func TestParseBitFlipSamples(t *testing.T) {
 func TestSynthMalformedObjectStreams(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
 	run := func(ver container.DwgVersion, seedPhase byte) {
-		for className, spec := range internalClassDecoders {
+		for className, spec := range object.InternalClassDecoders {
 			for _, size := range []int{1, 3, 8, 21, 55, 130, 400} {
 				buf := make([]byte, size)
 				for i := range buf {
@@ -1779,19 +1780,19 @@ func TestSynthMalformedObjectStreams(t *testing.T) {
 							t.Errorf("%s ver=%d size=%d panic: %v", className, ver, size, r)
 						}
 					}()
-					g := &objGeneric{Name: className, Handle: 0x30}
-					fr := &gfRead{r: bitstream.NewBitStream(buf), ver: ver}
-					_ = spec.decode(fr.r, ver, fr, g)
-					if spec.hdl != nil {
+					g := &object.ObjGeneric{Name: className, Handle: 0x30}
+					fr := &object.GfRead{R: bitstream.NewBitStream(buf), Ver: ver}
+					_ = spec.Decode(fr.R, ver, fr, g)
+					if spec.Hdl != nil {
 						hb := make([]byte, 6)
 						for i := range hb {
 							hb[i] = byte(rng.Intn(16))
 						}
-						g2 := &objGeneric{Name: className, Handle: 0x30, Fields: g.Fields}
-						g2.hdlCount = g.hdlCount
-						g2.valueHandle91 = g.valueHandle91
-						hfr := &gfRead{r: bitstream.NewBitStream(hb), ver: ver}
-						_ = spec.hdl(hfr.r, ver, hfr, g2)
+						g2 := &object.ObjGeneric{Name: className, Handle: 0x30, Fields: g.Fields}
+						g2.HdlCount = g.HdlCount
+						g2.ValueHandle91 = g.ValueHandle91
+						hfr := &object.GfRead{R: bitstream.NewBitStream(hb), Ver: ver}
+						_ = spec.Hdl(hfr.R, ver, hfr, g2)
 					}
 				}()
 			}
@@ -2012,9 +2013,9 @@ func TestSynthTableContentFull(t *testing.T) {
 	w.WriteBL(1) // bottom_row
 	w.WriteBL(1) // right_col
 
-	g := &objGeneric{Name: "TABLECONTENT", Handle: 0x30}
-	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: container.VerR2004}
-	if err := decodeGenericTABLECONTENT(fr.r, container.VerR2004, fr, g); err != nil {
+	g := &object.ObjGeneric{Name: "TABLECONTENT", Handle: 0x30}
+	fr := &object.GfRead{R: bitstream.NewBitStream(w.Bytes()), Ver: container.VerR2004}
+	if err := object.DecodeGenericTABLECONTENT(fr.R, container.VerR2004, fr, g); err != nil {
 		t.Fatalf("TABLECONTENT decode: %v", err)
 	}
 	if v, _ := g.Field("tdata.rows[0].cells[0].cell_contents[0].value.data_string").(string); v != "cell text" {

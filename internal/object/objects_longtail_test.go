@@ -3,7 +3,7 @@
 // 内容的位流，经 decodeInternalObject 框架解码后逐字段断言（含 handle
 // 流句柄）。语料中无真实实例，此处以「构造合法序列 → 解码 → 字段一致」
 // 合成自证；真实样本出现后需补 gold 对照。
-package cad
+package object
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
@@ -16,9 +16,9 @@ import (
 // writeR2000ObjectPrefix 构造 R2000 对象记录前缀：RL bitsize 占位 +
 // H handle + BS EED 终止 + BL num_reactors（R2000 无 xdic/ds 位）。
 // 返回回填 bitsize 的写入口。
-func writeR2000ObjectPrefix(w *bitstream.EncWriter, handle uint64) {
+func writeR2000ObjectPrefix(w *bitstream.EncWriter, Handle uint64) {
 	w.WriteRL(0) // bitsize 占位
-	w.WriteH(0, 1, handle)
+	w.WriteH(0, 1, Handle)
 	w.WriteBS(0) // EED 终止
 	w.WriteBL(0) // num_reactors = 0
 }
@@ -55,7 +55,7 @@ func TestIDBufferSynthetic(t *testing.T) {
 	fillR2000Bitsize(body, datEnd)
 
 	rec := &objrec.ObjectRecord{Body: body, BodyBitOffset: 0, Size: uint32(len(body))}
-	g, err := decodeInternalObject(rec.BodyBitStream(), rec, container.VerR2000, false, 0x51, "IDBUFFER", 30)
+	g, err := DecodeInternalObject(rec.BodyBitStream(), rec, container.VerR2000, false, 0x51, "IDBUFFER", 30)
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestIndexSynthetic(t *testing.T) {
 
 	rec := &objrec.ObjectRecord{Body: body, BodyBitOffset: 0, Size: uint32(len(body))}
 	// 0x54：无固定解码器冲突的占位类型码（INDEX 无 R13+ 固定码，经类表路由）
-	g, err := decodeInternalObject(rec.BodyBitStream(), rec, container.VerR2000, false, 0x54, "INDEX", 30)
+	g, err := DecodeInternalObject(rec.BodyBitStream(), rec, container.VerR2000, false, 0x54, "INDEX", 30)
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestLayerIndexSynthetic(t *testing.T) {
 	fillR2000Bitsize(body, datEnd)
 
 	rec := &objrec.ObjectRecord{Body: body, BodyBitOffset: 0, Size: uint32(len(body))}
-	g, err := decodeInternalObject(rec.BodyBitStream(), rec, container.VerR2000, false, 0x53, "LAYER_INDEX", 30)
+	g, err := DecodeInternalObject(rec.BodyBitStream(), rec, container.VerR2000, false, 0x53, "LAYER_INDEX", 30)
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestProxyObjectSynthetic(t *testing.T) {
 	fillR2000Bitsize(body, datEnd)
 
 	rec := &objrec.ObjectRecord{Body: body, BodyBitOffset: 0, Size: uint32(len(body))}
-	g, err := decodeInternalObject(rec.BodyBitStream(), rec, container.VerR2000, false, 0x1F3, "PROXY_OBJECT", 30)
+	g, err := DecodeInternalObject(rec.BodyBitStream(), rec, container.VerR2000, false, 0x1F3, "PROXY_OBJECT", 30)
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}

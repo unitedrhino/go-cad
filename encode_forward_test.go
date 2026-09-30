@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/entity"
+	"github.com/unitedrhino/go-cad/internal/object"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
@@ -1066,37 +1067,37 @@ func TestWriteForwardDynamicClasses(t *testing.T) {
 // （JSON gold 展平键值形态与解码侧 int64 形态双路覆盖）。
 func TestWriteForwardGenericObjects(t *testing.T) {
 	// JSON gold 展平键形态（float64/string/bool/[]any）
-	group := &objGeneric{
+	group := &object.ObjGeneric{
 		Name: "GROUP", Handle: 0x500, Owner: 0x13,
-		Fields: []objField{
+		Fields: []object.ObjField{
 			{"name", "PROBE_GROUP"}, {"unnamed", float64(0)}, {"selectable", float64(1)},
 			{"num_groups", float64(2)},
 			{"groups", []any{[]any{float64(5), float64(2), float64(0x510), float64(0x510)},
 				[]any{float64(5), float64(2), float64(0x511), float64(0x511)}}},
 		},
 	}
-	xrecord := &objGeneric{
+	xrecord := &object.ObjGeneric{
 		Name: "XRECORD", Handle: 0x501, Owner: 0x14,
-		Fields: []objField{
+		Fields: []object.ObjField{
 			{"xdata", []any{[]any{float64(70), float64(1)}, []any{float64(1), "BA88-PROBE"},
 				[]any{float64(310), "DEADBEEF"}}},
 			{"cloning", float64(1)},
 		},
 	}
-	dictvar := &objGeneric{
+	dictvar := &object.ObjGeneric{
 		Name: "DICTIONARYVAR", Handle: 0x502,
-		Fields: []objField{{"schema", float64(0)}, {"strvalue", "2"}},
+		Fields: []object.ObjField{{"schema", float64(0)}, {"strvalue", "2"}},
 	}
-	scale := &objGeneric{
+	scale := &object.ObjGeneric{
 		Name: "SCALE", Handle: 0x503,
-		Fields: []objField{
+		Fields: []object.ObjField{
 			{"flag", float64(0)}, {"name", "1:2"},
 			{"paper_units", 1.0}, {"drawing_units", 2.0}, {"is_unit_scale", true},
 		},
 	}
-	layout := &objGeneric{
+	layout := &object.ObjGeneric{
 		Name: "LAYOUT", Handle: 0x504,
-		Fields: []objField{
+		Fields: []object.ObjField{
 			{"plotsettings.printer_cfg_file", ""}, {"plotsettings.paper_size", "A4"},
 			{"plotsettings.plot_flags", float64(11952)},
 			{"plotsettings.left_margin", 6.35}, {"plotsettings.bottom_margin", 19.05},
@@ -1125,32 +1126,32 @@ func TestWriteForwardGenericObjects(t *testing.T) {
 			{"active_viewport", []any{float64(4), float64(2), float64(0x56), float64(0x56)}},
 		},
 	}
-	wipeoutVars := &objGeneric{
+	wipeoutVars := &object.ObjGeneric{
 		Name: "WIPEOUTVARIABLES", Handle: 0x505,
-		Fields: []objField{{"display_frame", float64(1)}},
+		Fields: []object.ObjField{{"display_frame", float64(1)}},
 	}
-	placeholder := &objGeneric{Name: "PLACEHOLDER", Handle: 0x506}
-	appid := &objGeneric{
+	placeholder := &object.ObjGeneric{Name: "PLACEHOLDER", Handle: 0x506}
+	appid := &object.ObjGeneric{
 		Name: "APPID", Handle: 0x507,
-		Fields: []objField{
+		Fields: []object.ObjField{
 			{"name", "PROBE_APP"}, {"is_xref_ref", true},
 			{"is_xref_resolved", float64(1)}, {"is_xref_dep", false}, {"unknown", float64(0)},
 		},
 	}
 	doc := fwdSynthDoc(t)
-	doc.internalObjects = map[uint64]*objGeneric{}
-	for _, g := range []*objGeneric{group, xrecord, dictvar, scale, layout, wipeoutVars, placeholder, appid} {
+	doc.internalObjects = map[uint64]*object.ObjGeneric{}
+	for _, g := range []*object.ObjGeneric{group, xrecord, dictvar, scale, layout, wipeoutVars, placeholder, appid} {
 		doc.internalObjects[g.Handle] = g
 	}
 	got := fwdWriteParse(t, doc)
 	// 回读侧按句柄取 objGeneric 并按类型断键
 	type objProbe struct {
 		name  string
-		check func(*objGeneric) error
+		check func(*object.ObjGeneric) error
 	}
 	handles := map[uint64]string{}
-	probes := map[uint64]func(*objGeneric) error{
-		group.Handle: func(g *objGeneric) error {
+	probes := map[uint64]func(*object.ObjGeneric) error{
+		group.Handle: func(g *object.ObjGeneric) error {
 			if gfStr(g, "name") != "PROBE_GROUP" || gfNum(g, "selectable") != 1 {
 				return fmt.Errorf("name/selectable")
 			}
@@ -1160,7 +1161,7 @@ func TestWriteForwardGenericObjects(t *testing.T) {
 			}
 			return nil
 		},
-		xrecord.Handle: func(g *objGeneric) error {
+		xrecord.Handle: func(g *object.ObjGeneric) error {
 			if gfNum(g, "cloning") != 1 {
 				return fmt.Errorf("cloning")
 			}
@@ -1170,19 +1171,19 @@ func TestWriteForwardGenericObjects(t *testing.T) {
 			}
 			return nil
 		},
-		dictvar.Handle: func(g *objGeneric) error {
+		dictvar.Handle: func(g *object.ObjGeneric) error {
 			if gfStr(g, "strvalue") != "2" || gfNum(g, "schema") != 0 {
 				return fmt.Errorf("schema/strvalue")
 			}
 			return nil
 		},
-		scale.Handle: func(g *objGeneric) error {
+		scale.Handle: func(g *object.ObjGeneric) error {
 			if gfStr(g, "name") != "1:2" || !nearTol(gfReal(g, "drawing_units"), 2, 1e-9) {
 				return fmt.Errorf("name/drawing_units")
 			}
 			return nil
 		},
-		layout.Handle: func(g *objGeneric) error {
+		layout.Handle: func(g *object.ObjGeneric) error {
 			if gfStr(g, "layout_name") != "Layout9" || gfNum(g, "tab_order") != 9 ||
 				!nearTol(gfReal(g, "plotsettings.paper_width"), 210, 1e-9) {
 				return fmt.Errorf("layout_name/tab_order/paper_width")
@@ -1192,14 +1193,14 @@ func TestWriteForwardGenericObjects(t *testing.T) {
 			}
 			return nil
 		},
-		wipeoutVars.Handle: func(g *objGeneric) error {
+		wipeoutVars.Handle: func(g *object.ObjGeneric) error {
 			if gfNum(g, "display_frame") != 1 {
 				return fmt.Errorf("display_frame")
 			}
 			return nil
 		},
-		placeholder.Handle: func(*objGeneric) error { return nil },
-		appid.Handle: func(g *objGeneric) error {
+		placeholder.Handle: func(*object.ObjGeneric) error { return nil },
+		appid.Handle: func(g *object.ObjGeneric) error {
 			if gfStr(g, "name") != "PROBE_APP" {
 				return fmt.Errorf("name")
 			}
@@ -1225,25 +1226,25 @@ func TestWriteForwardGenericObjects(t *testing.T) {
 	if found != len(probes)-1 {
 		t.Fatalf("回读通用对象 %d != %d（缺：%v）", found, len(probes)-1, missingProbeHandles(got, probes))
 	}
-	var gx *objXrecord
+	var gx *object.ObjXrecord
 	for _, x := range got.Xrecords() {
-		if x.handle == xrecord.Handle {
+		if x.Handle == xrecord.Handle {
 			gx = x
 		}
 	}
 	if gx == nil {
 		t.Fatalf("回读缺少 XRECORD %#x", xrecord.Handle)
 	}
-	if gx.cloning != 1 || len(gx.xdata) != 3 {
-		t.Fatalf("XRECORD: cloning=%d items=%d", gx.cloning, len(gx.xdata))
+	if gx.Cloning != 1 || len(gx.Xdata) != 3 {
+		t.Fatalf("XRECORD: cloning=%d items=%d", gx.Cloning, len(gx.Xdata))
 	}
-	if gx.xdata[1].Str != "BA88-PROBE" || gx.xdata[2].Code != 310 {
-		t.Errorf("XRECORD xdata: %+v %+v", gx.xdata[1], gx.xdata[2])
+	if gx.Xdata[1].Str != "BA88-PROBE" || gx.Xdata[2].Code != 310 {
+		t.Errorf("XRECORD xdata: %+v %+v", gx.Xdata[1], gx.Xdata[2])
 	}
 }
 
 // missingProbeHandles 列出回读侧缺失的门禁探针句柄（诊断用）。
-func missingProbeHandles(doc *Document, probes map[uint64]func(*objGeneric) error) []string {
+func missingProbeHandles(doc *Document, probes map[uint64]func(*object.ObjGeneric) error) []string {
 	var missing []string
 	for h := range probes {
 		if _, ok := doc.internalObjects[h]; !ok {

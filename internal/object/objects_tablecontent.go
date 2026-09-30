@@ -6,7 +6,7 @@
 // ContentFormat_fields（objects_visual.go 已有）。
 // 全部内嵌句柄（text_style/ltype/data_link/attdef/field_refs/tablestyle
 // 等）在 handle 流，decode 阶段计数 num_content_handles，hdl 阶段按序读。
-package cad
+package object
 
 import (
 	"fmt"
@@ -19,8 +19,8 @@ import (
 // dwg_spec_shared.h）：R2007+ 先 BL format_flags；BL data_type 按
 // kXxx 类型分支读值；R2007+ 尾部 unit_type/format_string/value_string。
 // data_type=64（kObjectId）的句柄在 handle 流，nHdl 计数。
-func readTableValueFields(r *bitstream.BitStream, fr *gfRead, g *objGeneric, prefix string, nHdl *int) error {
-	if verUntilR2004(fr.ver) {
+func ReadTableValueFields(R *bitstream.BitStream, fr *GfRead, g *ObjGeneric, prefix string, nHdl *int) error {
+	if VerUntilR2004(fr.Ver) {
 		// PRE R_2007a：data_type &= ~0x200 为解码后值修饰，不占位
 	} else {
 		if err := fr.BL(prefix+"format_flags", g); err != nil {
@@ -31,14 +31,14 @@ func readTableValueFields(r *bitstream.BitStream, fr *gfRead, g *objGeneric, pre
 	if err != nil {
 		return err
 	}
-	if verUntilR2004(fr.ver) {
+	if VerUntilR2004(fr.Ver) {
 		// PRE R_2007a：data_type &= ~0x200 为读后值修饰，不占位；
 		// BLv 已按原始值入 Fields，这里追加修正值（Field 取末次）
 		dt &^= 0x200
-		g.Fields = append(g.Fields, objField{prefix + "data_type", dt})
+		g.Fields = append(g.Fields, ObjField{prefix + "data_type", dt})
 	}
 	// R2007+ 且 format_flags 低 2 位非 0：跳过按 data_type 的值分支
-	skip := fr.ver >= container.VerR2007
+	skip := fr.Ver >= container.VerR2007
 	if skip {
 		ff, _ := g.Field(prefix + "format_flags").(int64)
 		if ff&3 == 0 {
@@ -67,11 +67,11 @@ func readTableValueFields(r *bitstream.BitStream, fr *gfRead, g *objGeneric, pre
 			if sz < 0 || sz > 1<<20 {
 				return fmt.Errorf("cad: TABLE value 日期长度异常 %d", sz)
 			}
-			b, e := r.ReadBitsBytes(int(sz))
+			b, e := R.ReadBitsBytes(int(sz))
 			if e != nil {
 				return e
 			}
-			g.Fields = append(g.Fields, objField{prefix + "data_date", b})
+			g.Fields = append(g.Fields, ObjField{prefix + "data_date", b})
 		case 16: // kPoint
 			if _, e := fr.BLv(prefix+"data_size", g); e != nil {
 				return e
@@ -89,7 +89,7 @@ func readTableValueFields(r *bitstream.BitStream, fr *gfRead, g *objGeneric, pre
 		case 64: // kObjectId：句柄在 handle 流
 			*nHdl++
 		case 512: // kGeneral（R2007+）
-			if fr.ver >= container.VerR2007 {
+			if fr.Ver >= container.VerR2007 {
 				if _, e := fr.BLv(prefix+"data_size", g); e != nil {
 					return e
 				}
@@ -98,7 +98,7 @@ func readTableValueFields(r *bitstream.BitStream, fr *gfRead, g *objGeneric, pre
 			return fmt.Errorf("cad: TABLE value 未知数据类型 %d", dt)
 		}
 	}
-	if fr.ver >= container.VerR2007 {
+	if fr.Ver >= container.VerR2007 {
 		ut, e := fr.BLv(prefix+"unit_type", g)
 		if e != nil {
 			return e
@@ -117,7 +117,7 @@ func readTableValueFields(r *bitstream.BitStream, fr *gfRead, g *objGeneric, pre
 
 // readTableCustomDataItems 读取 Dwg_TABLE_CustomDataItem 向量
 // （name T + TABLE_value_fields），cell 与 row 复用。
-func readTableCustomDataItems(r *bitstream.BitStream, fr *gfRead, g *objGeneric, prefix string, nHdl *int) error {
+func readTableCustomDataItems(R *bitstream.BitStream, fr *GfRead, g *ObjGeneric, prefix string, nHdl *int) error {
 	n, err := fr.BLv(prefix+"num_customdata_items", g)
 	if err != nil {
 		return err
@@ -130,7 +130,7 @@ func readTableCustomDataItems(r *bitstream.BitStream, fr *gfRead, g *objGeneric,
 		if err := fr.T(p+"name", g); err != nil {
 			return err
 		}
-		if err := readTableValueFields(r, fr, g, p+"value.", nHdl); err != nil {
+		if err := ReadTableValueFields(R, fr, g, p+"value.", nHdl); err != nil {
 			return err
 		}
 	}
@@ -139,15 +139,15 @@ func readTableCustomDataItems(r *bitstream.BitStream, fr *gfRead, g *objGeneric,
 
 // readTableCellStyle 读取 cellstyle 前缀的 CellStyle_fields（句柄计数
 // 由 readCellStyleFields 内部的 nHdl 自增完成：text_style 与 ltype）。
-func readTableCellStyle(r *bitstream.BitStream, fr *gfRead, g *objGeneric, prefix string, nHdl *int) error {
-	return readCellStyleFields(r, fr, g, prefix, nHdl)
+func readTableCellStyle(R *bitstream.BitStream, fr *GfRead, g *ObjGeneric, prefix string, nHdl *int) error {
+	return ReadCellStyleFields(R, fr, g, prefix, nHdl)
 }
 
 // decodeGenericTABLECONTENT 解析 TABLECONTENT（TABLECONTENTs_fields，
 // pg.237 20.4.97）：ldata.name/description + tdata.cols/rows/cells/
 // cell_contents 嵌套 + field_refs 数量 + fdata.merged_cells。
 // tablestyle 及全部内嵌句柄在 handle 流。
-func decodeGenericTABLECONTENT(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
+func DecodeGenericTABLECONTENT(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
 	nHdl := 0
 	// AcDbLinkedData
 	if err := fr.T("ldata.name", g); err != nil {
@@ -173,7 +173,7 @@ func decodeGenericTABLECONTENT(r *bitstream.BitStream, ver container.DwgVersion,
 		if _, err = fr.BLv(p+"custom_data", g); err != nil {
 			return err
 		}
-		if err := readTableCellStyle(r, fr, g, p+"cellstyle.", &nHdl); err != nil {
+		if err := readTableCellStyle(R, fr, g, p+"cellstyle.", &nHdl); err != nil {
 			return err
 		}
 	}
@@ -205,7 +205,7 @@ func decodeGenericTABLECONTENT(r *bitstream.BitStream, ver container.DwgVersion,
 			if _, e = fr.BLv(cp+"customdata", g); e != nil {
 				return e
 			}
-			if e = readTableCustomDataItems(r, fr, g, cp, &nHdl); e != nil {
+			if e = readTableCustomDataItems(R, fr, g, cp, &nHdl); e != nil {
 				return e
 			}
 			// has_linked_data：data_link 句柄 + 行列数 + unknown
@@ -237,7 +237,7 @@ func decodeGenericTABLECONTENT(r *bitstream.BitStream, ver container.DwgVersion,
 				}
 				switch ct {
 				case 1: // Value
-					if e = readTableValueFields(r, fr, g, q+"value.", &nHdl); e != nil {
+					if e = ReadTableValueFields(R, fr, g, q+"value.", &nHdl); e != nil {
 						return e
 					}
 				case 2, 4: // Field / Block：句柄在 handle 流
@@ -267,7 +267,7 @@ func decodeGenericTABLECONTENT(r *bitstream.BitStream, ver container.DwgVersion,
 					return e
 				}
 				if hcfo != 0 {
-					if e = readContentFormatFields(r, fr, g, q+"content_format.", &nHdl); e != nil {
+					if e = readContentFormatFields(R, fr, g, q+"content_format.", &nHdl); e != nil {
 						return e
 					}
 				}
@@ -321,10 +321,10 @@ func decodeGenericTABLECONTENT(r *bitstream.BitStream, ver container.DwgVersion,
 		if _, e := fr.BLv(rp+"custom_data", g); e != nil {
 			return e
 		}
-		if e := readTableCustomDataItems(r, fr, g, rp, &nHdl); e != nil {
+		if e := readTableCustomDataItems(R, fr, g, rp, &nHdl); e != nil {
 			return e
 		}
-		if e := readTableCellStyle(r, fr, g, rp+"cellstyle.", &nHdl); e != nil {
+		if e := readTableCellStyle(R, fr, g, rp+"cellstyle.", &nHdl); e != nil {
 			return e
 		}
 		if _, e := fr.BLv(rp+"style_id", g); e != nil {
@@ -361,7 +361,7 @@ func decodeGenericTABLECONTENT(r *bitstream.BitStream, ver container.DwgVersion,
 	}
 	// tablestyle（handle 流尾部 1 个）
 	nHdl++
-	g.Fields = append(g.Fields, objField{"num_content_handles", int64(nHdl)})
+	g.Fields = append(g.Fields, ObjField{"num_content_handles", int64(nHdl)})
 	return nil
 }
 
@@ -369,13 +369,13 @@ func decodeGenericTABLECONTENT(r *bitstream.BitStream, ver container.DwgVersion,
 // 阶段记录的 num_content_handles 顺序读取（cellstyle text_style/ltype、
 // customdata value 句柄、data_link、field/block 句柄、attdef、
 // tablegeometry、field_refs、tablestyle）。
-func decodeGenericTABLECONTENT_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericTABLECONTENT_HDL(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
 	n := 0
 	if v, ok := g.Field("num_content_handles").(int64); ok {
 		n = int(v)
 	}
 	for i := 0; i < n; i++ {
-		h, e := objrec.ReadHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(R, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -388,7 +388,7 @@ func decodeGenericTABLECONTENT_HDL(r *bitstream.BitStream, ver container.DwgVers
 // DEBUG_CLASSES 调试类）：flags BS + num_cols/num_rows BL + table_name T
 // + 列（type BL + text T + 行值向量）。行值按 spec 无条件读
 // data_long BL + data_double BD + data_string T 三键（与 LibreDWG 一致）。
-func decodeGenericDATATABLE(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericDATATABLE(R *bitstream.BitStream, Ver container.DwgVersion, fr *GfRead, g *ObjGeneric) error {
 	if err := fr.BS("flags", g); err != nil {
 		return err
 	}

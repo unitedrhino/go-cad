@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/entity"
+	"github.com/unitedrhino/go-cad/internal/object"
 	"regexp"
 	"strings"
 )
@@ -49,9 +50,9 @@ func ParseJSON(data []byte) (*Document, error) {
 		blocks:          make(map[uint64][]any),
 		attribs:         make(map[uint64]*entity.EntAttrib),
 		layerColors:     make(map[uint64]layerColor),
-		dictionaries:    make(map[uint64]*objDictionary),
-		xrecords:        make(map[uint64]*objXrecord),
-		internalObjects: make(map[uint64]*objGeneric),
+		dictionaries:    make(map[uint64]*object.ObjDictionary),
+		xrecords:        make(map[uint64]*object.ObjXrecord),
+		internalObjects: make(map[uint64]*object.ObjGeneric),
 		entityByHandle:  make(map[uint64]any),
 		HeaderVars:      make(map[string]any),
 		ltscale:         1, // 解码侧缺省比例
@@ -498,12 +499,12 @@ func jsonLayerColor(o jsonObject) layerColor {
 
 // jsonGenericObject 非实体对象 → objGeneric：gold 展平键值对存入 Fields
 // 中间表示（FieldPath 可直接按展平键查询，与解码对象的消费口径一致）。
-func jsonGenericObject(o jsonObject, name string, h uint64) *objGeneric {
-	g := &objGeneric{Name: name, Handle: h}
+func jsonGenericObject(o jsonObject, name string, h uint64) *object.ObjGeneric {
+	g := &object.ObjGeneric{Name: name, Handle: h}
 	for k, v := range o {
 		switch v.(type) {
 		case float64, string, bool, []any, map[string]any:
-			g.Fields = append(g.Fields, objField{Key: k, Val: v})
+			g.Fields = append(g.Fields, object.ObjField{Key: k, Val: v})
 		}
 	}
 	return g
