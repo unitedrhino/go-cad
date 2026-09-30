@@ -6,6 +6,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"strconv"
@@ -115,13 +116,13 @@ type hatchSeg struct {
 
 // decodeHatch HATCH：R2004+ 解析渐变段；R2007+ 图案名内联 TU。
 // 同位流多候选（TV/TU）解析按路径数评分取最优，容忍版本差异。
-func decodeHatch(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion, codepage uint16) (any, error) {
-	unicodeText := ver >= verR2007
+func decodeHatch(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion, codepage uint16) (any, error) {
+	unicodeText := ver >= container.VerR2007
 	var modes []hatchStringMode
 	switch {
-	case ver == verR2004 || ver == verR2007:
+	case ver == container.VerR2004 || ver == container.VerR2007:
 		modes = []hatchStringMode{hatchStrInlineTv}
-		if ver == verR2007 {
+		if ver == container.VerR2007 {
 			modes = []hatchStringMode{hatchStrInlineTu, hatchStrInlineTv}
 		}
 	case unicodeText:
@@ -133,11 +134,11 @@ func decodeHatch(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion,
 	var best *entHatch
 	bestScore := uint64(0)
 	var lastErr error
-	streamName := ver >= verR2007 // R2007+ 图案名/渐变名存于对象字符串区
-	hasGradient := ver >= verR2004
+	streamName := ver >= container.VerR2007 // R2007+ 图案名/渐变名存于对象字符串区
+	hasGradient := ver >= container.VerR2004
 	for _, mode := range modes {
 		r.SetBitPos(pos)
-		ent, err := decodeHatchBody(r, head, hatchBodyOpts{strMode: mode, fitPoints: ver >= verR2010, gradient: ver >= verR2004, streamName: streamName, codepage: codepage})
+		ent, err := decodeHatchBody(r, head, hatchBodyOpts{strMode: mode, fitPoints: ver >= container.VerR2010, gradient: ver >= container.VerR2004, streamName: streamName, codepage: codepage})
 		if err != nil {
 			lastErr = err
 			continue

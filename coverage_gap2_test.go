@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"math/rand"
@@ -24,7 +25,7 @@ const gap2BaseHandle = 0x30
 // execClassDecoder 按类名取注册解码器，用合成 dat 流执行 decode；
 // buildHdl 非空且 spec 带 hdl 时继续执行 handle 流解码。
 // 返回解码产物供字段断言。
-func execClassDecoder(t *testing.T, class string, ver dwgVersion, build, buildHdl func(w *bitstream.EncWriter)) *objGeneric {
+func execClassDecoder(t *testing.T, class string, ver container.DwgVersion, build, buildHdl func(w *bitstream.EncWriter)) *objGeneric {
 	t.Helper()
 	spec, ok := internalClassDecoders[class]
 	if !ok {
@@ -229,11 +230,11 @@ func TestSynthRenderSettings(t *testing.T) {
 			}
 		}
 	}
-	g := execClassDecoder(t, "RENDERSETTINGS", verR2004, buildSettings(false), nil)
+	g := execClassDecoder(t, "RENDERSETTINGS", container.VerR2004, buildSettings(false), nil)
 	if v, _ := g.Field("display_index").(int64); v != 2 {
 		t.Errorf("display_index = %v", g.Field("display_index"))
 	}
-	g = execClassDecoder(t, "RENDERSETTINGS", verR2013, buildSettings(true), nil)
+	g = execClassDecoder(t, "RENDERSETTINGS", container.VerR2013, buildSettings(true), nil)
 	if _, ok := g.Field("has_predefined").(bool); !ok {
 		t.Errorf("R2013 缺 has_predefined")
 	}
@@ -266,8 +267,8 @@ func TestSynthRenderSettings(t *testing.T) {
 			}
 		}
 	}
-	execClassDecoder(t, "RAPIDRTRENDERSETTINGS", verR2004, buildRapid(false), nil)
-	g = execClassDecoder(t, "RAPIDRTRENDERSETTINGS", verR2013, buildRapid(true), nil)
+	execClassDecoder(t, "RAPIDRTRENDERSETTINGS", container.VerR2004, buildRapid(false), nil)
+	g = execClassDecoder(t, "RAPIDRTRENDERSETTINGS", container.VerR2013, buildRapid(true), nil)
 	if v, _ := g.Field("filter_width").(float64); v != 1.5 {
 		t.Errorf("filter_width = %v", g.Field("filter_width"))
 	}
@@ -288,7 +289,7 @@ func TestSynthRenderSettings(t *testing.T) {
 			w.WriteBL(uint32(i + 1))
 		}
 	}
-	g = execClassDecoder(t, "RENDERENTRY", verR2004, buildEntry, nil)
+	g = execClassDecoder(t, "RENDERENTRY", container.VerR2004, buildEntry, nil)
 	if v, _ := g.Field("dimension_x").(int64); v != 640 {
 		t.Errorf("dimension_x = %v", g.Field("dimension_x"))
 	}
@@ -305,7 +306,7 @@ func TestSynthRenderSettings(t *testing.T) {
 		w.WriteB(false)
 		w.WriteB(true)
 	}
-	g = execClassDecoder(t, "RENDERGLOBAL", verR2004, buildGlobal, nil)
+	g = execClassDecoder(t, "RENDERGLOBAL", container.VerR2004, buildGlobal, nil)
 	if v, _ := g.Field("image_width").(int64); v != 800 {
 		t.Errorf("image_width = %v", g.Field("image_width"))
 	}
@@ -365,7 +366,7 @@ func TestSynthMentalRaySettings(t *testing.T) {
 		w.WriteB(false) // diagnostics_samples_mode
 		w.WriteBD(1)    // energy_multiplier
 	}
-	g := execClassDecoder(t, "MENTALRAYRENDERSETTINGS", verR2004, build, nil)
+	g := execClassDecoder(t, "MENTALRAYRENDERSETTINGS", container.VerR2004, build, nil)
 	if v, _ := g.Field("tile_size").(int64); v != 64 {
 		t.Errorf("tile_size = %v", g.Field("tile_size"))
 	}
@@ -382,7 +383,7 @@ func TestSynthAcshPrimitives(t *testing.T) {
 		w.WriteBL(0) // minor
 		w.WriteBD(5) // radius
 	}
-	g := execClassDecoder(t, "ACSH_SPHERE_CLASS", verR2004, buildSphere,
+	g := execClassDecoder(t, "ACSH_SPHERE_CLASS", container.VerR2004, buildSphere,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 2) })
 	if v, _ := g.Field("radius").(float64); v != 5 {
 		t.Errorf("radius = %v", g.Field("radius"))
@@ -401,7 +402,7 @@ func TestSynthAcshPrimitives(t *testing.T) {
 		w.WriteBD(3) // radius
 		w.WriteBD(1) // topradius
 	}
-	g = execClassDecoder(t, "ACSH_PYRAMID_CLASS", verR2004, buildPyramid,
+	g = execClassDecoder(t, "ACSH_PYRAMID_CLASS", container.VerR2004, buildPyramid,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("topradius").(float64); v != 1 {
 		t.Errorf("topradius = %v", g.Field("topradius"))
@@ -421,7 +422,7 @@ func TestSynthAcshBrep(t *testing.T) {
 		w.WriteB(false) // wireframe
 		w.WriteB(true)  // acis_empty_bit
 	}
-	g := execClassDecoder(t, "ACSH_BREP_CLASS", verR2004, buildEmpty,
+	g := execClassDecoder(t, "ACSH_BREP_CLASS", container.VerR2004, buildEmpty,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("version").(int64); v != 0 {
 		t.Errorf("empty version = %v", g.Field("version"))
@@ -441,7 +442,7 @@ func TestSynthAcshBrep(t *testing.T) {
 		w.WriteBL(0) // 终止块
 		gap2WriteWireframe(w)
 	}
-	g = execClassDecoder(t, "ACSH_BREP_CLASS", verR2004, buildSAT,
+	g = execClassDecoder(t, "ACSH_BREP_CLASS", container.VerR2004, buildSAT,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("version").(int64); v != 1 {
 		t.Errorf("SAT version = %v", g.Field("version"))
@@ -462,7 +463,7 @@ func TestSynthAcshBrep(t *testing.T) {
 		w.WriteBS(2) // version
 		w.WriteTF(sab)
 	}
-	g = execClassDecoder(t, "ACSH_BREP_CLASS", verR2007, buildSAB,
+	g = execClassDecoder(t, "ACSH_BREP_CLASS", container.VerR2007, buildSAB,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 4) })
 	if v, _ := g.Field("num_materials").(int64); v != 2 {
 		t.Errorf("SAB num_materials = %v", g.Field("num_materials"))
@@ -480,8 +481,8 @@ func TestSynthAcshHdl(t *testing.T) {
 	g.valueHandle91 = true
 	w := bitstream.NewEncWriter()
 	gap2WriteHandles(w, 2)
-	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: verR2004}
-	if err := decodeGenericACSH_HDL(fr.r, verR2004, fr, g); err != nil {
+	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: container.VerR2004}
+	if err := decodeGenericACSH_HDL(fr.r, container.VerR2004, fr, g); err != nil {
 		t.Fatalf("hdl: %v", err)
 	}
 	if len(g.Handles) != 2 {
@@ -493,8 +494,8 @@ func TestSynthAcshHdl(t *testing.T) {
 	g2.Fields = []objField{{"version", int64(2)}, {"num_materials", int64(2)}}
 	w2 := bitstream.NewEncWriter()
 	gap2WriteHandles(w2, 3)
-	fr2 := &gfRead{r: bitstream.NewBitStream(w2.Bytes()), ver: verR2007}
-	if err := decodeGenericACSH_HDL(fr2.r, verR2007, fr2, g2); err != nil {
+	fr2 := &gfRead{r: bitstream.NewBitStream(w2.Bytes()), ver: container.VerR2007}
+	if err := decodeGenericACSH_HDL(fr2.r, container.VerR2007, fr2, g2); err != nil {
 		t.Fatalf("BREP hdl: %v", err)
 	}
 	if len(g2.Handles) != 3 {
@@ -506,8 +507,8 @@ func TestSynthAcshHdl(t *testing.T) {
 	g3.Fields = []objField{{"version", int64(1)}}
 	w3 := bitstream.NewEncWriter()
 	gap2WriteHandles(w3, 1)
-	fr3 := &gfRead{r: bitstream.NewBitStream(w3.Bytes()), ver: verR2004}
-	if err := decodeGenericACSH_HDL(fr3.r, verR2004, fr3, g3); err != nil {
+	fr3 := &gfRead{r: bitstream.NewBitStream(w3.Bytes()), ver: container.VerR2004}
+	if err := decodeGenericACSH_HDL(fr3.r, container.VerR2004, fr3, g3); err != nil {
 		t.Fatalf("BREP v1 hdl: %v", err)
 	}
 	if len(g3.Handles) != 1 {
@@ -527,7 +528,7 @@ func TestSynthDynBlockParameters(t *testing.T) {
 		gap2WriteValueSet(w)
 		gap2WriteValueSet(w)
 	}
-	g := execClassDecoder(t, "BLOCKPOLARPARAMETER", verR2004, buildPolar, nil)
+	g := execClassDecoder(t, "BLOCKPOLARPARAMETER", container.VerR2004, buildPolar, nil)
 	if v, _ := g.Field("offset").(float64); v != 2 {
 		t.Errorf("offset = %v", g.Field("offset"))
 	}
@@ -539,7 +540,7 @@ func TestSynthDynBlockParameters(t *testing.T) {
 		w.WriteTV("pd")
 		gap2Write3BD(w)
 	}
-	g = execClassDecoder(t, "BLOCKPOINTPARAMETER", verR2004, buildPoint, nil)
+	g = execClassDecoder(t, "BLOCKPOINTPARAMETER", container.VerR2004, buildPoint, nil)
 	if g.Field("position_name") == nil {
 		t.Errorf("缺 position_name")
 	}
@@ -555,7 +556,7 @@ func TestSynthDynBlockParameters(t *testing.T) {
 		gap2WriteValueSet(w)
 		gap2WriteValueSet(w)
 	}
-	g = execClassDecoder(t, "BLOCKXYPARAMETER", verR2004, buildXY, nil)
+	g = execClassDecoder(t, "BLOCKXYPARAMETER", container.VerR2004, buildXY, nil)
 	if v, _ := g.Field("y_value").(float64); v != 4 {
 		t.Errorf("y_value = %v", g.Field("y_value"))
 	}
@@ -568,7 +569,7 @@ func TestSynthDynBlockParameters(t *testing.T) {
 		w.WriteTV("ld")
 		w.WriteTV("u")
 	}
-	g = execClassDecoder(t, "BLOCKLOOKUPPARAMETER", verR2004, buildLookup, nil)
+	g = execClassDecoder(t, "BLOCKLOOKUPPARAMETER", container.VerR2004, buildLookup, nil)
 	if v, _ := g.Field("index").(int64); v != 2 {
 		t.Errorf("index = %v", g.Field("index"))
 	}
@@ -581,7 +582,7 @@ func TestSynthDynBlockParameters(t *testing.T) {
 		w.WriteBS(390)
 		w.WriteBS(1) // type
 	}
-	g = execClassDecoder(t, "BLOCKUSERPARAMETER", verR2004, buildUser,
+	g = execClassDecoder(t, "BLOCKUSERPARAMETER", container.VerR2004, buildUser,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 2) })
 	if v, _ := g.Field("type").(int64); v != 1 {
 		t.Errorf("type = %v", g.Field("type"))
@@ -612,7 +613,7 @@ func TestSynthDynBlockActions(t *testing.T) {
 		w.WriteBD(5)
 		w.WriteBD(6)
 	}
-	g := execClassDecoder(t, "BLOCKARRAYACTION", verR2004, buildArray,
+	g := execClassDecoder(t, "BLOCKARRAYACTION", container.VerR2004, buildArray,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("row_offset").(float64); v != 6 {
 		t.Errorf("row_offset = %v", g.Field("row_offset"))
@@ -634,7 +635,7 @@ func TestSynthDynBlockActions(t *testing.T) {
 		w.WriteBL(9)
 		w.WriteTV("cp3")
 	}
-	g = execClassDecoder(t, "BLOCKROTATEACTION", verR2004, buildRotate,
+	g = execClassDecoder(t, "BLOCKROTATEACTION", container.VerR2004, buildRotate,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("base_pt").([]float64); len(v) != 3 || v[0] != 1 {
 		t.Errorf("base_pt = %v", g.Field("base_pt"))
@@ -649,7 +650,7 @@ func TestSynthBlockGripLocationComponent(t *testing.T) {
 		w.WriteBL(3)   // grip_type
 		w.WriteTV("e") // grip_expr
 	}
-	g := execClassDecoder(t, "BLOCKGRIPLOCATIONCOMPONENT", verR2004, build,
+	g := execClassDecoder(t, "BLOCKGRIPLOCATIONCOMPONENT", container.VerR2004, build,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("grip_type").(int64); v != 3 {
 		t.Errorf("grip_type = %v", g.Field("grip_type"))
@@ -725,9 +726,9 @@ func TestSynthAssoc2DConstraintGroup(t *testing.T) {
 		}
 	}
 	for _, r2013 := range []bool{false, true} {
-		ver := verR2004
+		ver := container.VerR2004
 		if r2013 {
-			ver = verR2013
+			ver = container.VerR2013
 		}
 		g := execClassDecoder(t, "ASSOC2DCONSTRAINTGROUP", ver, build(r2013),
 			func(w *bitstream.EncWriter) { gap2WriteHandles(w, 5) })
@@ -760,7 +761,7 @@ func TestSynthAssocVariable(t *testing.T) {
 		w.WriteTV("t78")
 		w.WriteB(false) // b290
 	}
-	g := execClassDecoder(t, "ASSOCVARIABLE", verR2004, build,
+	g := execClassDecoder(t, "ASSOCVARIABLE", container.VerR2004, build,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 3) })
 	if v, _ := g.Field("t78").(string); v != "t78" {
 		t.Errorf("t78 = %v", g.Field("t78"))
@@ -793,7 +794,7 @@ func TestSynthSurfaceActionBody(t *testing.T) {
 		}
 	}
 	// EXTEND：class_version + option RC
-	g := execClassDecoder(t, "ASSOCEXTENDSURFACEACTIONBODY", verR2004,
+	g := execClassDecoder(t, "ASSOCEXTENDSURFACEACTIONBODY", container.VerR2004,
 		buildPre(func(w *bitstream.EncWriter) {
 			w.WriteBL(1)
 			w.WriteRC(3)
@@ -807,7 +808,7 @@ func TestSynthSurfaceActionBody(t *testing.T) {
 	}
 
 	// OFFSET：class_version + b1
-	g = execClassDecoder(t, "ASSOCOFFSETSURFACEACTIONBODY", verR2004,
+	g = execClassDecoder(t, "ASSOCOFFSETSURFACEACTIONBODY", container.VerR2004,
 		buildPre(func(w *bitstream.EncWriter) {
 			w.WriteBL(1)
 			w.WriteB(true)
@@ -817,7 +818,7 @@ func TestSynthSurfaceActionBody(t *testing.T) {
 	}
 
 	// TRIM：class_version + b1/b2 + distance
-	g = execClassDecoder(t, "ASSOCTRIMSURFACEACTIONBODY", verR2004,
+	g = execClassDecoder(t, "ASSOCTRIMSURFACEACTIONBODY", container.VerR2004,
 		buildPre(func(w *bitstream.EncWriter) {
 			w.WriteBL(1)
 			w.WriteB(true)
@@ -829,7 +830,7 @@ func TestSynthSurfaceActionBody(t *testing.T) {
 	}
 
 	// BLEND：class_version + b1/b2/b3 + blend_options + b4/b5 + bs2
-	g = execClassDecoder(t, "ASSOCBLENDSURFACEACTIONBODY", verR2004,
+	g = execClassDecoder(t, "ASSOCBLENDSURFACEACTIONBODY", container.VerR2004,
 		buildPre(func(w *bitstream.EncWriter) {
 			w.WriteBL(1)
 			w.WriteB(true)
@@ -855,7 +856,7 @@ func TestSynthSurfaceActionBody(t *testing.T) {
 		w.WriteBL(0) // pbsab_status
 		w.WriteBL(2) // class_version（cvTail）
 	}
-	g = execClassDecoder(t, "ASSOCPLANESURFACEACTIONBODY", verR2013, build2013,
+	g = execClassDecoder(t, "ASSOCPLANESURFACEACTIONBODY", container.VerR2013, build2013,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("class_version").(int64); v != 2 {
 		t.Errorf("PLANE class_version = %v", g.Field("class_version"))
@@ -879,7 +880,7 @@ func TestSynthBrepSATBlockLimit(t *testing.T) {
 		w.WriteB(false)   // wireframe
 		w.WriteB(true)    // acis_empty_bit
 	}
-	g := execClassDecoder(t, "ACSH_BREP_CLASS", verR2004, build,
+	g := execClassDecoder(t, "ACSH_BREP_CLASS", container.VerR2004, build,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("version").(int64); v != 1 {
 		t.Errorf("version = %v", g.Field("version"))
@@ -901,7 +902,7 @@ func TestSynthSABNoMarker(t *testing.T) {
 		w.WriteB(false) // wireframe
 		w.WriteB(true)  // acis_empty_bit
 	}
-	g := execClassDecoder(t, "ACSH_BREP_CLASS", verR2004, build,
+	g := execClassDecoder(t, "ACSH_BREP_CLASS", container.VerR2004, build,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("version").(int64); v != 2 {
 		t.Errorf("version = %v", g.Field("version"))
@@ -946,7 +947,7 @@ func TestSynthDetailViewStyle(t *testing.T) {
 		gap2WriteCMC(w)  // borderline_color
 		w.WriteRC(0)     // model_edge
 	}
-	g := execClassDecoder(t, "DETAILVIEWSTYLE", verR2004, buildR2004,
+	g := execClassDecoder(t, "DETAILVIEWSTYLE", container.VerR2004, buildR2004,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 6) })
 	if v, _ := g.Field("identifier_height").(float64); v != 2.5 {
 		t.Errorf("identifier_height = %v", g.Field("identifier_height"))
@@ -982,7 +983,7 @@ func TestSynthDetailViewStyle(t *testing.T) {
 		gap2WriteCMC(w)
 		w.WriteRC(0)
 	}
-	execClassDecoder(t, "DETAILVIEWSTYLE", verR2018, buildR2018,
+	execClassDecoder(t, "DETAILVIEWSTYLE", container.VerR2018, buildR2018,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 6) })
 }
 
@@ -1027,7 +1028,7 @@ func TestSynthSectionViewStyle(t *testing.T) {
 		w.WriteBD(0.5)
 		w.WriteBD(1.0)
 	}
-	g := execClassDecoder(t, "SECTIONVIEWSTYLE", verR2004, build,
+	g := execClassDecoder(t, "SECTIONVIEWSTYLE", container.VerR2004, build,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 6) })
 	if v, _ := g.Field("end_line_overshoot").(float64); v != 0.15 {
 		t.Errorf("end_line_overshoot = %v", g.Field("end_line_overshoot"))
@@ -1080,7 +1081,7 @@ func TestSynthMLeaderStyle(t *testing.T) {
 		w.WriteBS(0)    // attach_top
 		w.WriteBS(0)    // attach_bottom
 	}
-	g := execClassDecoder(t, "MLEADERSTYLE", verR2010, build,
+	g := execClassDecoder(t, "MLEADERSTYLE", container.VerR2010, build,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 4) })
 	if v, _ := g.Field("landing_dist").(float64); v != 0.8 {
 		t.Errorf("landing_dist = %v", g.Field("landing_dist"))
@@ -1105,7 +1106,7 @@ func TestSynthSunAndHistory(t *testing.T) {
 		w.WriteBS(512)      // shadow_mapsize
 		w.WriteRC(3)        // shadow_softness
 	}
-	g := execClassDecoder(t, "SUN", verR2004, buildSun, nil)
+	g := execClassDecoder(t, "SUN", container.VerR2004, buildSun, nil)
 	if v, _ := g.Field("shadow_softness").(int64); v != 3 {
 		t.Errorf("shadow_softness = %v", g.Field("shadow_softness"))
 	}
@@ -1117,7 +1118,7 @@ func TestSynthSunAndHistory(t *testing.T) {
 		w.WriteB(true)  // show_history
 		w.WriteB(false) // record_history
 	}
-	g = execClassDecoder(t, "ACSH_HISTORY_CLASS", verR2004, buildHistory, nil)
+	g = execClassDecoder(t, "ACSH_HISTORY_CLASS", container.VerR2004, buildHistory, nil)
 	if v, _ := g.Field("h_nodeid").(int64); v != 7 {
 		t.Errorf("h_nodeid = %v", g.Field("h_nodeid"))
 	}
@@ -1142,7 +1143,7 @@ func TestSynthTableGeometry(t *testing.T) {
 			w.WriteBL(0) // unknown
 		}
 	}
-	g := execClassDecoder(t, "TABLEGEOMETRY", verR2004, build, nil)
+	g := execClassDecoder(t, "TABLEGEOMETRY", container.VerR2004, build, nil)
 	if v, _ := g.Field("numrows").(int64); v != 2 {
 		t.Errorf("numrows = %v", g.Field("numrows"))
 	}
@@ -1175,7 +1176,7 @@ func TestSynthTableStylePre2010(t *testing.T) {
 			}
 		}
 	}
-	g := execClassDecoder(t, "TABLESTYLE", verR2004, build,
+	g := execClassDecoder(t, "TABLESTYLE", container.VerR2004, build,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 3) })
 	if v, _ := g.Field("rowstyles[2].text_height").(float64); v != 2 {
 		t.Errorf("rowstyles[2].text_height = %v", g.Field("rowstyles[2].text_height"))
@@ -1216,7 +1217,7 @@ func TestSynthGeoData(t *testing.T) {
 		w.WriteBL(1) // face2
 		w.WriteBL(2) // face3
 	}
-	g := execClassDecoder(t, "GEODATA", verR2010, build,
+	g := execClassDecoder(t, "GEODATA", container.VerR2010, build,
 		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("geomesh_faces[0].face3").(int64); v != 2 {
 		t.Errorf("face3 = %v", g.Field("geomesh_faces[0].face3"))
@@ -1544,19 +1545,19 @@ func TestSynthPreR13Dimension(t *testing.T) {
 			data = append(common(dimtype), tail...)
 		}
 		h := preR13EntHead{opts: opts}
-		e := decodePreR13Dimension(&preR13Reader{data: data}, h, verR11, 30)
+		e := decodePreR13Dimension(&preR13Reader{data: data}, h, container.VerR11, 30)
 		if e == nil || e.userText != "abc" {
 			t.Errorf("dimtype %d: userText = %q", dimtype, e.userText)
 		}
 	}
 	// Ordinate 的 feature/leader 点与 Ang2Ln 的 p16 断言
 	h := preR13EntHead{opts: opts}
-	e := decodePreR13Dimension(&preR13Reader{data: append(common(2), tail...)}, h, verR11, 30)
+	e := decodePreR13Dimension(&preR13Reader{data: append(common(2), tail...)}, h, container.VerR11, 30)
 	if !e.hasPoint16 || e.point16x != 10 {
 		t.Errorf("Ang2Ln point16 = %v/%v", e.point16x, e.p16y)
 	}
 	// Diameter 在 R10+ 无 HAS_ELEVATION 时 first_arc_pt 为 3RD
-	e = decodePreR13Dimension(&preR13Reader{data: append(common(3), tailShort...)}, h, verR11, 30)
+	e = decodePreR13Dimension(&preR13Reader{data: append(common(3), tailShort...)}, h, container.VerR11, 30)
 	if !e.hasPoint15 || e.point15.z != 9 {
 		t.Errorf("Diameter point15 = %v", e.point15)
 	}
@@ -1579,7 +1580,7 @@ func TestSynthPreR13Polyline(t *testing.T) {
 			startOff: 0, rawType: preR13TypePolyline, typ: preR13TypePolyline,
 			flag: 0, size: size, opts: opts,
 		}
-		return decodePreR13Polyline(data, h, verR11)
+		return decodePreR13Polyline(data, h, container.VerR11)
 	}
 	// 2D：flags + sw + ew + extrusion + m + n + curvetype
 	e2, ok := build(0, preR13OptsPolylineHasFlag|preR13OptsPolylineHasStartWidth|
@@ -1663,7 +1664,7 @@ func TestSynthPreR13Vertex(t *testing.T) {
 	}
 	for _, tc := range cases {
 		data, h := build(tc.vflag, optsAll)
-		e := decodePreR13Vertex(data, h, verR11)
+		e := decodePreR13Vertex(data, h, container.VerR11)
 		b := entBase(e)
 		if b == nil || b.typeName != tc.want {
 			t.Errorf("vflag %X: 得到 %v，期望 %s", tc.vflag, b.typeName, tc.want)
@@ -1671,7 +1672,7 @@ func TestSynthPreR13Vertex(t *testing.T) {
 	}
 	// 2D 变体字段断言
 	data, h := build(0, optsAll)
-	v := decodePreR13Vertex(data, h, verR11).(*entVertex2d)
+	v := decodePreR13Vertex(data, h, container.VerR11).(*entVertex2d)
 	if v.bulge != 0.25 || v.startWidth != 0.5 {
 		t.Errorf("2D bulge/width = %v/%v", v.bulge, v.startWidth)
 	}
@@ -1696,7 +1697,7 @@ func TestSynthPreR13Vertex(t *testing.T) {
 		startOff: 0, rawType: preR13TypeVertex, typ: preR13TypeVertex,
 		flag: 0, size: uint16(len(faceData)), opts: optsFace,
 	}
-	f := decodePreR13Vertex(faceData, faceHead, verR11).(*entVertexPfaceFace)
+	f := decodePreR13Vertex(faceData, faceHead, container.VerR11).(*entVertexPfaceFace)
 	if f.vertind[3] != 4 {
 		t.Errorf("PFACE_FACE vertind = %v", f.vertind)
 	}
@@ -1764,7 +1765,7 @@ func TestParseBitFlipSamples(t *testing.T) {
 // dat 流与 handle 流（R2004 与 R2013 两种 T 语义），不 panic。
 func TestSynthMalformedObjectStreams(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
-	run := func(ver dwgVersion, seedPhase byte) {
+	run := func(ver container.DwgVersion, seedPhase byte) {
 		for className, spec := range internalClassDecoders {
 			for _, size := range []int{1, 3, 8, 21, 55, 130, 400} {
 				buf := make([]byte, size)
@@ -1795,8 +1796,8 @@ func TestSynthMalformedObjectStreams(t *testing.T) {
 			}
 		}
 	}
-	run(verR2004, 0x00)
-	run(verR2013, 0xA5)
+	run(container.VerR2004, 0x00)
+	run(container.VerR2013, 0xA5)
 }
 
 // TestSynthMalformedEntityBits 实体公共头+专有字段合成失败路径：
@@ -2011,8 +2012,8 @@ func TestSynthTableContentFull(t *testing.T) {
 	w.WriteBL(1) // right_col
 
 	g := &objGeneric{Name: "TABLECONTENT", Handle: 0x30}
-	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: verR2004}
-	if err := decodeGenericTABLECONTENT(fr.r, verR2004, fr, g); err != nil {
+	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: container.VerR2004}
+	if err := decodeGenericTABLECONTENT(fr.r, container.VerR2004, fr, g); err != nil {
 		t.Fatalf("TABLECONTENT decode: %v", err)
 	}
 	if v, _ := g.Field("tdata.rows[0].cells[0].cell_contents[0].value.data_string").(string); v != "cell text" {
@@ -2098,7 +2099,7 @@ func TestSynthMLeaderContextFull(t *testing.T) {
 	gap2Write3BD(w) // baseVert
 	w.WriteB(true)  // isNormalReversed
 	m := &entMLeader{}
-	if err := decodeMLeaderContext(bitstream.NewBitStream(w.Bytes()), m, verR2004, 0, nil); err != nil {
+	if err := decodeMLeaderContext(bitstream.NewBitStream(w.Bytes()), m, container.VerR2004, 0, nil); err != nil {
 		t.Fatalf("txt ctx: %v", err)
 	}
 	if m.ctx.txt.defaultText != "hello" {
@@ -2139,7 +2140,7 @@ func TestSynthMLeaderContextFull(t *testing.T) {
 	gap2Write3BD(w)
 	w.WriteB(false)
 	m = &entMLeader{}
-	if err := decodeMLeaderContext(bitstream.NewBitStream(w.Bytes()), m, verR2004, 0, nil); err != nil {
+	if err := decodeMLeaderContext(bitstream.NewBitStream(w.Bytes()), m, container.VerR2004, 0, nil); err != nil {
 		t.Fatalf("blk ctx: %v", err)
 	}
 	if !m.ctx.hasContentBlk || m.ctx.blk.rotation != 0.5 {

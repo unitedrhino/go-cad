@@ -5,6 +5,7 @@ package cad
 import (
 	"bytes"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"os"
 	"path/filepath"
 	"testing"
@@ -133,33 +134,33 @@ func TestDumpEntitiesValidJSON(t *testing.T) {
 // 短输出，禁止越界 panic。
 func TestDecompressR21Malformed(t *testing.T) {
 	// 空流 + 非零声明尺寸 → 报错
-	if _, err := decompressR21(nil, 10); err == nil {
+	if _, err := container.DecompressR21(nil, 10); err == nil {
 		t.Error("空流非零尺寸应报错")
 	}
 	// 空流 + 零声明尺寸 → 空输出
-	if out, err := decompressR21(nil, 0); err != nil || len(out) != 0 {
+	if out, err := container.DecompressR21(nil, 0); err != nil || len(out) != 0 {
 		t.Errorf("零尺寸期望空输出: %q %v", out, err)
 	}
 	// 0x20 引导 opcode 被截断（缺 2 字节引导载荷）→ 报错
-	if _, err := decompressR21([]byte{0x20}, 100); err == nil {
+	if _, err := container.DecompressR21([]byte{0x20}, 100); err == nil {
 		t.Error("引导 opcode 截断应报错")
 	}
 	// 字面量长度声明超出实际数据 → 报错（截断流）
-	if _, err := decompressR21([]byte{0x05, 'A', 'B'}, 100); err == nil {
+	if _, err := container.DecompressR21([]byte{0x05, 'A', 'B'}, 100); err == nil {
 		t.Error("截断流应报错")
 	}
 	// 0xFF 扩展长度链被截断 → 报错
-	if _, err := decompressR21([]byte{0x16, 0xFF, 0x01}, 100); err == nil {
+	if _, err := container.DecompressR21([]byte{0x16, 0xFF, 0x01}, 100); err == nil {
 		t.Error("扩展长度链截断应报错")
 	}
 }
 
 // TestDecompressLZ77EmptyInput LZ77 解压器空输入容错。
 func TestDecompressLZ77EmptyInput(t *testing.T) {
-	if _, err := decompressLZ77(nil, 10); err == nil {
+	if _, err := container.DecompressLZ77(nil, 10); err == nil {
 		t.Error("空流非零尺寸应报错")
 	}
-	if out, err := decompressLZ77(nil, 0); err != nil || len(out) != 0 {
+	if out, err := container.DecompressLZ77(nil, 0); err != nil || len(out) != 0 {
 		t.Errorf("零尺寸期望空输出: %q %v", out, err)
 	}
 }
@@ -176,10 +177,10 @@ func TestReadCRCTruncated(t *testing.T) {
 // TestEncodeEntityReplayGuards 实体回放编码器边界：nil 实体与缺位串
 // 实体必须报错而非 panic；回放输出与版本参数无关（位串原样保留差异）。
 func TestEncodeEntityReplayGuards(t *testing.T) {
-	if _, _, err := encodeEntityR200x(nil, verR2000); err == nil {
+	if _, _, err := encodeEntityR200x(nil, container.VerR2000); err == nil {
 		t.Error("nil 实体应报错")
 	}
-	if _, _, err := encodeEntityR200x(&entLine{}, verR2000); err == nil {
+	if _, _, err := encodeEntityR200x(&entLine{}, container.VerR2000); err == nil {
 		t.Error("缺位串实体应报错")
 	}
 	// 真实样本实体：版本参数不影响回放输出
@@ -189,8 +190,8 @@ func TestEncodeEntityReplayGuards(t *testing.T) {
 		if b == nil || b.headRawBits == "" || b.RawHandleBits == "" {
 			continue
 		}
-		out1, _, err1 := encodeEntityR200x(e, verR2000)
-		out2, _, err2 := encodeEntityR200x(e, dwgVersion(0xFF))
+		out1, _, err1 := encodeEntityR200x(e, container.VerR2000)
+		out2, _, err2 := encodeEntityR200x(e, container.DwgVersion(0xFF))
 		if err1 != nil || err2 != nil {
 			t.Fatalf("回放编码失败: %v %v", err1, err2)
 		}

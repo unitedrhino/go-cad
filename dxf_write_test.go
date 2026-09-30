@@ -11,6 +11,7 @@ package cad
 
 import (
 	"bufio"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
@@ -364,7 +365,7 @@ func TestWriteDXFEntityTypesVsLibreDWGDXF(t *testing.T) {
 		}
 		// pre-R13 豁免：dwgread 对 pre-R13 的 ENTITIES 遍历受 owner 链限制，输出不全
 		data, _ := os.ReadFile(f)
-		if doc, err := Parse(data); err == nil && doc.version.preR13() {
+		if doc, err := Parse(data); err == nil && doc.version.PreR13() {
 			t.Logf("%s: pre-R13 样本豁免（dwgread 输出受限）", name)
 			continue
 		}
@@ -1177,7 +1178,7 @@ func TestWriteDXFPfaceMesh(t *testing.T) {
 		baseEntity: baseEntity{handle: 0x9A, owner: 0x99, mode: 0},
 		flag:       192, position: point3{1, 2, 3},
 	}
-	meshDoc := &Document{version: verR2000}
+	meshDoc := &Document{version: container.VerR2000}
 	meshDoc.modelSpace = []any{mesh, vert}
 	var mb strings.Builder
 	if err := WriteDXF(meshDoc, &mb); err != nil {
@@ -1277,7 +1278,7 @@ func TestWriteDXFAcis(t *testing.T) {
 		baseEntity: baseEntity{handle: 0x77, layer: 0, mode: 2},
 		kind:       "3DSOLID", version: 1, acisData: []byte(sat),
 	}
-	doc := &Document{version: verR2000}
+	doc := &Document{version: container.VerR2000}
 	doc.modelSpace = []any{body}
 	var buf strings.Builder
 	if err := WriteDXF(doc, &buf); err != nil {
@@ -1389,7 +1390,7 @@ func TestWriteDXFOle2Frame(t *testing.T) {
 		baseEntity: baseEntity{handle: 0x31, layer: 0, mode: 2},
 		oleType:    1, mode: 0, lockAspect: 1, dataSize: uint32(len(data)), data: data,
 	}
-	doc := &Document{version: verR2000}
+	doc := &Document{version: container.VerR2000}
 	doc.modelSpace = []any{ole}
 	var buf strings.Builder
 	if err := WriteDXF(doc, &buf); err != nil {
@@ -1446,7 +1447,7 @@ func TestWriteDXFProxyEntity(t *testing.T) {
 		proxyDataSize: uint32(len(proxyData)), proxyData: proxyData,
 		dataNumBits: 17, data: rawBits,
 	}
-	doc := &Document{version: verR2000}
+	doc := &Document{version: container.VerR2000}
 	doc.modelSpace = []any{px}
 	var buf strings.Builder
 	if err := WriteDXF(doc, &buf); err != nil {

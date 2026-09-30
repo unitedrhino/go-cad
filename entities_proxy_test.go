@@ -5,6 +5,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"testing"
 )
@@ -32,7 +33,7 @@ func TestDecodeProxyEntityFromBits(t *testing.T) {
 		t.Fatal(err)
 	}
 	head.objSizeBit = objSizeBit
-	ent, err := decodeProxyEntityVer(r, &head, dataEnd, verR2013)
+	ent, err := decodeProxyEntityVer(r, &head, dataEnd, container.VerR2013)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +77,7 @@ func TestDecodeProxyEntityR2018FromBits(t *testing.T) {
 		t.Fatal(err)
 	}
 	head.objSizeBit = objSizeBit
-	ent, err := decodeProxyEntityVer(r, &head, dataEnd, verR2018)
+	ent, err := decodeProxyEntityVer(r, &head, dataEnd, container.VerR2018)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +131,7 @@ func TestDecodeProxyEntityPreviewFromBits(t *testing.T) {
 		t.Fatalf("公共头 preview: exists=%v len=%d", head.previewExists, len(head.preview))
 	}
 	head.objSizeBit = objSizeBit
-	ent, err := decodeProxyEntityVer(r, &head, dataEnd, verR2013)
+	ent, err := decodeProxyEntityVer(r, &head, dataEnd, container.VerR2013)
 	if err != nil {
 		t.Fatal(err)
 	}

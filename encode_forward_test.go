@@ -6,6 +6,7 @@ package cad
 import (
 	"bytes"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
@@ -19,7 +20,7 @@ import (
 func fwdSynthDoc(t *testing.T, ents ...any) *Document {
 	t.Helper()
 	doc := &Document{
-		version:     verR2000,
+		version:     container.VerR2000,
 		blocks:      map[uint64][]any{},
 		attribs:     map[uint64]*entAttrib{},
 		layerColors: map[uint64]layerColor{0x10: {index: 3, name: "FWD"}},

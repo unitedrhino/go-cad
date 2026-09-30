@@ -6,6 +6,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"os"
 	"path/filepath"
@@ -40,7 +41,7 @@ func TestReadTableValueFields(t *testing.T) {
 		tc.build(w)
 		g := &objGeneric{}
 		nHdl := 0
-		fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: verR2004}
+		fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: container.VerR2004}
 		err := readTableValueFields(fr.r, fr, g, "", &nHdl)
 		if tc.failed {
 			if err == nil {
@@ -69,7 +70,7 @@ func TestReadTableValueFields(t *testing.T) {
 	w2.WriteTU("FMT")
 	w2.WriteTU("VAL")
 	g2 := &objGeneric{}
-	fr2 := &gfRead{r: bitstream.NewBitStream(w2.Bytes()), ver: verR2018}
+	fr2 := &gfRead{r: bitstream.NewBitStream(w2.Bytes()), ver: container.VerR2018}
 	if err := readTableValueFields(fr2.r, fr2, g2, "v.", new(int)); err != nil {
 		t.Fatalf("R2007 skip 分支失败: %v", err)
 	}
@@ -85,7 +86,7 @@ func TestReadTableValueFields(t *testing.T) {
 	w3.WriteBL(12)  // unit_type = 12（不读 value_string）
 	w3.WriteTV("F") // format_string
 	g3 := &objGeneric{}
-	fr3 := &gfRead{r: bitstream.NewBitStream(w3.Bytes()), ver: verR2018}
+	fr3 := &gfRead{r: bitstream.NewBitStream(w3.Bytes()), ver: container.VerR2018}
 	if err := readTableValueFields(fr3.r, fr3, g3, "", new(int)); err != nil {
 		t.Fatalf("R2007 kLong 分支失败: %v", err)
 	}
@@ -101,7 +102,7 @@ func TestGfReadRL(t *testing.T) {
 	w := bitstream.NewEncWriter()
 	w.WriteRL(0xAABBCCDD)
 	g := &objGeneric{}
-	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: verR2000}
+	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: container.VerR2000}
 	if err := fr.RL("k", g); err != nil {
 		t.Fatalf("RL 失败: %v", err)
 	}
@@ -232,7 +233,7 @@ func TestSelectBestDuplicateHandles(t *testing.T) {
 		t.Fatal("样本对象图为空")
 	}
 	// 单候选摘要
-	info := inspectCandidate(objectsData, refs[0], verR2004, nil)
+	info := inspectCandidate(objectsData, refs[0], container.VerR2004, nil)
 	if !info.parsedOK {
 		t.Fatal("inspectCandidate 应解析成功")
 	}
@@ -240,7 +241,7 @@ func TestSelectBestDuplicateHandles(t *testing.T) {
 	dup := make([]objrec.ObjectRef, 0, len(refs)+1)
 	dup = append(dup, refs[0], refs[0])
 	dup = append(dup, refs[1:]...)
-	selected := selectBestDuplicateHandles(objectsData, dup, verR2004, nil)
+	selected := selectBestDuplicateHandles(objectsData, dup, container.VerR2004, nil)
 	if len(selected) == 0 {
 		t.Fatal("择优输出为空")
 	}

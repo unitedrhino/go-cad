@@ -7,6 +7,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
@@ -32,8 +33,8 @@ var layerCMCLayouts = [8]uint8{0x0, 0x1, 0x2, 0x4, 0x3, 0x5, 0x6, 0x7}
 // + [R13/R14 B×4 状态位 / R2000+ BS flag0] + CMC 颜色；
 // owner/xdic/xref/ltype 等 handle 字段在 bitsize 起的 handle 流，不占 dat 流。
 // R2010+ 走 UMC/OT 前缀 + 字符串流名称路径。
-func decodeLayerRecord(rec *objrec.ObjectRecord, objHandle uint64, ver dwgVersion) (layerColor, error) {
-	if ver == verR13 || ver == verR14 || ver == verR2000 {
+func decodeLayerRecord(rec *objrec.ObjectRecord, objHandle uint64, ver container.DwgVersion) (layerColor, error) {
+	if ver == container.VerR13 || ver == container.VerR14 || ver == container.VerR2000 {
 		// R13/R14/R2000：dat 流顺序完全确定，直接按 spec 解析并以
 		// bitsize 闭环校验；失败时回退历史扫描路径。
 		if lc, err := decodeLayerRecordPreR2004(rec, objHandle, ver); err == nil {
@@ -50,7 +51,7 @@ func decodeLayerRecord(rec *objrec.ObjectRecord, objHandle uint64, ver dwgVersio
 // （对照 LibreDWG dwg_decode_object 与 dwg.spec COMMON_TABLE_FLAGS(Layer)，
 // 以记录头 UMC 推导的 bitsize 闭环校验），失败回退历史扫描路径
 // （类型码前缀 + 8 变体颜色扫描，名称走字符串流）。
-func decodeLayerRecordR2010Plus(rec *objrec.ObjectRecord, objHandle uint64, ver dwgVersion) (layerColor, error) {
+func decodeLayerRecordR2010Plus(rec *objrec.ObjectRecord, objHandle uint64, ver container.DwgVersion) (layerColor, error) {
 	if lc, err := parseLayerSpecR2010Plus(rec, objHandle, ver); err == nil {
 		return lc, nil
 	}
@@ -69,7 +70,7 @@ func decodeLayerRecordR2010Plus(rec *objrec.ObjectRecord, objHandle uint64, ver 
 			return lc, err
 		}
 	}
-	if ver == verR2013 || ver == verR2018 {
+	if ver == container.VerR2013 || ver == container.VerR2018 {
 		// ds binary 位（仅 R2013+/R2018，R2010 无）
 		if _, err := r.ReadB(); err != nil {
 			return lc, err
@@ -89,7 +90,7 @@ func decodeLayerRecordR2010Plus(rec *objrec.ObjectRecord, objHandle uint64, ver 
 // （EED + reactors + xdic + TV 名称）全部通过且 CMC 变体可解时采信；
 // 多个位置均可解时取最后一个（误命中多为前部垃圾位型的巧合解码，真实
 // handle 位置在其后，经验证 R2004/R2000 样本）。
-func scanLayerRecordClassic(rec *objrec.ObjectRecord, objHandle uint64, ver dwgVersion) (layerColor, error) {
+func scanLayerRecordClassic(rec *objrec.ObjectRecord, objHandle uint64, ver container.DwgVersion) (layerColor, error) {
 	var lc layerColor
 	var lastName string
 	for delta := uint64(0); delta <= 160; delta++ {
@@ -120,7 +121,7 @@ func scanLayerRecordClassic(rec *objrec.ObjectRecord, objHandle uint64, ver dwgV
 		lastName = nm
 	}
 	lc.name = lastName
-	if ver == verR2007 {
+	if ver == container.VerR2007 {
 		// R2007 的名称已入字符串流（COMMON_TABLE_FLAGS FIELD_T 自 R2007
 		// 起 TU 字符串区存储），主位流扫描读不到——按内联 bitsize 定位
 		// 字符串区补读（与通用内部对象解码同款公式）。
@@ -143,7 +144,7 @@ func scanLayerRecordClassic(rec *objrec.ObjectRecord, objHandle uint64, ver dwgV
 // bitsize 无内联字段，由记录头 UMC 推导（dataEndBit，即 handle 流起点）：
 // dat 流解析结束位与之相等即整条 dat 流零歧义。名称不在主位流
 // （R2007+ FIELD_T 走字符串流），从字符串区首个 TU 补读。
-func parseLayerSpecR2010Plus(rec *objrec.ObjectRecord, objHandle uint64, ver dwgVersion) (layerColor, error) {
+func parseLayerSpecR2010Plus(rec *objrec.ObjectRecord, objHandle uint64, ver container.DwgVersion) (layerColor, error) {
 	var lc layerColor
 	h, err := objrec.ParseObjHeader(rec)
 	if err != nil {
@@ -166,7 +167,7 @@ func parseLayerSpecR2010Plus(rec *objrec.ObjectRecord, objHandle uint64, ver dwg
 		func(r *bitstream.BitStream) error { _, e := r.ReadBL(); return e },
 		func(r *bitstream.BitStream) error { _, e := r.ReadB(); return e },
 	}
-	if ver == verR2013 || ver == verR2018 {
+	if ver == container.VerR2013 || ver == container.VerR2018 {
 		fields = append(fields, func(r *bitstream.BitStream) error { _, e := r.ReadB(); return e })
 	}
 	fields = append(fields,
@@ -272,7 +273,7 @@ func readR2010PlusLayerName(rec *objrec.ObjectRecord) string {
 // 到 handle 流的边界位：解析结束位 == bitsize 即整条 dat 流零歧义（对全部
 // LAYER 记录实测成立）。CMC 为 R2004 前形态（仅 BS 索引，off 时负值；
 // 真彩/rgb 段是 R2004+ 才引入）。
-func decodeLayerRecordPreR2004(rec *objrec.ObjectRecord, objHandle uint64, ver dwgVersion) (layerColor, error) {
+func decodeLayerRecordPreR2004(rec *objrec.ObjectRecord, objHandle uint64, ver container.DwgVersion) (layerColor, error) {
 	h, err := objrec.ParseObjHeader(rec)
 	if err != nil {
 		return layerColor{}, err
@@ -280,7 +281,7 @@ func decodeLayerRecordPreR2004(rec *objrec.ObjectRecord, objHandle uint64, ver d
 	r := rec.BodyBitStream()
 	r.SetBitPos(h.DataStartBit)
 	var bitsize uint64
-	if ver == verR2000 {
+	if ver == container.VerR2000 {
 		bs, err := r.ReadRL()
 		if err != nil {
 			return layerColor{}, err
@@ -297,7 +298,7 @@ func decodeLayerRecordPreR2004(rec *objrec.ObjectRecord, objHandle uint64, ver d
 	if err := skipLayerEED(r); err != nil {
 		return layerColor{}, err
 	}
-	if ver == verR13 || ver == verR14 {
+	if ver == container.VerR13 || ver == container.VerR14 {
 		bs, err := r.ReadRL()
 		if err != nil {
 			return layerColor{}, err
@@ -321,7 +322,7 @@ func decodeLayerRecordPreR2004(rec *objrec.ObjectRecord, objHandle uint64, ver d
 			return layerColor{}, err
 		}
 	}
-	if ver == verR13 || ver == verR14 {
+	if ver == container.VerR13 || ver == container.VerR14 {
 		// R13/R14：frozen/off/frozen_in_new/locked 各 1 位；off 表现为
 		// 颜色索引取负（dwg.spec VERSIONS(R_13b1,R_14) DECODER）
 		for i := 0; i < 4; i++ {

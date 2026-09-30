@@ -3,7 +3,7 @@
 // (复制长度, 回溯偏移) 对交替组成，是 R2004 家族 system section 与
 // data page 的统一压缩方式。各 opcode 形态由形态表 lz77Forms 描述，
 // 主循环查表分派。
-package cad
+package container
 
 import "fmt"
 
@@ -25,7 +25,7 @@ func (s *lz77Stream) take() (uint8, error) {
 
 // splitWord 消费 2 字节并拆包：高 8 位来自第二字节，低 2 位是其后内嵌
 // 的字面量计数，其余 10 位为复制偏移。
-func (s *lz77Stream) splitWord() (offset, litCount int, err error) {
+func (s *lz77Stream) splitWord() (Offset, litCount int, err error) {
 	b1, err := s.take()
 	if err != nil {
 		return
@@ -34,7 +34,7 @@ func (s *lz77Stream) splitWord() (offset, litCount int, err error) {
 	if err != nil {
 		return
 	}
-	offset = int(b1>>2) | int(b2)<<6
+	Offset = int(b1>>2) | int(b2)<<6
 	litCount = int(b1 & 0x03)
 	return
 }
@@ -79,16 +79,16 @@ func (s *lz77Stream) literalRun() (int, uint8, error) {
 	case b&0xF0 != 0:
 		return 0, b, nil
 	case b == 0x00:
-		length := 0x0F
+		Length := 0x0F
 		for {
 			next, e := s.take()
 			if e != nil {
 				return 0, 0, e
 			}
 			if next != 0x00 {
-				return length + int(next) + 3, 0, nil
+				return Length + int(next) + 3, 0, nil
 			}
-			length += 0xFF
+			Length += 0xFF
 		}
 	}
 	return 0, 0, nil
@@ -129,29 +129,29 @@ func lz77FormOf(op uint8) *lz77Form {
 }
 
 // emitLiterals 从压缩流搬移 length 字节原始字面量到输出并推进游标。
-func emitLiterals(dst []byte, s *lz77Stream, length int) ([]byte, error) {
-	if length == 0 {
+func emitLiterals(dst []byte, s *lz77Stream, Length int) ([]byte, error) {
+	if Length == 0 {
 		return dst, nil
 	}
-	if s.at+length > len(s.src) {
+	if s.at+Length > len(s.src) {
 		return nil, fmt.Errorf("cad: 字面量游程超出压缩数据")
 	}
-	dst = append(dst, s.src[s.at:s.at+length]...)
-	s.at += length
+	dst = append(dst, s.src[s.at:s.at+Length]...)
+	s.at += Length
 	return dst, nil
 }
 
 // emitWindow 从输出回溯 distance 字节处复制 length 字节（允许重叠）。
 // 回溯越界（损坏数据）按参考行为以零填充保持宽容。
-func emitWindow(dst []byte, distance, length int) []byte {
-	if length == 0 {
+func emitWindow(dst []byte, distance, Length int) []byte {
+	if Length == 0 {
 		return dst
 	}
 	if distance > len(dst) {
-		return append(dst, make([]byte, length)...)
+		return append(dst, make([]byte, Length)...)
 	}
 	base := len(dst) - distance
-	for i := 0; i < length; i++ {
+	for i := 0; i < Length; i++ {
 		dst = append(dst, dst[base+i])
 	}
 	return dst
@@ -171,7 +171,7 @@ func lz77FitSize(dst []byte, dstSize int) []byte {
 }
 
 // decompressLZ77 将 src 解压为 dstSize 字节的输出；dstSize==0 直接返回空。
-func decompressLZ77(src []byte, dstSize int) ([]byte, error) {
+func DecompressLZ77(src []byte, dstSize int) ([]byte, error) {
 	if dstSize == 0 {
 		return []byte{}, nil
 	}

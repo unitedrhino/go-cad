@@ -9,6 +9,7 @@ package cad
 import (
 	"encoding/json"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"testing"
@@ -91,7 +92,7 @@ func TestDecodeOle2FrameFromBits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeOle2FrameVer(r, &head, verR2013)
+	ent, err := decodeOle2FrameVer(r, &head, container.VerR2013)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +119,7 @@ func TestDecodeOleFrameFromBits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeOleFrameVer(r, &head, verR14)
+	ent, err := decodeOleFrameVer(r, &head, container.VerR14)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +147,7 @@ func TestDecodeOleFrameR2000FromBits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeOleFrameVer(r, &head, verR2000)
+	ent, err := decodeOleFrameVer(r, &head, container.VerR2000)
 	if err != nil {
 		t.Fatal(err)
 	}

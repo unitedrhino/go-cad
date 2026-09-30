@@ -6,6 +6,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"os"
 	"strings"
 	"testing"
@@ -226,7 +227,7 @@ func TestDecodeGenericSUN(t *testing.T) {
 	w.WriteBS(512)  // shadow_mapsize
 	w.WriteRC(3)    // shadow_softness
 	g := &objGeneric{}
-	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: verR2000}
+	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: container.VerR2000}
 	if err := decodeGenericSUN(fr.r, fr.ver, fr, g); err != nil {
 		t.Fatalf("decodeGenericSUN 失败: %v", err)
 	}
@@ -244,7 +245,7 @@ func TestDecodeGenericACSHHistory(t *testing.T) {
 	w.WriteB(true)
 	w.WriteB(false)
 	g := &objGeneric{}
-	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: verR2000}
+	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: container.VerR2000}
 	if err := decodeGenericACSH_HISTORY_CLASS(fr.r, fr.ver, fr, g); err != nil {
 		t.Fatalf("decodeGenericACSH_HISTORY_CLASS 失败: %v", err)
 	}
@@ -261,7 +262,7 @@ func TestReadCellStyleFields(t *testing.T) {
 	w.WriteBL(1) // type
 	w.WriteBS(0) // data_flags
 	g := &objGeneric{}
-	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: verR2000}
+	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: container.VerR2000}
 	nHdl := 0
 	if err := readCellStyleFields(fr.r, fr, g, "", &nHdl); err != nil {
 		t.Fatalf("短路径失败: %v", err)
@@ -305,7 +306,7 @@ func TestReadCellStyleFields(t *testing.T) {
 	w2.WriteBL(25) // linewt（读 BLd 有符号）
 	// 尾部可能还有字段，失败时仅记录（当前只要求不 panic）
 	g2 := &objGeneric{}
-	fr2 := &gfRead{r: bitstream.NewBitStream(w2.Bytes()), ver: verR2000}
+	fr2 := &gfRead{r: bitstream.NewBitStream(w2.Bytes()), ver: container.VerR2000}
 	if err := readCellStyleFields(fr2.r, fr2, g2, "", &nHdl); err != nil {
 		t.Logf("完整结构尾部截断（可接受）: %v", err)
 	}
@@ -326,7 +327,7 @@ func TestDecodeMLeaderLeadersAndContext(t *testing.T) {
 	w.WriteBD(2) // doglegLength
 	w.WriteBL(0) // numLines
 	m := &entMLeader{}
-	if err := decodeMLeaderLeaders(bitstream.NewBitStream(w.Bytes()), m, verR2000, false); err != nil {
+	if err := decodeMLeaderLeaders(bitstream.NewBitStream(w.Bytes()), m, container.VerR2000, false); err != nil {
 		t.Fatalf("decodeMLeaderLeaders 失败: %v", err)
 	}
 	if m.ctx.numLeaders != 1 || len(m.ctx.leaders) != 1 {
@@ -379,7 +380,7 @@ func TestDecodeMLeaderLeadersAndContext(t *testing.T) {
 	w3bd(w2, 1, 0, 0)
 	w2.WriteB(false)
 	m2 := &entMLeader{}
-	if err := decodeMLeaderContext(bitstream.NewBitStream(w2.Bytes()), m2, verR2000, 0, nil); err != nil {
+	if err := decodeMLeaderContext(bitstream.NewBitStream(w2.Bytes()), m2, container.VerR2000, 0, nil); err != nil {
 		t.Fatalf("decodeMLeaderContext 失败: %v", err)
 	}
 	if m2.ctx.textHeight != 2.0 || !m2.ctx.hasContentTxt {
@@ -503,7 +504,7 @@ func TestDecodeGenericTABLECONTENT(t *testing.T) {
 		w.WriteBL(0) // top_row/left_col/bottom_row/right_col
 	}
 	g := &objGeneric{}
-	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: verR2004}
+	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: container.VerR2004}
 	if err := decodeGenericTABLECONTENT(fr.r, fr.ver, fr, g); err != nil {
 		t.Fatalf("decodeGenericTABLECONTENT 失败: %v", err)
 	}

@@ -16,6 +16,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"regexp"
 	"strings"
 )
@@ -94,7 +95,7 @@ func ParseJSON(data []byte) (*Document, error) {
 // jsonDetectVersion 从 gold JSON 顶层段推导 DWG 版本：优先 HEADER 的
 // $ACADVER 约定键，回退 FILEHEADER.version（dwgread 实际输出位置）；
 // 均缺失时按最新版本处理（实体几何键与版本无关）。
-func jsonDetectVersion(root map[string]any) dwgVersion {
+func jsonDetectVersion(root map[string]any) container.DwgVersion {
 	if h, ok := root["HEADER"].(map[string]any); ok {
 		if v := jsonVerString(h["$ACADVER"]); v != "" {
 			if ver, ok2 := versionFromStr(v); ok2 {
@@ -114,7 +115,7 @@ func jsonDetectVersion(root map[string]any) dwgVersion {
 			}
 		}
 	}
-	return verR2018
+	return container.VerR2018
 }
 
 // jsonApplyHeader 消费 gold HEADER 段：全量键值存 HeaderVars（原样），
@@ -166,32 +167,32 @@ func jsonVerString(v any) string {
 }
 
 // versionFromStr 版本串 → dwgVersion（与 container.go detectVersion 同表）。
-func versionFromStr(s string) (dwgVersion, bool) {
+func versionFromStr(s string) (container.DwgVersion, bool) {
 	switch s {
 	case "AC1004":
-		return verR9, true
+		return container.VerR9, true
 	case "AC1006":
-		return verR10, true
+		return container.VerR10, true
 	case "AC1009":
-		return verR11, true
+		return container.VerR11, true
 	case "AC1012":
-		return verR13, true
+		return container.VerR13, true
 	case "AC1014":
-		return verR14, true
+		return container.VerR14, true
 	case "AC1015":
-		return verR2000, true
+		return container.VerR2000, true
 	case "AC1018":
-		return verR2004, true
+		return container.VerR2004, true
 	case "AC1021":
-		return verR2007, true
+		return container.VerR2007, true
 	case "AC1024":
-		return verR2010, true
+		return container.VerR2010, true
 	case "AC1027":
-		return verR2013, true
+		return container.VerR2013, true
 	case "AC1032":
-		return verR2018, true
+		return container.VerR2018, true
 	}
-	return verR2018, false
+	return container.VerR2018, false
 }
 
 // ---- gold JSON 条目的类型化取值辅助 ----

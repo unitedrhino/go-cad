@@ -4,7 +4,7 @@
 // 段尾 16 字节长度字段描述。由于各版本写入端存在布局抖动，此处对段头
 // 采用「候选布局逐个探测」的定位策略，失败时返回空表（基础图元类型码
 // <500，不依赖该表，解析失败不影响渲染）。
-package cad
+package container
 
 import (
 	"fmt"
@@ -22,8 +22,8 @@ type classEntry struct {
 const stringStreamMetaBits = 16 * 8
 
 // parseClassesSection 解析类段，返回 类型码→DXF 名称 映射。
-func parseClassesSection(data []byte, ver dwgVersion) (map[uint16]string, error) {
-	classes, err := parseClassRecords(data, ver)
+func ParseClassesSection(Data []byte, ver DwgVersion) (map[uint16]string, error) {
+	classes, err := parseClassRecords(Data, ver)
 	if err != nil {
 		return nil, err
 	}
@@ -41,14 +41,14 @@ func parseClassesSection(data []byte, ver dwgVersion) (map[uint16]string, error)
 // （LibreDWG decode.c else 分支），直接读出填充 dxfName；
 // R2007+ 类名在独立字符串流，数值区连续，由 fillClassNamesFromStream
 // 事后填充。
-func parseClassRecords(data []byte, ver dwgVersion) ([]classEntry, error) {
-	r := bitstream.NewBitStream(data)
-	before, err := r.ReadRCS(len(sentinelClassesBefore))
+func parseClassRecords(Data []byte, ver DwgVersion) ([]classEntry, error) {
+	r := bitstream.NewBitStream(Data)
+	before, err := r.ReadRCS(len(SentinelClassesBefore))
 	if err != nil {
 		return nil, err
 	}
-	if !bytesEqual(before, sentinelClassesBefore[:]) {
-		return nil, errClassesSentinel
+	if !bytesEqual(before, SentinelClassesBefore[:]) {
+		return nil, ErrClassesSentinel
 	}
 	if _, err := r.ReadRL(); err != nil { // size（低 32 位）
 		return nil, err
@@ -68,8 +68,8 @@ func parseClassRecords(data []byte, ver dwgVersion) ([]classEntry, error) {
 	dbg := os.Getenv("CAD_CLASSES_DBG") != ""
 	var classes []classEntry
 	for {
-		if r.Pos > len(data) {
-			return nil, errClassesTruncated
+		if r.Pos > len(Data) {
+			return nil, ErrClassesTruncated
 		}
 		entry, err := readClassNumericEntry(r, ver)
 		if err != nil {
@@ -84,8 +84,8 @@ func parseClassRecords(data []byte, ver dwgVersion) ([]classEntry, error) {
 		}
 	}
 
-	if ver >= verR2007 {
-		fillClassNamesFromStream(data, r, classes)
+	if ver >= VerR2007 {
+		fillClassNamesFromStream(Data, r, classes)
 	}
 	return classes, nil
 }
@@ -93,7 +93,7 @@ func parseClassRecords(data []byte, ver dwgVersion) ([]classEntry, error) {
 // classHeaderProbe 段头布局探测：在读取器副本上按某版本布局推进，
 // 成功时给出 maxNum 合理值。探测失败不留任何游标副作用。
 type classHeaderProbe struct {
-	name string
+	Name string
 	run  func(rr *bitstream.BitStream) (uint16, bool)
 }
 
@@ -164,7 +164,7 @@ func readClassMax(rr *bitstream.BitStream) (uint16, bool) {
 // BS classNumber + BS proxyFlags + [R2004-: TV app/cpp/dxf] + B zombie +
 // BS itemClassID + BL numInstances + BS dwgVersion + BS maintVersion +
 // BL unknown + BL unknown（尾部五字段对照 LibreDWG decode.c 类条目）。
-func readClassNumericEntry(r *bitstream.BitStream, ver dwgVersion) (classEntry, error) {
+func readClassNumericEntry(r *bitstream.BitStream, ver DwgVersion) (classEntry, error) {
 	var entry classEntry
 	classNumber, err := r.ReadBS()
 	if err != nil {
@@ -173,7 +173,7 @@ func readClassNumericEntry(r *bitstream.BitStream, ver dwgVersion) (classEntry, 
 	if _, err := r.ReadBS(); err != nil { // proxy flags
 		return entry, err
 	}
-	if ver < verR2007 {
+	if ver < VerR2007 {
 		// R2004-：appname/cppname/dxfname 3×TV 内联（长度含尾部 \0）
 		for i := 0; i < 3; i++ {
 			s, e := r.ReadTV(0)
@@ -211,23 +211,23 @@ func readClassNumericEntry(r *bitstream.BitStream, ver dwgVersion) (classEntry, 
 // fillClassNamesFromStream 尝试为主流数值条目填充类名：在若干候选起点
 // （游标当前位置 / 段尾长度字段推算位置）各读一遍 3×TU 名称序列，
 // 逐候选累加类名可读性评分，取最优候选回填。
-func fillClassNamesFromStream(data []byte, r *bitstream.BitStream, classes []classEntry) {
+func fillClassNamesFromStream(Data []byte, r *bitstream.BitStream, classes []classEntry) {
 	if len(classes) == 0 {
 		return
 	}
 	startCandidates := []uint64{r.TellBits()}
-	if base, ok := stringStreamBase(r, data); ok {
+	if base, ok := StringStreamBase(r, Data); ok {
 		startCandidates = append(startCandidates, base)
 	}
 	bestScore := -1 << 30
 	for _, start := range startCandidates {
-		names, ok := readClassNamesAt(data, start, len(classes))
+		names, ok := readClassNamesAt(Data, start, len(classes))
 		if !ok {
 			continue
 		}
 		score := 0
 		for _, n := range names {
-			score += classNameScore(n)
+			score += ClassNameScore(n)
 		}
 		if score > bestScore {
 			bestScore = score
@@ -240,8 +240,8 @@ func fillClassNamesFromStream(data []byte, r *bitstream.BitStream, classes []cla
 
 // readClassNamesAt 从指定位起点连续读 count 组 3×TU（app/cpp/dxf），
 // 任一读取失败即整组作废。
-func readClassNamesAt(data []byte, startBit uint64, count int) ([]string, bool) {
-	probe := bitstream.NewBitStream(data)
+func readClassNamesAt(Data []byte, startBit uint64, count int) ([]string, bool) {
+	probe := bitstream.NewBitStream(Data)
 	probe.SetBitPos(startBit)
 	names := make([]string, count)
 	for i := 0; i < count; i++ {
@@ -261,18 +261,18 @@ func readClassNamesAt(data []byte, startBit uint64, count int) ([]string, bool) 
 // stringStreamBase 从段尾的 16 字节长度字段推算字符串流起点：
 // 末尾倒数第 1 位为 present 标志；尾部 16 字节为流大小（位单位），
 // 最高位标志扩展高 15 位（此时再往前取一个 RS 拼接）。
-func stringStreamBase(r *bitstream.BitStream, data []byte) (uint64, bool) {
-	totalBits := uint64(len(data)) * 8
+func StringStreamBase(r *bitstream.BitStream, Data []byte) (uint64, bool) {
+	totalBits := uint64(len(Data)) * 8
 	if totalBits <= stringStreamMetaBits+1 {
 		return 0, false
 	}
-	present := bitstream.NewBitStream(data)
+	present := bitstream.NewBitStream(Data)
 	present.SetBitPos(totalBits - 1)
 	if flag, err := present.ReadB(); err != nil || flag == 0 {
 		return 0, false
 	}
 	sizeFieldStart := totalBits - stringStreamMetaBits
-	sr := bitstream.NewBitStream(data)
+	sr := bitstream.NewBitStream(Data)
 	sr.SetBitPos(sizeFieldStart)
 	low, err := sr.ReadRS()
 	if err != nil {
@@ -299,12 +299,12 @@ func stringStreamBase(r *bitstream.BitStream, data []byte) (uint64, bool) {
 
 // classNameScore 类名可读性评分（大写/数字为正、下划线等符号次之、
 // 小写再次、控制字符重罚——真实类名几乎全为大写标识符）。
-func classNameScore(name string) int {
-	if name == "" {
+func ClassNameScore(Name string) int {
+	if Name == "" {
 		return -16
 	}
 	score := 0
-	for _, ch := range name {
+	for _, ch := range Name {
 		switch {
 		case ch >= 'A' && ch <= 'Z', ch >= '0' && ch <= '9':
 			score += 4
@@ -323,12 +323,12 @@ func classNameScore(name string) int {
 
 // errClasses* 类段解析错误。
 var (
-	errClassesSentinel  = fmtError("cad: AcDb:Classes 前哨兵不匹配")
-	errClassesTruncated = fmtError("cad: AcDb:Classes 条目截断")
+	ErrClassesSentinel  = FmtError("cad: AcDb:Classes 前哨兵不匹配")
+	ErrClassesTruncated = FmtError("cad: AcDb:Classes 条目截断")
 )
 
 // fmtError 简单错误构造（避免在包顶层重复 import errors）。
-func fmtError(msg string) error { return &simpleError{msg} }
+func FmtError(msg string) error { return &simpleError{msg} }
 
 type simpleError struct{ msg string }
 
@@ -349,14 +349,14 @@ func bytesEqual(a, b []byte) bool {
 
 // parseClassesSectionR13R15 R2000 类段：名字以 TV 直接在主流，
 // 条目循环以 RL 声明的数据长度为界。
-func parseClassesSectionR13R15(data []byte) (map[uint16]string, error) {
-	r := bitstream.NewBitStream(data)
-	before, err := r.ReadRCS(len(sentinelClassesBefore))
+func ParseClassesSectionR13R15(Data []byte) (map[uint16]string, error) {
+	r := bitstream.NewBitStream(Data)
+	before, err := r.ReadRCS(len(SentinelClassesBefore))
 	if err != nil {
 		return nil, err
 	}
-	if !bytesEqual(before, sentinelClassesBefore[:]) {
-		return nil, errClassesSentinel
+	if !bytesEqual(before, SentinelClassesBefore[:]) {
+		return nil, ErrClassesSentinel
 	}
 	dataSize, err := r.ReadRL()
 	if err != nil {

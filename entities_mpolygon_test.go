@@ -7,6 +7,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"testing"
 )
@@ -94,7 +95,7 @@ func TestDecodeMpolygonFromBits(t *testing.T) {
 		t.Fatal(err)
 	}
 	head.objSizeBit = objSizeBit
-	ent, err := decodeMpolygonVer(r, &head, verR2013, 30)
+	ent, err := decodeMpolygonVer(r, &head, container.VerR2013, 30)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +188,7 @@ func TestDecodeMpolygonPatternFromBits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeMpolygonVer(r, &head, verR2007, 30)
+	ent, err := decodeMpolygonVer(r, &head, container.VerR2007, 30)
 	if err != nil {
 		t.Fatal(err)
 	}

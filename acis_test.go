@@ -4,6 +4,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"strings"
 	"testing"
@@ -33,7 +34,7 @@ func TestDecodeAcisEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeAcis(r, &head, "3DSOLID", verR2018)
+	ent, err := decodeAcis(r, &head, "3DSOLID", container.VerR2018)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +88,7 @@ func TestDecodeAcisSATBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeAcis(r, &head, "REGION", verR2018)
+	ent, err := decodeAcis(r, &head, "REGION", container.VerR2018)
 	if err != nil {
 		t.Fatal(err)
 	}

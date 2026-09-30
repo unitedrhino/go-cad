@@ -7,6 +7,7 @@ package cad
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
@@ -176,7 +177,7 @@ func TestEntityScanDebug(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	objectMap, err := readR2000Section(data, r2000SecObjectMap)
+	objectMap, err := container.ReadR2000Section(data, container.R2000SecObjectMap)
 	if err != nil {
 		t.Fatal(err)
 	}

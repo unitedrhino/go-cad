@@ -5,6 +5,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"path/filepath"
@@ -22,7 +23,7 @@ func TestPreR13HeaderCodepageField(t *testing.T) {
 		filepath.Join("r11", "entities-2d.dwg"),
 	} {
 		data := requirePreR13Sample(t, rel)
-		version, err := detectVersion(data)
+		version, err := container.DetectVersion(data)
 		if err != nil {
 			t.Fatalf("%s: detectVersion: %v", rel, err)
 		}

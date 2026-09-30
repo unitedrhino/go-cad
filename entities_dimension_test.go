@@ -4,6 +4,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"testing"
@@ -42,7 +43,7 @@ func TestDecodeDimLinearR2018(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeDimension(r, &head, verR2018, dimLayoutLinear)
+	ent, err := decodeDimension(r, &head, container.VerR2018, dimLayoutLinear)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +102,7 @@ func TestDecodeHatchPolylinePath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeHatch(r, &head, verR2018, 30)
+	ent, err := decodeHatch(r, &head, container.VerR2018, 30)
 	if err != nil {
 		t.Fatal(err)
 	}

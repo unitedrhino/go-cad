@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"os"
@@ -35,7 +36,7 @@ type box2 struct {
 
 // Document 解析完成的 DWG 文档模型。
 type Document struct {
-	version     dwgVersion
+	version     container.DwgVersion
 	codepage    uint16
 	modelSpace  []any                 // 模型空间图元（entmode==2）
 	blocks      map[uint64][]any      // 块定义：BLOCK_HEADER handle → 块内图元
@@ -60,15 +61,15 @@ type Document struct {
 	// r2000Raw R2000/R13/R14 容器的原始写出素材（段整段字节、对象区整块
 	// 字节与对象图条目），仅在对应版本解析路径保留，供 WriteDwgR2000
 	// 做文件级回放写出。
-	r2000Raw *r2000RawData
+	r2000Raw *container.R2000RawData
 	// r2004Raw R2004 家族（AC1018~AC1032 同容器）的原始写出素材（头部
 	// 字节、页表顺序、段表解压字节与各段解压数据），仅在对应版本解析路径
 	// 保留，供 WriteDwgR2004 做文件级回放写出。
-	r2004Raw *r2004RawData
+	r2004Raw *container.R2004RawData
 	// r2007Raw R2007（AC1021）容器的原始写出素材（头部、第二头部 34 字段、
 	// 页表顺序与各段解压数据），仅在 R2007 解析路径保留，供 WriteDwgR2007
 	// 做文件级回放写出。
-	r2007Raw *r2007RawData
+	r2007Raw *container.R2007RawData
 	// HeaderVars JSON 输入（dwgread -O JSON）HEADER 段的全量键值（原样
 	// 保存，不逐个建模；键名与 gold 一致，不带 $ 前缀，查询用 HeaderVar
 	// 做 $ 容错）。仅 ParseJSON 路径填充；DWG/DXF 路径的头变量走各自结构。
@@ -82,13 +83,13 @@ type Document struct {
 }
 
 // Version 返回 DWG 版本串（如 AC1032）。
-func (d *Document) Version() string { return d.version.verString() }
+func (d *Document) Version() string { return d.version.VerString() }
 
 // EntityByHandle 按句柄取实体对象（未找到返回 nil）。
 func (d *Document) EntityByHandle(h uint64) any { return d.entityByHandle[h] }
 
 // objRecordR2010Plus 当前版本的记录是否为 R2010+ 布局。
-func (d *Document) objRecordR2010Plus() bool { return d.version.r2010Plus() }
+func (d *Document) objRecordR2010Plus() bool { return d.version.R2010Plus() }
 
 // InternalObjects 返回通用内部对象解码结果（SCALE/DICTIONARYVAR/APPID 等）。
 func (d *Document) InternalObjects() map[uint64]*objGeneric { return d.internalObjects }
@@ -123,22 +124,22 @@ func (d *Document) Xrecords() map[uint64]*objXrecord { return d.xrecords }
 
 // Parse 解析 DWG 字节流。首版支持 AC1032（R2018）。
 func Parse(data []byte) (*Document, error) {
-	version, err := detectVersion(data)
+	version, err := container.DetectVersion(data)
 	if err != nil {
 		return nil, err
 	}
-	if version == verR2000 || version == verR14 || version == verR13 {
+	if version == container.VerR2000 || version == container.VerR14 || version == container.VerR13 {
 		// R13/R14 与 R2000 共用段目录式容器
 		return parseR2000Document(data)
 	}
-	if version.preR13() {
+	if version.PreR13() {
 		// pre-R13 家族（R9/R10/R11）：固定偏移表驱动的字节布局，
 		// 无对象图/句柄流，走独立解析路径（r11.go）
 		return parsePreR13Document(data)
 	}
 	doc := &Document{
 		version:         version,
-		codepage:        readCodepage(data),
+		codepage:        container.ReadCodepage(data),
 		blocks:          make(map[uint64][]any),
 		attribs:         make(map[uint64]*entAttrib),
 		layerColors:     make(map[uint64]layerColor),
@@ -147,14 +148,14 @@ func Parse(data []byte) (*Document, error) {
 		internalObjects: make(map[uint64]*objGeneric),
 	}
 	switch version {
-	case verR2007:
+	case container.VerR2007:
 		// R2007 容器结构独立（RS 去交织 + R21 解压），单独捕获回放素材；
 		// 失败不阻断解析（与 R2000/R2004 钩子同策略）
-		doc.r2007Raw = captureR2007Raw(data)
-	case verR2004, verR2010, verR2013, verR2018:
+		doc.r2007Raw = container.CaptureR2007Raw(data)
+	case container.VerR2004, container.VerR2010, container.VerR2013, container.VerR2018:
 		// R2004 家族容器（AC1018~AC1032 共用页式容器）：保留回放素材供
 		// WriteDwgR2004 文件级写出；失败不阻断解析（与 R2000 钩子同策略）
-		doc.r2004Raw = captureR2004Raw(data)
+		doc.r2004Raw = container.CaptureR2004Raw(data)
 	}
 	if err := doc.decodeObjects(data); err != nil {
 		return nil, err
@@ -185,13 +186,13 @@ func probeLightingUnits(refs []objrec.ObjectRef, objectsData []byte, d *Document
 		switch h.TypeCode {
 		case 0x2A:
 			r.SetBitPos(h.DataStartBit)
-			if dd, err := decodeDictionaryObject(r, rec, d.version, d.version >= verR2013); err == nil {
+			if dd, err := decodeDictionaryObject(r, rec, d.version, d.version >= container.VerR2013); err == nil {
 				dicts[ref.Handle] = dd
 			}
 		default:
 			if objrec.EntityTypeName(h.TypeCode, dynamicTypes) == "DICTIONARYVAR" {
 				r.SetBitPos(h.DataStartBit)
-				if g, err := decodeInternalObject(r, rec, d.version, d.version >= verR2013, h.TypeCode, "DICTIONARYVAR", d.codepage); err == nil {
+				if g, err := decodeInternalObject(r, rec, d.version, d.version >= container.VerR2013, h.TypeCode, "DICTIONARYVAR", d.codepage); err == nil {
 					if v, ok := g.Field("strvalue").(string); ok {
 						vars[ref.Handle] = v
 					}
@@ -214,7 +215,7 @@ func probeLightingUnits(refs []objrec.ObjectRef, objectsData []byte, d *Document
 
 // decodeObjects 遍历对象数据库，解码实体、图层颜色与属性。
 func (d *Document) decodeObjects(fileData []byte) error {
-	objectsData, err := loadNamedSectionData(fileData, "AcDb:AcDbObjects")
+	objectsData, err := container.LoadNamedSectionData(fileData, "AcDb:AcDbObjects")
 	if err != nil {
 		return fmt.Errorf("cad: 加载对象数据段失败: %w", err)
 	}
@@ -251,7 +252,7 @@ func (d *Document) decodeObjects(fileData []byte) error {
 		case 0x2A: // DICTIONARY
 			r := rec.BodyBitStream()
 			r.SetBitPos(h.DataStartBit)
-			if dd, err := decodeDictionaryObject(r, rec, d.version, d.version >= verR2013); err == nil {
+			if dd, err := decodeDictionaryObject(r, rec, d.version, d.version >= container.VerR2013); err == nil {
 				d.dictionaries[ref.Handle] = dd
 			} else if os.Getenv("CAD_DECODE_DBG") != "" {
 				fmt.Fprintf(os.Stderr, "[dic] h=%d %v\n", ref.Handle, err)
@@ -260,7 +261,7 @@ func (d *Document) decodeObjects(fileData []byte) error {
 		case 0x4F: // XRECORD
 			r := rec.BodyBitStream()
 			r.SetBitPos(h.DataStartBit)
-			if xx, err := decodeXrecordObject(r, rec, d.version, d.version >= verR2013); err == nil {
+			if xx, err := decodeXrecordObject(r, rec, d.version, d.version >= container.VerR2013); err == nil {
 				d.xrecords[ref.Handle] = xx
 			} else if os.Getenv("CAD_DECODE_DBG") != "" {
 				fmt.Fprintf(os.Stderr, "[xrec] h=%d %v\n", ref.Handle, err)
@@ -273,7 +274,7 @@ func (d *Document) decodeObjects(fileData []byte) error {
 			if decodeInternalObjectOK(h.TypeCode, name) {
 				r := rec.BodyBitStream()
 				r.SetBitPos(h.DataStartBit)
-				if g, err := decodeInternalObject(r, rec, d.version, d.version >= verR2013, h.TypeCode, name, d.codepage); err == nil {
+				if g, err := decodeInternalObject(r, rec, d.version, d.version >= container.VerR2013, h.TypeCode, name, d.codepage); err == nil {
 					d.internalObjects[ref.Handle] = g
 				} else if os.Getenv("CAD_DECODE_DBG") != "" {
 					fmt.Fprintf(os.Stderr, "[obj] h=%d type=%X %v\n", ref.Handle, h.TypeCode, err)
@@ -391,11 +392,11 @@ func (d *Document) Texts() []TextInfo {
 // loadDynamicTypes 解析 AcDb:Classes 动态类名表（≥500 类型码）。
 // 解析失败时返回空表（基础图元类型码固定，不依赖该表）。
 func (d *Document) loadDynamicTypes(fileData []byte) (map[uint16]string, error) {
-	data, err := loadNamedSectionData(fileData, "AcDb:Classes")
+	data, err := container.LoadNamedSectionData(fileData, "AcDb:Classes")
 	if err != nil {
 		return nil, err
 	}
-	return parseClassesSection(data, d.version)
+	return container.ParseClassesSection(data, d.version)
 }
 
 // ensureFixedEntityTypes 补录 objTypeCode 静态表缺失的固定实体类型码
@@ -439,7 +440,7 @@ func isVersionedEntityKind(name string) bool {
 
 // decodeVersionedEntity 版本感知实体的扫描解码：与 decodeEntityFieldsVer
 // 同一候选扫描框架，主体解码按类型分发到 ACIS 系/WIPEOUT 专用解码器。
-func decodeVersionedEntity(r *bitstream.BitStream, h objrec.ObjHeader, objHandle uint64, typeName string, ver dwgVersion) (any, error) {
+func decodeVersionedEntity(r *bitstream.BitStream, h objrec.ObjHeader, objHandle uint64, typeName string, ver container.DwgVersion) (any, error) {
 	dataEnd := h.Rec.DataEndBit()
 	startByte, startBit := r.Cursor()
 	base := uint64(startByte)*8 + uint64(startBit)
@@ -521,13 +522,13 @@ func (d *Document) EntityCount() int {
 // parseR2000Document 解析 R2000(AC1015)/R14(AC1014) 文档：段数据不压缩，
 // 对象图为 2 号段，对象记录偏移指向文件主体。
 func parseR2000Document(data []byte) (*Document, error) {
-	version, err := detectVersion(data)
+	version, err := container.DetectVersion(data)
 	if err != nil {
 		return nil, err
 	}
 	doc := &Document{
 		version:     version,
-		codepage:    readCodepage(data),
+		codepage:    container.ReadCodepage(data),
 		blocks:      make(map[uint64][]any),
 		attribs:     make(map[uint64]*entAttrib),
 		layerColors: make(map[uint64]layerColor),
@@ -535,7 +536,7 @@ func parseR2000Document(data []byte) (*Document, error) {
 	doc.dictionaries = make(map[uint64]*objDictionary)
 	doc.xrecords = make(map[uint64]*objXrecord)
 	doc.internalObjects = make(map[uint64]*objGeneric)
-	objectMap, err := readR2000Section(data, r2000SecObjectMap)
+	objectMap, err := container.ReadR2000Section(data, container.R2000SecObjectMap)
 	if err != nil {
 		return nil, fmt.Errorf("cad: 加载对象图失败: %w", err)
 	}
@@ -544,7 +545,7 @@ func parseR2000Document(data []byte) (*Document, error) {
 		return nil, fmt.Errorf("cad: 解析 R2000 对象图失败: %w", err)
 	}
 	// 保留容器原始素材（段整段、对象区整块），供 WriteDwgR2000 回放式写出
-	doc.r2000Raw = captureR2000Raw(data, refs)
+	doc.r2000Raw = container.CaptureR2000Raw(data, refs)
 	dynamicTypes, _ := doc.loadR2000Classes(data)
 	ensureFixedEntityTypes(dynamicTypes)
 	// 按对象图条目数预聚合实体句柄索引容量（同 decodeObjects）
@@ -636,11 +637,11 @@ func parseR2000Document(data []byte) (*Document, error) {
 
 // loadR2000Classes R2000 类名表：名字以 TV 直接在主流。
 func (d *Document) loadR2000Classes(data []byte) (map[uint16]string, error) {
-	classData, err := readR2000Section(data, r2000SecClasses)
+	classData, err := container.ReadR2000Section(data, container.R2000SecClasses)
 	if err != nil {
 		return nil, err
 	}
-	return parseClassesSectionR13R15(classData)
+	return container.ParseClassesSectionR13R15(classData)
 }
 
 // DebugObjectIndexExport 调试用：导出对象图。
@@ -679,7 +680,7 @@ func DebugRecord2(objectsData []byte, ref struct {
 
 // LoadNamedSectionDebug2 调试用：加载段数据。
 func LoadNamedSectionDebug2(data []byte, name string) ([]byte, error) {
-	return loadNamedSectionData(data, name)
+	return container.LoadNamedSectionData(data, name)
 }
 
 // DebugLines 调试用：输出全部 LINE 几何（handle → 6 坐标），用于与参考实现对照。
@@ -1202,7 +1203,7 @@ func (d *Document) modelSpaceEntities() []any {
 // DebugScanGoldLines 调试用：扫描全部原始对象图条目，
 // 找出解码后坐标与 gold 匹配的 LINE 记录及其句柄/偏移。
 func DebugScanGoldLines(data []byte, gold map[uint64][6]float64) []string {
-	objectsData, err := loadNamedSectionData(data, "AcDb:AcDbObjects")
+	objectsData, err := container.LoadNamedSectionData(data, "AcDb:AcDbObjects")
 	if err != nil {
 		return []string{"seg: " + err.Error()}
 	}
@@ -1226,7 +1227,7 @@ func DebugScanGoldLines(data []byte, gold map[uint64][6]float64) []string {
 		}
 		r := rec.BodyBitStream()
 		r.SetBitPos(h.DataStartBit)
-		ent, err := decodeEntityFieldsVer(r, h, ref.Handle, h.Rec.Size, "LINE", 30, verR2018, 0, nil, "")
+		ent, err := decodeEntityFieldsVer(r, h, ref.Handle, h.Rec.Size, "LINE", 30, container.VerR2018, 0, nil, "")
 		if err != nil {
 			continue
 		}
@@ -1240,7 +1241,7 @@ func DebugScanGoldLines(data []byte, gold map[uint64][6]float64) []string {
 
 // mustHandles 调试用。
 func mustHandles(data []byte) []byte {
-	b, _ := loadNamedSectionData(data, "AcDb:Handles")
+	b, _ := container.LoadNamedSectionData(data, "AcDb:Handles")
 	return b
 }
 
@@ -1260,7 +1261,7 @@ func (d *Document) DebugLayerColors() map[uint64]string {
 // DebugObjectBody 调试用：导出指定句柄对象的原始 body 位流与起始位偏移
 // （bodyBitOffset 为 MS 字段结束处在首字节内的位偏移，用于位级对账）。
 func DebugObjectBody(data []byte, handle uint64) (body []byte, bitOffset uint64, err error) {
-	objectsData, err := loadNamedSectionData(data, "AcDb:AcDbObjects")
+	objectsData, err := container.LoadNamedSectionData(data, "AcDb:AcDbObjects")
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1268,11 +1269,11 @@ func DebugObjectBody(data []byte, handle uint64) (body []byte, bitOffset uint64,
 	if err != nil {
 		return nil, 0, err
 	}
-	ver, err := detectVersion(data)
+	ver, err := container.DetectVersion(data)
 	if err != nil {
 		return nil, 0, err
 	}
-	r2010Plus := ver == verR2010 || ver == verR2013 || ver == verR2018
+	r2010Plus := ver == container.VerR2010 || ver == container.VerR2013 || ver == container.VerR2018
 	var found *objrec.ObjectRef
 	for i := range index {
 		if index[i].Handle == handle {

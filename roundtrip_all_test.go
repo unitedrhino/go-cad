@@ -7,6 +7,7 @@ package cad
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
@@ -27,13 +28,13 @@ var rtDebug = os.Getenv("CAD_RT_DEBUG") != ""
 func TestAllObjectsRoundTrip(t *testing.T) {
 	cases := []struct {
 		sample string
-		ver    dwgVersion
+		ver    container.DwgVersion
 	}{
-		{"example_2000.dwg", verR2000},
-		{"example_2004.dwg", verR2004},
-		{"example_2007.dwg", verR2007},
-		{"example_2013.dwg", verR2013},
-		{"example_2018.dwg", verR2018},
+		{"example_2000.dwg", container.VerR2000},
+		{"example_2004.dwg", container.VerR2004},
+		{"example_2007.dwg", container.VerR2007},
+		{"example_2013.dwg", container.VerR2013},
+		{"example_2018.dwg", container.VerR2018},
 	}
 	for _, c := range cases {
 		c := c
@@ -43,7 +44,7 @@ func TestAllObjectsRoundTrip(t *testing.T) {
 	}
 }
 
-func roundTripAll(t *testing.T, sample string, ver dwgVersion) {
+func roundTripAll(t *testing.T, sample string, ver container.DwgVersion) {
 	dir := testsupport.LibredwgTestDataDir()
 	data, err := os.ReadFile(dir + "/" + sample)
 	if err != nil {
@@ -54,8 +55,8 @@ func roundTripAll(t *testing.T, sample string, ver dwgVersion) {
 		t.Fatalf("解析失败: %v", err)
 	}
 	bodySnaps := map[uint64][]byte{}
-	if ver >= verR2013 {
-		objectsData, err0 := loadNamedSectionData(data, "AcDb:AcDbObjects")
+	if ver >= container.VerR2013 {
+		objectsData, err0 := container.LoadNamedSectionData(data, "AcDb:AcDbObjects")
 		if err0 != nil {
 			t.Logf("bodySnap: AcDbObjects 加载失败: %v", err0)
 		} else {
@@ -147,7 +148,7 @@ func roundTripAll(t *testing.T, sample string, ver dwgVersion) {
 			} else {
 				t.Logf("%s h=%d snap缺失", g.Name, h)
 			}
-			g2, err := decodeInternalObject(rr, rec2, ver, ver >= verR2013, typeCode, g.Name, 30)
+			g2, err := decodeInternalObject(rr, rec2, ver, ver >= container.VerR2013, typeCode, g.Name, 30)
 			if err != nil {
 				t.Logf("%s h=%d 重解码失败: %v", g.Name, h, err)
 				fails[g.Name+"(重解码)"]++
@@ -188,14 +189,14 @@ func roundTripAll(t *testing.T, sample string, ver dwgVersion) {
 // 比对（键集取自 gold JSON 展平键，过滤口径与 TestEntityAuditDump 一致；
 // 首次解码 got==nil 的键视为未建模跳过）。位级诊断复用 bodySnap 快照。
 // gold JSON 缺失时降级为仅回放+重解码验证（不计失败，log 说明）。
-func roundTripAllEntities(t *testing.T, doc *Document, data []byte, sample string, ver dwgVersion, bodySnaps map[uint64][]byte) {
+func roundTripAllEntities(t *testing.T, doc *Document, data []byte, sample string, ver container.DwgVersion, bodySnaps map[uint64][]byte) {
 	goldFlats := loadGoldEntityFlats(sample)
 	if goldFlats == nil {
 		t.Logf("gold JSON 缺失，实体字段级比对降级为回放+重解码验证")
 	}
 	// 重解码端按版本重建动态类名表（≥500 类型码实体需要）
 	dynamicTypes := map[uint16]string{}
-	if ver == verR2000 || ver == verR14 || ver == verR13 {
+	if ver == container.VerR2000 || ver == container.VerR14 || ver == container.VerR13 {
 		dynamicTypes, _ = doc.loadR2000Classes(data)
 	} else {
 		dynamicTypes, _ = doc.loadDynamicTypes(data)

@@ -8,6 +8,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
@@ -37,7 +38,7 @@ type entImage struct {
 // （dwgread trace 核对：hdl 序列 reactors/xdic/prev/next/layer/imagedef/
 // imagedefreactor，主体字段按 dat 流独立推进）。主体后的未记载位
 // （padding 等）按 objSizeBit 截断跳过。
-func decodeImageVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
+func decodeImageVer(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion) (any, error) {
 	img := &entImage{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
 	if img.classVersion, err = r.ReadBL(); err != nil {
@@ -78,7 +79,7 @@ func decodeImageVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersi
 	if img.fade, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
-	if ver >= verR2010 {
+	if ver >= container.VerR2010 {
 		cm, err2 := r.ReadB() // clip_mode（R2010+）
 		if err2 != nil {
 			return nil, err2
@@ -154,13 +155,13 @@ type entOleFrame struct {
 // data TF + [lock_aspect RC（R2000b+）]（dwg.spec DWG_ENTITY (OLE2FRAME)）。
 // 注意 dwgVersion 枚举按容器路径排序（verR2000=0），R2000b+ 判定用
 // 「非 R13/R14」口径而非大小比较。
-func decodeOle2FrameVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
+func decodeOle2FrameVer(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion) (any, error) {
 	ole := &entOle2Frame{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
 	if ole.oleType, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	r2000b := ver != verR13 && ver != verR14
+	r2000b := ver != container.VerR13 && ver != container.VerR14
 	if r2000b {
 		if ole.mode, err = r.ReadBS(); err != nil {
 			return nil, err
@@ -213,13 +214,13 @@ type entProxyEntity struct {
 // （长度取公共头 preview_size）+ 原始数据位捕获（当前位置到 hdlpos 的全部
 // 位，即 LibreDWG DECODER 的 data_numbits/data）+ handle 流剩余句柄全量
 // 记为 objids（LibreDWG num_objids 循环口径）。
-func decodeProxyEntityVer(r *bitstream.BitStream, head *commonEntityHead, dataEnd uint64, ver dwgVersion) (any, error) {
+func decodeProxyEntityVer(r *bitstream.BitStream, head *commonEntityHead, dataEnd uint64, ver container.DwgVersion) (any, error) {
 	px := &entProxyEntity{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
 	if px.proxyID, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
-	if ver >= verR2018 {
+	if ver >= container.VerR2018 {
 		if px.dwgVersionNum, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
@@ -233,7 +234,7 @@ func decodeProxyEntityVer(r *bitstream.BitStream, head *commonEntityHead, dataEn
 		px.maintVersion = px.version >> 8
 		px.dwgVersionNum = px.version & 0xFF
 	}
-	if ver != verR13 && ver != verR14 {
+	if ver != container.VerR13 && ver != container.VerR14 {
 		var v uint8
 		if v, err = r.ReadB(); err != nil {
 			return nil, err
@@ -278,13 +279,13 @@ func decodeProxyEntityVer(r *bitstream.BitStream, head *commonEntityHead, dataEn
 
 // decodeOleFrameVer OLEFRAME：flag BS + [mode BS（R2000b+）] + data_size BL +
 // data TF（dwg.spec DWG_ENTITY (OLEFRAME)）。
-func decodeOleFrameVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
+func decodeOleFrameVer(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion) (any, error) {
 	ole := &entOleFrame{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
 	if ole.flag, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if ver != verR13 && ver != verR14 {
+	if ver != container.VerR13 && ver != container.VerR14 {
 		if ole.mode, err = r.ReadBS(); err != nil {
 			return nil, err
 		}

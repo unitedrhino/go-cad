@@ -7,6 +7,7 @@ package cad
 
 import (
 	"bytes"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"os"
 	"os/exec"
@@ -116,7 +117,7 @@ func TestWriteReadR2000(t *testing.T) {
 // r2000GateMapRefs 解析样本的对象图条目（R2000 容器 2 号段）。
 func r2000GateMapRefs(t *testing.T, data []byte) []objrec.ObjectRef {
 	t.Helper()
-	omap, err := readR2000Section(data, r2000SecObjectMap)
+	omap, err := container.ReadR2000Section(data, container.R2000SecObjectMap)
 	if err != nil {
 		t.Fatalf("加载对象图失败: %v", err)
 	}

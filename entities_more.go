@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"os"
@@ -265,11 +266,11 @@ func atan2f(y, x float64) float64 { return math.Atan2(y, x) }
 // decodeLeader LEADER：按 dwg.spec 二进制序完整解析（头部标志/注释与
 // 路径类型/折点/方向向量/文本框/钩线与箭头标志/R14 专属尺寸），尾部
 // R2000b+ 未知位；associated_annotation/dimstyle 句柄在 handle 流。
-func decodeLeader(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
+func decodeLeader(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion) (any, error) {
 	var err error
 	var v uint8
 	l := &entLeader{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
-	r14 := ver == verR13 || ver == verR14
+	r14 := ver == container.VerR13 || ver == container.VerR14
 	if v, err = r.ReadB(); err != nil { // unknown_bit_1
 		return nil, err
 	}
@@ -306,7 +307,7 @@ func decodeLeader(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion
 	if l.insptOffset, err = read3pt(r); err != nil {
 		return nil, err
 	}
-	if ver <= verR2007 { // VERSIONS (R_13c3, R_2007)：endptproj（R2004/R2007 也在内）
+	if ver <= container.VerR2007 { // VERSIONS (R_13c3, R_2007)：endptproj（R2004/R2007 也在内）
 		if l.endptproj, err = read3pt(r); err != nil {
 			return nil, err
 		}
@@ -689,13 +690,13 @@ type entHelix struct {
 // degree BL + scenario 分支字段 + AcDbHelix 专有（major/maint version +
 // axis_base_pt/start_pt/axis_vector 3BD + radius/turns/turn_height BD +
 // handedness B + constraint_type RC）。
-func decodeHelixVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
+func decodeHelixVer(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion) (any, error) {
 	hx := &entHelix{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
 	if hx.scenario, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
-	if ver >= verR2013 {
+	if ver >= container.VerR2013 {
 		if hx.splineFlags, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
@@ -1085,9 +1086,9 @@ type entTolerance struct {
 
 // decodeTolerance TOLERANCE 解码兼容入口（版本由 head 推断）。
 func decodeTolerance(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
-	ver := verR2013
+	ver := container.VerR2013
 	if head.r13r14 {
-		ver = verR14
+		ver = container.VerR14
 	}
 	return decodeToleranceVer(r, head, ver)
 }
@@ -1095,10 +1096,10 @@ func decodeTolerance(r *bitstream.BitStream, head *commonEntityHead) (any, error
 // decodeToleranceVer TOLERANCE（AcDbFcf）：[R13/R14: unknown_short BS +
 // height BD + dimgap BD] + ins_pt/x_direction/extrusion 3BD + text_value
 // （R2007+ 字符串区零占位，否则内联 TV）→ handle 流（owner/layer/dimstyle）。
-func decodeToleranceVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
+func decodeToleranceVer(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion) (any, error) {
 	tol := &entTolerance{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
-	if ver == verR13 || ver == verR14 {
+	if ver == container.VerR13 || ver == container.VerR14 {
 		var us uint16
 		if us, err = r.ReadBS(); err != nil {
 			return nil, err
@@ -1120,7 +1121,7 @@ func decodeToleranceVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgV
 	if tol.extrusion, err = read3pt(r); err != nil {
 		return nil, err
 	}
-	if ver < verR2007 {
+	if ver < container.VerR2007 {
 		if tol.text, err = r.ReadTV(512); err != nil {
 			return nil, err
 		}
@@ -1135,7 +1136,7 @@ func decodeToleranceVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgV
 	if h, e := objrec.ReadHandleReference(r, head.handle); e == nil && h != 0 {
 		tol.dimstyle = h
 	}
-	if ver >= verR2007 {
+	if ver >= container.VerR2007 {
 		tol.text = streamAreaText(r, head)
 	}
 	return tol, nil
@@ -1249,9 +1250,9 @@ type entViewport struct {
 
 // decodeViewport VIEWPORT 解码兼容入口（版本由 head 推断）。
 func decodeViewport(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
-	ver := verR2013
+	ver := container.VerR2013
 	if head.r13r14 {
-		ver = verR14
+		ver = container.VerR14
 	}
 	return decodeViewportVer(r, head, ver)
 }
@@ -1264,7 +1265,7 @@ func decodeViewport(r *bitstream.BitStream, head *commonEntityHead) (any, error)
 // R2007+ 尾部为灯光段（use_default_lights/default_lighting_type/
 // brightness/contrast/ambient_color CMC）。style_sheet 与字符串类字段
 // 一致：R2007+ 存于字符串区主数据流零占位。
-func decodeViewportVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
+func decodeViewportVer(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion) (any, error) {
 	vp := &entViewport{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
 	if vp.center, err = read3pt(r); err != nil {
@@ -1276,7 +1277,7 @@ func decodeViewportVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVe
 	if vp.height, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if ver == verR13 || ver == verR14 {
+	if ver == container.VerR13 || ver == container.VerR14 {
 		owner, layer := decodeOwnerLayer(r, head)
 		vp.owner, vp.layer = owner, layer
 		return vp, nil
@@ -1332,7 +1333,7 @@ func decodeViewportVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVe
 	if vp.circleZoom, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if ver >= verR2007 {
+	if ver >= container.VerR2007 {
 		if vp.gridMajor, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
@@ -1343,7 +1344,7 @@ func decodeViewportVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVe
 	if vp.statusFlag, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
-	if ver < verR2007 {
+	if ver < container.VerR2007 {
 		if vp.styleSheet, err = r.ReadTV(256); err != nil {
 			return nil, err
 		}
@@ -1375,12 +1376,12 @@ func decodeViewportVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVe
 	if vp.ucsOrthoView, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if ver >= verR2004 {
+	if ver >= container.VerR2004 {
 		if vp.shadeplotMode, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
 	}
-	if ver >= verR2007 {
+	if ver >= container.VerR2007 {
 		var bv uint8
 		if bv, err = r.ReadB(); err != nil {
 			return nil, err
@@ -1419,7 +1420,7 @@ func decodeViewportVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVe
 	}
 	owner, layer := decodeOwnerLayer(r, head)
 	vp.owner, vp.layer = owner, layer
-	if ver >= verR2007 {
+	if ver >= container.VerR2007 {
 		vp.styleSheet = streamAreaText(r, head)
 	}
 	return vp, nil
@@ -1560,7 +1561,7 @@ type entWipeout struct {
 // clip_boundary_type BS + 裁剪顶点数组（dwg2.spec WIPEOUT，同 IMAGE 布局；
 // imagedef/imagedefreactor 句柄在 handle 流）。主体后的未记载位
 // （preview 等）按 objSizeBit 截断跳过。
-func decodeWipeoutVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
+func decodeWipeoutVer(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion) (any, error) {
 	w := &entWipeout{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
 	if w.classVersion, err = r.ReadBL(); err != nil {
@@ -1601,7 +1602,7 @@ func decodeWipeoutVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVer
 	if w.fade, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
-	if ver >= verR2010 {
+	if ver >= container.VerR2010 {
 		cm, err2 := r.ReadB() // clip_mode（R2010+）
 		if err2 != nil {
 			return nil, err2
@@ -1727,10 +1728,10 @@ func acisDeobfuscate(raw []byte) []byte {
 
 // decodeAcis ACIS 实体解码的兼容入口（版本由 head 推断：R13/R14 或
 // R2007+ 最新布局）。版本感知路径经 cad.go 特判走 decodeAcisVer。
-func decodeAcis(r *bitstream.BitStream, head *commonEntityHead, kind string, srcVer dwgVersion) (any, error) {
-	ver := verR2013
+func decodeAcis(r *bitstream.BitStream, head *commonEntityHead, kind string, srcVer container.DwgVersion) (any, error) {
+	ver := container.VerR2013
 	if head.r13r14 {
-		ver = verR14
+		ver = container.VerR14
 	}
 	return decodeAcisVer(r, head, kind, ver, srcVer)
 }
@@ -1740,7 +1741,7 @@ func decodeAcis(r *bitstream.BitStream, head *commonEntityHead, kind string, src
 // 修订段（COMMON_3DSOLID）→ handle 流。r13r14 为 R13/R14 布局（无 R2007+
 // 材质与 R2013+ 修订段由版本条件内部判断，调用方传 ver）；srcVer 为分发层
 // 真实文件版本（history_id 的 R2004+ 判断用它，宽容推断版 ver 不作依据）。
-func decodeAcisVer(r *bitstream.BitStream, head *commonEntityHead, kind string, ver dwgVersion, srcVer dwgVersion) (any, error) {
+func decodeAcisVer(r *bitstream.BitStream, head *commonEntityHead, kind string, ver container.DwgVersion, srcVer container.DwgVersion) (any, error) {
 	a := &entAcis{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}, kind: kind}
 	acisEmpty, err := r.ReadB()
 	if err != nil {
@@ -1838,7 +1839,7 @@ func decodeAcisVer(r *bitstream.BitStream, head *commonEntityHead, kind string, 
 	}
 	a.acisEmptyBit = v != 0
 	if a.version > 1 {
-		if ver >= verR2007 {
+		if ver >= container.VerR2007 {
 			if a.numMaterials, err = r.ReadBL(); err != nil {
 				return nil, err
 			}
@@ -1877,7 +1878,7 @@ func decodeAcisVer(r *bitstream.BitStream, head *commonEntityHead, kind string, 
 	}
 	// 修订段（COMMON_3DSOLID SINCE R_2013b）不受 version>1 约束：
 	// AcDs 场景（has_ds_data=1、acis_empty=1）同样存在（spec 无版本内嵌）
-	if ver >= verR2013 {
+	if ver >= container.VerR2013 {
 		if v, err = r.ReadB(); err != nil { // has_revision_guid
 			return nil, err
 		}
@@ -1918,7 +1919,7 @@ func decodeAcisVer(r *bitstream.BitStream, head *commonEntityHead, kind string, 
 	// history_id：R2004+ 公共句柄序之后的首个句柄引用（可 NULL）。
 	// R13~R2000 handle 流在 prev/next 后即结束；acis_empty=1 的 AcDs
 	// 空记录 R2013+ 修订段为错位垃圾（LibreDWG 同点 ERROR），不读取。
-	if srcVer >= verR2004 && !a.acisEmpty {
+	if srcVer >= container.VerR2004 && !a.acisEmpty {
 		if h, e := objrec.ReadHandleReference(r, head.handle); e == nil {
 			a.historyId = h
 		}

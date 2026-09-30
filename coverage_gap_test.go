@@ -6,6 +6,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"strings"
 	"testing"
 )
@@ -93,34 +94,34 @@ func TestResolveStringStreamRange(t *testing.T) {
 	}
 
 	data := build(16, false, true)
-	start, ok := stringStreamBase(bitstream.NewBitStream(data), data)
+	start, ok := container.StringStreamBase(bitstream.NewBitStream(data), data)
 	if !ok || start == 0 {
 		t.Fatalf("正常数据应解析成功并给出非零起点：ok=%v start=%d", ok, start)
 	}
 
 	dataExt := build(40000, true, true)
-	startExt, okExt := stringStreamBase(bitstream.NewBitStream(dataExt), dataExt)
+	startExt, okExt := container.StringStreamBase(bitstream.NewBitStream(dataExt), dataExt)
 	if !okExt || startExt == 0 {
 		t.Fatalf("扩展高位应解析成功：ok=%v start=%d", okExt, startExt)
 	}
 
 	dataNo := build(16, false, false)
-	if _, ok := stringStreamBase(bitstream.NewBitStream(dataNo), dataNo); ok {
+	if _, ok := container.StringStreamBase(bitstream.NewBitStream(dataNo), dataNo); ok {
 		t.Error("present=0 应返回 false")
 	}
 
 	short := []byte{1, 2}
-	if _, ok := stringStreamBase(bitstream.NewBitStream(short), short); ok {
+	if _, ok := container.StringStreamBase(bitstream.NewBitStream(short), short); ok {
 		t.Error("过短数据应返回 false")
 	}
 }
 
 // TestSimpleError classes 简单错误的 Error() 实现。
 func TestSimpleError(t *testing.T) {
-	if errClassesSentinel.Error() == "" || errClassesTruncated.Error() == "" {
+	if container.ErrClassesSentinel.Error() == "" || container.ErrClassesTruncated.Error() == "" {
 		t.Error("哨兵错误信息不应为空")
 	}
-	if got := fmtError("x").Error(); got != "x" {
+	if got := container.FmtError("x").Error(); got != "x" {
 		t.Errorf("fmtError = %q", got)
 	}
 }
@@ -346,7 +347,7 @@ func TestDecodeViewport(t *testing.T) {
 	w2.WriteBS(0)      // ucsOrthoView
 	w2.WriteBS(0)      // shadeplotMode（R2004+）
 	head2 := commonEntityHead{handle: 10, objSizeBit: uint64(w2.TellBits()) + 8}
-	ent2, err := decodeViewportVer(bitstream.NewBitStream(w2.Bytes()), &head2, verR2004)
+	ent2, err := decodeViewportVer(bitstream.NewBitStream(w2.Bytes()), &head2, container.VerR2004)
 	if err != nil {
 		t.Fatalf("R2004 VIEWPORT 解析失败: %v", err)
 	}

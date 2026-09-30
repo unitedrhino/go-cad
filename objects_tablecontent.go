@@ -11,6 +11,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
@@ -37,7 +38,7 @@ func readTableValueFields(r *bitstream.BitStream, fr *gfRead, g *objGeneric, pre
 		g.Fields = append(g.Fields, objField{prefix + "data_type", dt})
 	}
 	// R2007+ 且 format_flags 低 2 位非 0：跳过按 data_type 的值分支
-	skip := fr.ver >= verR2007
+	skip := fr.ver >= container.VerR2007
 	if skip {
 		ff, _ := g.Field(prefix + "format_flags").(int64)
 		if ff&3 == 0 {
@@ -88,7 +89,7 @@ func readTableValueFields(r *bitstream.BitStream, fr *gfRead, g *objGeneric, pre
 		case 64: // kObjectId：句柄在 handle 流
 			*nHdl++
 		case 512: // kGeneral（R2007+）
-			if fr.ver >= verR2007 {
+			if fr.ver >= container.VerR2007 {
 				if _, e := fr.BLv(prefix+"data_size", g); e != nil {
 					return e
 				}
@@ -97,7 +98,7 @@ func readTableValueFields(r *bitstream.BitStream, fr *gfRead, g *objGeneric, pre
 			return fmt.Errorf("cad: TABLE value 未知数据类型 %d", dt)
 		}
 	}
-	if fr.ver >= verR2007 {
+	if fr.ver >= container.VerR2007 {
 		ut, e := fr.BLv(prefix+"unit_type", g)
 		if e != nil {
 			return e
@@ -146,7 +147,7 @@ func readTableCellStyle(r *bitstream.BitStream, fr *gfRead, g *objGeneric, prefi
 // pg.237 20.4.97）：ldata.name/description + tdata.cols/rows/cells/
 // cell_contents 嵌套 + field_refs 数量 + fdata.merged_cells。
 // tablestyle 及全部内嵌句柄在 handle 流。
-func decodeGenericTABLECONTENT(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericTABLECONTENT(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	nHdl := 0
 	// AcDbLinkedData
 	if err := fr.T("ldata.name", g); err != nil {
@@ -368,7 +369,7 @@ func decodeGenericTABLECONTENT(r *bitstream.BitStream, ver dwgVersion, fr *gfRea
 // 阶段记录的 num_content_handles 顺序读取（cellstyle text_style/ltype、
 // customdata value 句柄、data_link、field/block 句柄、attdef、
 // tablegeometry、field_refs、tablestyle）。
-func decodeGenericTABLECONTENT_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericTABLECONTENT_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	n := 0
 	if v, ok := g.Field("num_content_handles").(int64); ok {
 		n = int(v)
@@ -387,7 +388,7 @@ func decodeGenericTABLECONTENT_HDL(r *bitstream.BitStream, ver dwgVersion, fr *g
 // DEBUG_CLASSES 调试类）：flags BS + num_cols/num_rows BL + table_name T
 // + 列（type BL + text T + 行值向量）。行值按 spec 无条件读
 // data_long BL + data_double BD + data_string T 三键（与 LibreDWG 一致）。
-func decodeGenericDATATABLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericDATATABLE(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BS("flags", g); err != nil {
 		return err
 	}

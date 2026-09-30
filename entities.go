@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"os"
@@ -2535,7 +2536,7 @@ func decodedTextScore(s string) int {
 
 // decodeMText MTEXT（R2007+ 布局）：插入点/方向/宽度/高度 + 富文本 + 行距 +
 // 背景数据 + R2018 标注/分栏标志。
-func decodeMText(r *bitstream.BitStream, head *commonEntityHead, codepage uint16, ver dwgVersion) (any, error) {
+func decodeMText(r *bitstream.BitStream, head *commonEntityHead, codepage uint16, ver container.DwgVersion) (any, error) {
 	ix, iy, iz, err := r.Read3BD()
 	if err != nil {
 		return nil, err
@@ -2623,7 +2624,7 @@ func decodeMText(r *bitstream.BitStream, head *commonEntityHead, codepage uint16
 	var colHeights []float64
 	var colWidth, colGutter float64
 	var colAutoHeight, colFlowReversed int64
-	if ver >= verR2018 {
+	if ver >= container.VerR2018 {
 		if na, e := r.ReadB(); e != nil {
 			return nil, e
 		} else {
@@ -2756,8 +2757,8 @@ func readMTextBackground(r *bitstream.BitStream) error {
 // ver 决定版本分支：R13/R14 无缩放标志（3BD_1）且无 num_owned；
 // 属性句柄 R13~R2000 为 first/last 两个，R2004+ 为 num_owned 计数向量
 // （对齐 dwg.spec INSERT 的 VERSIONS/SINCE 分支）。
-func decodeInsert(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
-	r13r14 := ver == verR13 || ver == verR14
+func decodeInsert(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion) (any, error) {
+	r13r14 := ver == container.VerR13 || ver == container.VerR14
 	px, py, pz, err := r.Read3BD()
 	if err != nil {
 		return nil, err
@@ -2829,7 +2830,7 @@ func decodeInsert(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion
 	hasAttribsFlag := b2int(hasAttribs == 1)
 	// num_owned 计数 R2004+ 才在主位流（spec SINCE(R_2004a) FIELD_BL num_owned）
 	ownedCount := uint32(0)
-	if hasAttribs == 1 && ver >= verR2004 {
+	if hasAttribs == 1 && ver >= container.VerR2004 {
 		if ownedCount, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
@@ -2844,7 +2845,7 @@ func decodeInsert(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion
 	if owner, layer, err := parseCommonEntityHandles(r, head); err == nil {
 		if blockHeader, err = objrec.ReadHandleReference(r, head.handle); err == nil {
 			if hasAttribs == 1 {
-				if ver == verR13 || ver == verR14 || ver == verR2000 {
+				if ver == container.VerR13 || ver == container.VerR14 || ver == container.VerR2000 {
 					// R13~R2000：固定 first/last 两个句柄
 					first, e1 := objrec.ReadHandleReference(r, head.handle)
 					last, e2 := objrec.ReadHandleReference(r, head.handle)
@@ -3174,7 +3175,7 @@ func decodeTextVer(r *bitstream.BitStream, head *commonEntityHead, codepage uint
 }
 
 // decodeMTextVer MTEXT：R2004 无背景/rect_height、TV 文本；R2007+ 带背景与 TU。
-func decodeMTextVer(r *bitstream.BitStream, head *commonEntityHead, codepage uint16, unicodeText, hasBackground bool, ver dwgVersion) (any, error) {
+func decodeMTextVer(r *bitstream.BitStream, head *commonEntityHead, codepage uint16, unicodeText, hasBackground bool, ver container.DwgVersion) (any, error) {
 	if hasBackground {
 		return decodeMText(r, head, codepage, ver)
 	}
@@ -3235,7 +3236,7 @@ func decodeMTextVer(r *bitstream.BitStream, head *commonEntityHead, codepage uin
 		} else {
 			unknownB0 = b2int(ub == 1)
 		}
-		if ver >= verR2004 { // 背景标志（spec SINCE R_2004a，R2007+ 走背景路径）
+		if ver >= container.VerR2004 { // 背景标志（spec SINCE R_2004a，R2007+ 走背景路径）
 			bf, e := r.ReadBL()
 			if e != nil {
 				return nil, e
@@ -3278,7 +3279,7 @@ func decodeMTextVer(r *bitstream.BitStream, head *commonEntityHead, codepage uin
 // mtext_type RC(R2018+) → tag（字符串区）→ field_length BS → flags RC →
 // lock_position_flag B(R2007+) → keep_duplicate_records RC(R2010+)。
 // 字符串区不可读或标量段失败时返回 false，调用方回退宽容路径。
-func decodeAttribUnicode(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion, attdef bool) (*entAttrib, bool) {
+func decodeAttribUnicode(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion, attdef bool) (*entAttrib, bool) {
 	strs := readStringAreaStrings(r, head, 3)
 	if len(strs) == 0 {
 		return nil, false
@@ -3371,7 +3372,7 @@ func decodeAttribUnicode(r *bitstream.BitStream, head *commonEntityHead, ver dwg
 		vAlign = int64(v2)
 	}
 	var locked int64
-	if ver >= verR2010 {
+	if ver >= container.VerR2010 {
 		lb, e := r.ReadRC()
 		if e != nil {
 			return nil, false
@@ -3382,7 +3383,7 @@ func decodeAttribUnicode(r *bitstream.BitStream, head *commonEntityHead, ver dwg
 		}
 	}
 	var mtextType int64
-	if ver >= verR2018 {
+	if ver >= container.VerR2018 {
 		mt, e := r.ReadRC()
 		if e != nil {
 			return nil, false
@@ -3413,7 +3414,7 @@ func decodeAttribUnicode(r *bitstream.BitStream, head *commonEntityHead, ver dwg
 		return nil, false
 	}
 	lockPosition = b2int(lp == 1)
-	if ver >= verR2010 {
+	if ver >= container.VerR2010 {
 		kd, e := r.ReadRC()
 		if e != nil {
 			return nil, false
@@ -3457,7 +3458,7 @@ func decodeAttribUnicode(r *bitstream.BitStream, head *commonEntityHead, ver dwg
 // decodeAttribVer ATTRIB/ATTDEF：按版本复用 TEXT 解码后再读标签与属性标志段
 // （tag TV → field_length BS → flags RC → lock_position B(R2007+) →
 // keep_duplicate RC(R2010+) → mtext_type RC(R2018+) → prompt TV(仅 ATTDEF)）。
-func decodeAttribVer(r *bitstream.BitStream, head *commonEntityHead, codepage uint16, unicodeText bool, ver dwgVersion, attdef bool) (any, error) {
+func decodeAttribVer(r *bitstream.BitStream, head *commonEntityHead, codepage uint16, unicodeText bool, ver container.DwgVersion, attdef bool) (any, error) {
 	entryByte, entryBit := r.Cursor()
 	if unicodeText {
 		// R2007+ 首选字符串区路径（主体位流不含字符串数据）
@@ -3614,12 +3615,12 @@ func decodeAttribVer(r *bitstream.BitStream, head *commonEntityHead, codepage ui
 	// AcDbAttribute 标志段（位于文本对齐字段与 tag 之间）：
 	// is_locked_in_block RC(R2010+) → mtext_type RC(R2018+)
 	var lockedInBlock, mtextType int64
-	if ver >= verR2010 {
+	if ver >= container.VerR2010 {
 		if lb, e := r.ReadRC(); e == nil {
 			lockedInBlock = int64(lb)
 		}
 	}
-	if ver >= verR2018 {
+	if ver >= container.VerR2018 {
 		if mt, e := r.ReadRC(); e == nil {
 			mtextType = int64(mt)
 		}
@@ -3659,7 +3660,7 @@ func decodeAttribVer(r *bitstream.BitStream, head *commonEntityHead, codepage ui
 			if unicodeText {
 				if lp, e := r.ReadB(); e == nil {
 					lockPosition = b2int(lp == 1)
-					if ver >= verR2010 {
+					if ver >= container.VerR2010 {
 						if kd, e := r.ReadRC(); e == nil {
 							keepDuplicate = int64(kd)
 							if keepDuplicate > 1 { // VALUEOUTOFBOUNDS：越界置 0（LibreDWG 同）
@@ -3728,21 +3729,21 @@ type headLayoutCandidate struct {
 // R2000 的独立位是 nolinks；R2010+ 的 objSize 由记录头推导、picture 走
 // BLL，R2010 无 ds 位而 R2013/R2018 有；部分源文件缺 shadow/lineweight，
 // 以降级候选兜底。
-var versionHeadLayouts = map[dwgVersion][]headLayoutCandidate{
-	verR2007: {
+var versionHeadLayouts = map[container.DwgVersion][]headLayoutCandidate{
+	container.VerR2007: {
 		{"R2007", featObjSizeInStream | featPictureRL | featMaterialFlags | featShadowFlags | featLineWeight | featUnicodeEED},
 	},
-	verR2000: {
+	container.VerR2000: {
 		{"R2000+LW", featObjSizeInStream | featPictureRL | featLineWeight | featNolinksBit},
 		{"R2000-noObjSize+LW", featPictureRL | featLineWeight | featNolinksBit},
 		{"R2000", featObjSizeInStream | featPictureRL | featNolinksBit},
 	},
-	verR2004: {
+	container.VerR2004: {
 		{"R2004+LW", featObjSizeInStream | featPictureRL | featLineWeight},
 		{"R2004-noObjSize+LW", featPictureRL | featLineWeight},
 		{"R2004", featObjSizeInStream | featPictureRL},
 	},
-	verR2010: {
+	container.VerR2010: {
 		{"R2010", featMaterialFlags | featShadowFlags | featVisualStyles | featLineWeight | featUnicodeEED},
 		{"R2013-like", featMaterialFlags | featVisualStyles | featDSBinary | featUnicodeEED},
 	},
@@ -3750,7 +3751,7 @@ var versionHeadLayouts = map[dwgVersion][]headLayoutCandidate{
 
 // headLayoutsFor 取版本的候选布局序列；R2013/R2018 走 R2013 主布局及其
 // 降级变体（缺 shadow 或连 lineweight 一并省略的源文件变体）。
-func headLayoutsFor(ver dwgVersion) []headLayoutCandidate {
+func headLayoutsFor(ver container.DwgVersion) []headLayoutCandidate {
 	if layouts, ok := versionHeadLayouts[ver]; ok {
 		return layouts
 	}
@@ -3926,8 +3927,8 @@ func parseEntityHead(r *bitstream.BitStream, dataEnd uint64, feats headFeature) 
 }
 
 // headParsersForVersion 各版本的公共头候选布局解析器（按优先序）。
-func headParsersForVersion(ver dwgVersion) []headParser {
-	if ver == verR13 || ver == verR14 {
+func headParsersForVersion(ver container.DwgVersion) []headParser {
+	if ver == container.VerR13 || ver == container.VerR14 {
 		return []headParser{{name: "R14", parse: parseCommonEntityHeadR14}}
 	}
 	layouts := headLayoutsFor(ver)
@@ -3950,10 +3951,10 @@ func isFinite(f float64) bool {
 
 // decodeEntityFieldsVer 按版本解码实体：在类型码后的位窗口内扫描
 // 「位偏移 × 版本布局」候选，公共头 + 图元几何联合评分取最优。
-func decodeEntityFieldsVer(r *bitstream.BitStream, h objrec.ObjHeader, objHandle uint64, recSize uint32, typeName string, typeCode uint16, ver dwgVersion, codepage uint16, dynamicTypes map[uint16]string, lightingUnits string) (any, error) {
+func decodeEntityFieldsVer(r *bitstream.BitStream, h objrec.ObjHeader, objHandle uint64, recSize uint32, typeName string, typeCode uint16, ver container.DwgVersion, codepage uint16, dynamicTypes map[uint16]string, lightingUnits string) (any, error) {
 	// R13/R14 的 BT（位厚度）无 mode 前缀位（LibreDWG bit_read_BT 版本分支），
 	// 随位读取器传入各图元解码器
-	r.LegacyBT = ver == verR13 || ver == verR14
+	r.LegacyBT = ver == container.VerR13 || ver == container.VerR14
 	dataEnd := h.Rec.DataEndBit()
 	startByte, startBit := r.Cursor()
 	base := uint64(startByte)*8 + uint64(startBit)
@@ -3969,11 +3970,11 @@ func decodeEntityFieldsVer(r *bitstream.BitStream, h objrec.ObjHeader, objHandle
 // DWG_ENTITY 三分支）：公共头后 BLOCK 读块名（R2007+ 为 TU，其余 TV 按
 // 文档码页，fzw 中文块名实证），ENDBLK/SEQEND 无附加字段；尾部 handle
 // 流由 decodeOwnerLayer 读取。
-func decodeBlockLike(r *bitstream.BitStream, head *commonEntityHead, typeName string, ver dwgVersion, codepage uint16) (any, error) {
+func decodeBlockLike(r *bitstream.BitStream, head *commonEntityHead, typeName string, ver container.DwgVersion, codepage uint16) (any, error) {
 	e := &entBlockLike{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	if typeName == "BLOCK" {
 		var err error
-		if ver >= verR2007 {
+		if ver >= container.VerR2007 {
 			if e.name, err = r.ReadTU(); err != nil {
 				return nil, err
 			}
@@ -3988,14 +3989,14 @@ func decodeBlockLike(r *bitstream.BitStream, head *commonEntityHead, typeName st
 }
 
 // decodeEntityByTypeVer 按版本与类型分发图元解码。
-func decodeEntityByTypeVer(r *bitstream.BitStream, head *commonEntityHead, h objrec.ObjHeader, objHandle uint64, ver dwgVersion, codepage uint16, dynamicTypes map[uint16]string, lightingUnits string) (any, error) {
+func decodeEntityByTypeVer(r *bitstream.BitStream, head *commonEntityHead, h objrec.ObjHeader, objHandle uint64, ver container.DwgVersion, codepage uint16, dynamicTypes map[uint16]string, lightingUnits string) (any, error) {
 	name := objrec.EntityTypeName(h.TypeCode, dynamicTypes)
-	unicodeText := ver >= verR2007 // R2007+ 文本为 UTF-16（LibreDWG FIELD_T 版本分支）
+	unicodeText := ver >= container.VerR2007 // R2007+ 文本为 UTF-16（LibreDWG FIELD_T 版本分支）
 	switch name {
 	case "BLOCK", "ENDBLK", "SEQEND":
 		return decodeBlockLike(r, head, name, ver, codepage)
 	case "LINE":
-		if ver == verR13 || ver == verR14 {
+		if ver == container.VerR13 || ver == container.VerR14 {
 			return decodeLineR14(r, head)
 		}
 		return decodeLine(r, head)
@@ -4010,13 +4011,13 @@ func decodeEntityByTypeVer(r *bitstream.BitStream, head *commonEntityHead, h obj
 	case "LWPOLYLINE":
 		// 版本枚举非时间序（verR2000=0、verR14=1），不能范围比较：
 		// 仅 R13/R14 走 2RD 顶点，R2000+（含 R2004+）走 2DD 差分
-		return decodeLwPolyline(r, head, codepage, ver != verR13 && ver != verR14)
+		return decodeLwPolyline(r, head, codepage, ver != container.VerR13 && ver != container.VerR14)
 	case "VIEWPORT":
 		return decodeViewport(r, head)
 	case "SHAPE":
 		return decodeShape(r, head)
 	case "POLYLINE_MESH":
-		return decodePolylineMesh(r, head, ver >= verR2004)
+		return decodePolylineMesh(r, head, ver >= container.VerR2004)
 	case "REGION":
 		return decodeAcis(r, head, "REGION", ver)
 	case "3DSOLID":
@@ -4038,9 +4039,9 @@ func decodeEntityByTypeVer(r *bitstream.BitStream, head *commonEntityHead, h obj
 		return decodeTextVer(r, head, codepage, unicodeText)
 	case "MTEXT":
 		// R2004 无背景数据/rect_height；R2007+ 才有（dwg.spec MTEXT 版本分支同参数）
-		return decodeMTextVer(r, head, codepage, unicodeText, ver >= verR2007, ver)
+		return decodeMTextVer(r, head, codepage, unicodeText, ver >= container.VerR2007, ver)
 	case "SPLINE":
-		return decodeSpline(r, head, ver >= verR2013)
+		return decodeSpline(r, head, ver >= container.VerR2013)
 	case "HATCH":
 		return decodeHatch(r, head, ver, codepage)
 	case "IMAGE":
@@ -4060,13 +4061,13 @@ func decodeEntityByTypeVer(r *bitstream.BitStream, head *commonEntityHead, h obj
 	case "TOLERANCE":
 		return decodeTolerance(r, head)
 	case "POLYLINE_PFACE":
-		return decodePolylinePface(r, head, ver >= verR2004)
+		return decodePolylinePface(r, head, ver >= container.VerR2004)
 	case "RAY":
 		return decodeRay(r, head, false)
 	case "XLINE":
 		return decodeRay(r, head, true)
 	case "3DFACE":
-		return decodeFace3dVer(r, head, ver == verR13 || ver == verR14)
+		return decodeFace3dVer(r, head, ver == container.VerR13 || ver == container.VerR14)
 	case "SOLID":
 		return decodeSolidTolerant(r, head, false)
 	case "TRACE":
@@ -4076,7 +4077,7 @@ func decodeEntityByTypeVer(r *bitstream.BitStream, head *commonEntityHead, h obj
 	case "MLINE":
 		return decodeMline(r, head)
 	case "VERTEX_2D":
-		return decodeVertex2d(r, head, ver >= verR2010)
+		return decodeVertex2d(r, head, ver >= container.VerR2010)
 	case "VERTEX_3D":
 		return decodeVertex3d(r, head)
 	case "VERTEX_MESH", "VERTEX_PFACE":
@@ -4084,9 +4085,9 @@ func decodeEntityByTypeVer(r *bitstream.BitStream, head *commonEntityHead, h obj
 	case "VERTEX_PFACE_FACE":
 		return decodeVertexPfaceFace(r, head)
 	case "POLYLINE_2D":
-		return decodePolyline2d(r, head, ver >= verR2004)
+		return decodePolyline2d(r, head, ver >= container.VerR2004)
 	case "POLYLINE_3D":
-		return decodePolyline3d(r, head, ver >= verR2004)
+		return decodePolyline3d(r, head, ver >= container.VerR2004)
 	case "DIM_LINEAR":
 		return decodeDimension(r, head, ver, dimLayoutLinear)
 	case "DIM_ALIGNED":
@@ -4107,7 +4108,7 @@ func decodeEntityByTypeVer(r *bitstream.BitStream, head *commonEntityHead, h obj
 		return decodeDimension(r, head, ver, dimLayoutLargeRadial)
 	case "INSERT", "MINSERT":
 		if cadTraceHandle != 0 && cadTraceHandle == head.handle {
-			fmt.Fprintf(os.Stderr, "[ins] ver=%d r13r14=%v handle=%d\n", ver, ver == verR13 || ver == verR14, head.handle)
+			fmt.Fprintf(os.Stderr, "[ins] ver=%d r13r14=%v handle=%d\n", ver, ver == container.VerR13 || ver == container.VerR14, head.handle)
 		}
 		return decodeInsert(r, head, ver)
 	case "ATTRIB":

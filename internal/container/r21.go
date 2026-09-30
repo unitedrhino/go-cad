@@ -2,7 +2,7 @@
 // 流结构：可选 0x20 引导 opcode → 循环「字面量长度 + 字面量 + 回溯引用
 // 块序列」。字面量块与回溯引用的拷贝均按字节序怪癖规则执行（2/3 字节块
 // 反序、16 字节块两半块交换），由 r21ChunkPermute 统一描述。
-package cad
+package container
 
 import (
 	"fmt"
@@ -35,17 +35,17 @@ func (d *r21Decoder) u8() (int, error) {
 // 追加单字节，0xFF 再进 16 位小端累加链（每对最大累加 0xFFFF，出现
 // 0xFFFF 续读下一对）。
 func (d *r21Decoder) literalRun(opcode int) (int, error) {
-	length := opcode + 8
-	if length != 0x17 {
-		return length, nil
+	Length := opcode + 8
+	if Length != 0x17 {
+		return Length, nil
 	}
 	n, err := d.u8()
 	if err != nil {
 		return 0, fmt.Errorf("cad: R2007 字面量长度读取越界")
 	}
-	length += n
+	Length += n
 	if n != 0xFF {
-		return length, nil
+		return Length, nil
 	}
 	for {
 		if d.at+2 > len(d.src) {
@@ -55,9 +55,9 @@ func (d *r21Decoder) literalRun(opcode int) (int, error) {
 		hi := int(d.src[d.at+1])
 		d.at += 2
 		n = lo | hi<<8
-		length += n
+		Length += n
 		if n != 0xFFFF {
-			return length, nil
+			return Length, nil
 		}
 	}
 }
@@ -65,8 +65,8 @@ func (d *r21Decoder) literalRun(opcode int) (int, error) {
 // r21Instr 单条回溯引用指令解析结果。
 type r21Instr struct {
 	nextOp int // 指令尾字节（低 3 位携带其后字面量长度）
-	offset int
-	length int
+	Offset int
+	Length int
 }
 
 // instr 按高半字节解析回溯引用指令的四种形态：
@@ -81,30 +81,30 @@ func (d *r21Decoder) instr(op int) (r21Instr, error) {
 		if err != nil {
 			return r21Instr{}, err
 		}
-		offset := b
+		Offset := b
 		b, err = d.u8()
 		if err != nil {
 			return r21Instr{}, err
 		}
 		return r21Instr{
 			nextOp: b,
-			length: (op & 0x0F) + 0x13 + ((b >> 3) & 0x10),
-			offset: ((b&0x78)<<5 + 1) + offset,
+			Length: (op & 0x0F) + 0x13 + ((b >> 3) & 0x10),
+			Offset: ((b&0x78)<<5 + 1) + Offset,
 		}, nil
 	case 1:
 		b, err := d.u8()
 		if err != nil {
 			return r21Instr{}, err
 		}
-		offset := b
+		Offset := b
 		b, err = d.u8()
 		if err != nil {
 			return r21Instr{}, err
 		}
 		return r21Instr{
 			nextOp: b,
-			length: (op & 0x0F) + 0x03,
-			offset: ((b&0xF8)<<5 + 1) + offset,
+			Length: (op & 0x0F) + 0x03,
+			Offset: ((b&0xF8)<<5 + 1) + Offset,
 		}, nil
 	case 2:
 		b, err := d.u8()
@@ -117,29 +117,29 @@ func (d *r21Decoder) instr(op int) (r21Instr, error) {
 			return r21Instr{}, err
 		}
 		off |= (b << 8) & 0xFF00
-		length := op & 0x07
+		Length := op & 0x07
 		if op&0x08 == 0 {
 			tail, err := d.u8()
 			if err != nil {
 				return r21Instr{}, err
 			}
-			length += tail & 0xF8
-			return r21Instr{nextOp: tail, offset: off, length: length}, nil
+			Length += tail & 0xF8
+			return r21Instr{nextOp: tail, Offset: off, Length: Length}, nil
 		}
 		off++
 		b, err = d.u8()
 		if err != nil {
 			return r21Instr{}, err
 		}
-		length += b << 3
+		Length += b << 3
 		tail, err := d.u8()
 		if err != nil {
 			return r21Instr{}, err
 		}
 		return r21Instr{
 			nextOp: tail,
-			length: ((tail&0xF8)<<8 + length) + 0x100,
-			offset: off,
+			Length: ((tail&0xF8)<<8 + Length) + 0x100,
+			Offset: off,
 		}, nil
 	default:
 		b, err := d.u8()
@@ -148,28 +148,28 @@ func (d *r21Decoder) instr(op int) (r21Instr, error) {
 		}
 		return r21Instr{
 			nextOp: b,
-			length: op >> 4,
-			offset: ((b&0xF8)<<1 + op&0x0F) + 1,
+			Length: op >> 4,
+			Offset: ((b&0xF8)<<1 + op&0x0F) + 1,
 		}, nil
 	}
 }
 
 // copyRun 从输出缓冲回溯拷贝 length 字节（逐字节，支持重叠区域）。
-func (d *r21Decoder) copyRun(offset, length int) error {
-	srcPos := d.put - offset
+func (d *r21Decoder) copyRun(Offset, Length int) error {
+	srcPos := d.put - Offset
 	if srcPos < 0 {
-		return fmt.Errorf("cad: R2007 回溯偏移超前缀（%d > %d）", offset, d.put)
+		return fmt.Errorf("cad: R2007 回溯偏移超前缀（%d > %d）", Offset, d.put)
 	}
-	if d.put+length > len(d.dst) {
+	if d.put+Length > len(d.dst) {
 		return fmt.Errorf("cad: R2007 输出写入越界")
 	}
-	for i := 0; i < length; i++ {
+	for i := 0; i < Length; i++ {
 		if srcPos+i >= len(d.dst) {
 			return fmt.Errorf("cad: R2007 回溯读取越界")
 		}
 		d.dst[d.put+i] = d.dst[srcPos+i]
 	}
-	d.put += length
+	d.put += Length
 	return nil
 }
 
@@ -187,9 +187,9 @@ func (d *r21Decoder) copyRuns() (litPending, litOpcode int, err error) {
 	}
 	for {
 		if r21Trace {
-			fmt.Fprintf(os.Stderr, "[r21] copy opcode=%#x off=%d len=%d src=%d dst=%d\n", op, ins.offset, ins.length, d.at, d.put)
+			fmt.Fprintf(os.Stderr, "[r21] copy opcode=%#x off=%d len=%d src=%d dst=%d\n", op, ins.Offset, ins.Length, d.at, d.put)
 		}
-		if err = d.copyRun(ins.offset, ins.length); err != nil {
+		if err = d.copyRun(ins.Offset, ins.Length); err != nil {
 			return 0, 0, err
 		}
 		litPending = ins.nextOp & 0x07
@@ -287,8 +287,8 @@ func (d *r21Decoder) emitBlock(srcAt, n int) error {
 
 // emitChunk 拷贝 length 字节字面量块：≥32 按「半块交换」的 16 字节步进，
 // 余数 1..31 查拷贝计划表执行。
-func (d *r21Decoder) emitChunk(srcAt, length int) error {
-	for length >= 32 {
+func (d *r21Decoder) emitChunk(srcAt, Length int) error {
+	for Length >= 32 {
 		if err := d.emitBlock(srcAt+16, 16); err != nil {
 			return err
 		}
@@ -296,9 +296,9 @@ func (d *r21Decoder) emitChunk(srcAt, length int) error {
 			return err
 		}
 		srcAt += 32
-		length -= 32
+		Length -= 32
 	}
-	for _, step := range r21CopyPlans[length] {
+	for _, step := range r21CopyPlans[Length] {
 		if err := d.emitBlock(srcAt+int(step.at), int(step.n)); err != nil {
 			return err
 		}
@@ -307,7 +307,7 @@ func (d *r21Decoder) emitChunk(srcAt, length int) error {
 }
 
 // decompressR21 解压 R2007 压缩流到 dstSize 字节；dstSize==0 返回空。
-func decompressR21(src []byte, dstSize int) ([]byte, error) {
+func DecompressR21(src []byte, dstSize int) ([]byte, error) {
 	if dstSize == 0 {
 		return []byte{}, nil
 	}
@@ -333,23 +333,23 @@ func decompressR21(src []byte, dstSize int) ([]byte, error) {
 	}
 
 	for d.at < len(d.src) {
-		length := litPending
-		if length == 0 {
-			if length, err = d.literalRun(litOpcode); err != nil {
+		Length := litPending
+		if Length == 0 {
+			if Length, err = d.literalRun(litOpcode); err != nil {
 				return nil, err
 			}
 		}
 		if r21Trace {
-			fmt.Fprintf(os.Stderr, "[r21] literal opcode=%#x len=%d src=%d dst=%d\n", litOpcode, length, d.at, d.put)
+			fmt.Fprintf(os.Stderr, "[r21] literal opcode=%#x len=%d src=%d dst=%d\n", litOpcode, Length, d.at, d.put)
 		}
-		if d.put+length > dstSize {
+		if d.put+Length > dstSize {
 			break
 		}
 		// 字面量块：与回溯引用一样经由拷贝组合（含字节序怪癖）
-		if err = d.emitChunk(d.at, length); err != nil {
+		if err = d.emitChunk(d.at, Length); err != nil {
 			return nil, err
 		}
-		d.at += length
+		d.at += Length
 		if d.at >= len(d.src) {
 			break
 		}

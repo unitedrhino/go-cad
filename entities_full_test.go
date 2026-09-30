@@ -4,6 +4,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
@@ -294,7 +295,7 @@ func TestDecodeInsertFromBits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeInsert(r, &head, verR2013)
+	ent, err := decodeInsert(r, &head, container.VerR2013)
 	if err != nil {
 		t.Fatal(err)
 	}

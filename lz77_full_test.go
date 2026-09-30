@@ -3,6 +3,7 @@ package cad
 
 import (
 	"bytes"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"testing"
 )
 
@@ -11,7 +12,7 @@ func lit(data []byte) []byte { return append([]byte{byte(len(data) - 3)}, data..
 
 func TestLZ77ShortLiteral(t *testing.T) {
 	// 0x01-0x0F → 长度 = 字节+3；0x01 → 4 字节
-	out, err := decompressLZ77([]byte{0x01, 'A', 'B', 'C', 'D'}, 4)
+	out, err := container.DecompressLZ77([]byte{0x01, 'A', 'B', 'C', 'D'}, 4)
 	if err != nil || string(out) != "ABCD" {
 		t.Fatalf("短字面量: %q %v", out, err)
 	}
@@ -22,7 +23,7 @@ func TestLZ77ExtendedLiteral(t *testing.T) {
 	src := []byte{0x00, 0x02}
 	data := bytes.Repeat([]byte{0x5A}, 20)
 	src = append(src, data...)
-	out, err := decompressLZ77(src, 20)
+	out, err := container.DecompressLZ77(src, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +34,7 @@ func TestLZ77ExtendedLiteral(t *testing.T) {
 	src2 := []byte{0x00, 0x00, 0x02}
 	data2 := bytes.Repeat([]byte{0x5A}, 275)
 	src2 = append(src2, data2...)
-	out2, err := decompressLZ77(src2, 275)
+	out2, err := container.DecompressLZ77(src2, 275)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +47,7 @@ func TestLZ77OverlapCopyShort(t *testing.T) {
 	// 0x01 'A'（4 字面量）+ 0x21 0x00 0x00（opcode 0x21：复制 3 字节、偏移 0）
 	// 0x21 → compBytes = 0x21-0x1E = 3；two-byte offset: 0x00 0x00 → offset=0
 	src := []byte{0x01, 'A', 'B', 'C', 'D', 0x21, 0x00, 0x00, 0x11}
-	out, err := decompressLZ77(src, 7)
+	out, err := container.DecompressLZ77(src, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +59,7 @@ func TestLZ77OverlapCopyShort(t *testing.T) {
 }
 
 func TestLZ77Terminator11(t *testing.T) {
-	out, err := decompressLZ77([]byte{0x01, 'X', 'Y', 'Z', 'W', 0x11}, 4)
+	out, err := container.DecompressLZ77([]byte{0x01, 'X', 'Y', 'Z', 'W', 0x11}, 4)
 	if err != nil || string(out) != "XYZW" {
 		t.Fatalf("终止符: %q %v", out, err)
 	}
@@ -73,7 +74,7 @@ func TestLZ77Opcode12to1F(t *testing.T) {
 	// 用 opcode 0x40 系：0x41 → compBytes = 4-1 = 3? (0x41&0xF0)>>4 - 1 = 4-1 = 3
 	//   op2 = 0x00 → offset = 0；litLen = 0x41&0x03 = 1 → 字面量 1 字节
 	src := []byte{0x01, 'A', 'B', 'C', 'D', 0x41, 0x00, 'E'}
-	out, err := decompressLZ77(src, 8)
+	out, err := container.DecompressLZ77(src, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +90,7 @@ func TestLZ77Opcode40NoLiteral(t *testing.T) {
 	// 0x44 0x00：复制 3 字节回溯 (0x44&0x0C)>>2 + 1 = 2 → 重复位置 3..5（D,C,D），
 	// 随后字面量 4 字节 EFGH。
 	src := []byte{0x01, 'A', 'B', 'C', 'D', 0x44, 0x00, 0x01, 'E', 'F', 'G', 'H'}
-	out, err := decompressLZ77(src, 11)
+	out, err := container.DecompressLZ77(src, 11)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +102,7 @@ func TestLZ77Opcode40NoLiteral(t *testing.T) {
 
 func TestLZ77OutputPadding(t *testing.T) {
 	// 声明尺寸大于解压输出 → 补零
-	out, err := decompressLZ77([]byte{0x01, 'A', 'B', 'C', 'D'}, 10)
+	out, err := container.DecompressLZ77([]byte{0x01, 'A', 'B', 'C', 'D'}, 10)
 	if err != nil || len(out) != 10 {
 		t.Fatalf("补零: len=%d err=%v", len(out), err)
 	}
@@ -109,7 +110,7 @@ func TestLZ77OutputPadding(t *testing.T) {
 		t.Fatalf("补零内容错误: %q", out)
 	}
 	// 声明尺寸小于解压输出 → 截断
-	out, err = decompressLZ77([]byte{0x01, 'A', 'B', 'C', 'D'}, 2)
+	out, err = container.DecompressLZ77([]byte{0x01, 'A', 'B', 'C', 'D'}, 2)
 	if err != nil || len(out) != 2 || string(out) != "AB" {
 		t.Fatalf("截断: %q %v", out, err)
 	}
@@ -117,13 +118,13 @@ func TestLZ77OutputPadding(t *testing.T) {
 
 func TestLZ77TruncatedInput(t *testing.T) {
 	// 字面量长度声明超出数据 → 报错
-	if _, err := decompressLZ77([]byte{0x0F, 'A'}, 20); err == nil {
+	if _, err := container.DecompressLZ77([]byte{0x0F, 'A'}, 20); err == nil {
 		t.Error("字面量越界应报错")
 	}
 	// 非法 opcode（0x00/0x10 之外的 <0x10）→ 在读字面量长度时被当作扩展链，
 	// 0x10 单独出现视为长复制引导；仅 0x11 是终止。0x00-0x0F 之外的非法值不存在，
 	// 但压缩流意外结束应报错：
-	if _, err := decompressLZ77([]byte{0x01, 'A', 'B', 0x21}, 100); err == nil {
+	if _, err := container.DecompressLZ77([]byte{0x01, 'A', 'B', 0x21}, 100); err == nil {
 		t.Error("压缩流意外结束应报错")
 	}
 }

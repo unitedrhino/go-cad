@@ -6,6 +6,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 )
 
 // entLight 光源实体：基线字段 + light_color CMC 的版本双形态。
@@ -65,7 +66,7 @@ type entLight struct {
 // isPhotometric（NOD 字典 LIGHTINGUNITS=="2"，由 Document 预扫描探测）为真时
 // 继续读 IES 光度子段（has_photometric_data 位展开的 22 字段）；
 // COMMON_ENTITY_HANDLE_DATA 尾部 handle 流由 decodeOwnerLayer 处理。
-func decodeLight(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion, codepage uint16, isPhotometric bool) (any, error) {
+func decodeLight(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion, codepage uint16, isPhotometric bool) (any, error) {
 	l := &entLight{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
 	if l.classVersion, err = r.ReadBL(); err != nil {
@@ -75,7 +76,7 @@ func decodeLight(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion,
 	if l.classVersion > 10 {
 		return nil, bitstream.ErrUnexpectedEOF
 	}
-	if ver >= verR2007 {
+	if ver >= container.VerR2007 {
 		// R2007+ 的 name 存于记录尾字符串区（obj_string_stream 机制），
 		// dat 流不占位；字符串区不可读时回退 dat 流内联读取
 		if strs := readStringAreaStrings(r, head, 1); len(strs) > 0 {
@@ -98,7 +99,7 @@ func decodeLight(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion,
 	}
 	// FIELD_CMC light_color：R2004+ 为 BS+BL+RC 结构（含调色板反查修正），
 	// 更早版本仅 BS 索引（对齐 LibreDWG bit_read_CMC）
-	if ver >= verR2004 {
+	if ver >= container.VerR2004 {
 		l.hasLightColorTrue = true
 		idx, e := r.ReadBS()
 		if e != nil {
@@ -201,7 +202,7 @@ func decodeLight(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion,
 				l.hasWebfile = hb == 1
 			}
 			// webfile T：R2007+ 走记录尾字符串区（同 name），回退 dat 内联
-			if ver >= verR2007 {
+			if ver >= container.VerR2007 {
 				if strs := readStringAreaStrings(r, head, 1); len(strs) > 0 {
 					l.webfile = strs[0]
 				} else if l.webfile, e = r.ReadTU(); e != nil {

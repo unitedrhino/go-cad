@@ -9,6 +9,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 )
 
 // entMpolygon 多边形填充实体。
@@ -27,17 +28,17 @@ type entMpolygon struct {
 // 读取后丢弃）+ x_dir 2RD + 总边界句柄数 BL。与 HATCH 的差异：无
 // pixel_size/种子点段，且 style 在主体首与路径后各出现一次（spec 字面）。
 // MPOLYGON 随 AutoCAD 2004 引入，颜色字段按 R2004+ CMC 布局解析。
-func decodeMpolygonVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion, codepage uint16) (any, error) {
+func decodeMpolygonVer(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion, codepage uint16) (any, error) {
 	m := &entMpolygon{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	h := &entHatch{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	m.hatch = h
-	streamName := ver >= verR2007 // R2007+ 图案名/渐变名存于对象字符串区（同 HATCH 口径）
+	streamName := ver >= container.VerR2007 // R2007+ 图案名/渐变名存于对象字符串区（同 HATCH 口径）
 	var err error
 	if m.style, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if ver >= verR2004 {
-		if err = decodeHatchGradient(r, h, streamName, ver == verR2007); err != nil {
+	if ver >= container.VerR2004 {
+		if err = decodeHatchGradient(r, h, streamName, ver == container.VerR2007); err != nil {
 			return nil, err
 		}
 	}
@@ -61,7 +62,7 @@ func decodeMpolygonVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVe
 		return nil, err
 	}
 	h.associative = v != 0
-	if h.paths, h.hasDerived, err = decodeHatchPaths(r, ver >= verR2010); err != nil {
+	if h.paths, h.hasDerived, err = decodeHatchPaths(r, ver >= container.VerR2010); err != nil {
 		return nil, err
 	}
 	// 路径后的重复 style（spec 原文双 FIELD_BS(style,75)，字面保留）
@@ -124,7 +125,7 @@ func decodeMpolygonVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVe
 		}
 	}
 	// hatch_color CMC（R2004+ 布局）：当前审计口径不保留颜色值，读取占位推进位流
-	if ver != verR13 && ver != verR14 {
+	if ver != container.VerR13 && ver != container.VerR14 {
 		if err = skipColorCMCR2004(r); err != nil {
 			return nil, err
 		}

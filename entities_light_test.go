@@ -6,6 +6,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"testing"
 )
@@ -68,7 +69,7 @@ func writeLightPhotometric(w *testsupport.BitWriter) {
 // decodeLightFromBits 走 TestDecodeLwPolylineFromBits 同款框架：
 // 位 0 = UMC → OT → 公共头（R2013 noShadow-noLW 布局），随后 LIGHT 主体。
 // dataEndBit 须在写 handle 流之前计算（主体结束位 = handle 流起点）。
-func decodeLightFromBits(t *testing.T, body *testsupport.BitWriter, dataEndBit uint64, photometric bool, ver dwgVersion) *entLight {
+func decodeLightFromBits(t *testing.T, body *testsupport.BitWriter, dataEndBit uint64, photometric bool, ver container.DwgVersion) *entLight {
 	t.Helper()
 	r := bitstream.NewBitStream(body.Bytes())
 	_, _ = r.ReadUMC()
@@ -96,7 +97,7 @@ func TestDecodeLightPhotometric(t *testing.T) {
 	w.H(5, 0)   // xdic null
 	w.H(5, 300) // layer
 
-	l := decodeLightFromBits(t, w, dataEndBit, true, verR2004)
+	l := decodeLightFromBits(t, w, dataEndBit, true, container.VerR2004)
 	// 基线字段
 	if l.classVersion != 2 || l.name != "L1" || l.lightType != 0 || !l.status {
 		t.Errorf("基线字段: ver=%d name=%q type=%d status=%v", l.classVersion, l.name, l.lightType, l.status)
@@ -159,7 +160,7 @@ func TestDecodeLightBaseline(t *testing.T) {
 	w.H(5, 0)
 	w.H(5, 301)
 
-	l := decodeLightFromBits(t, w, dataEndBit, false, verR2004)
+	l := decodeLightFromBits(t, w, dataEndBit, false, container.VerR2004)
 	if l.isPhotometric {
 		t.Fatal("非光度上下文 isPhotometric 应为 false")
 	}

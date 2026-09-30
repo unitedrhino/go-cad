@@ -10,6 +10,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
@@ -35,7 +36,7 @@ type underlayFields struct {
 
 // decodeUnderlayEntity 解析 UNDERLAY 引用实体并转为 objGeneric。
 // r 已定位到类型码之后（body 局部坐标）；rec/ver 用于实体头布局选择。
-func decodeUnderlayEntity(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver dwgVersion, typeCode uint16, className string) (*objGeneric, error) {
+func decodeUnderlayEntity(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver container.DwgVersion, typeCode uint16, className string) (*objGeneric, error) {
 	base := r.TellBits()
 	dataEnd := rec.DataEndBit()
 	// 实体头布局：typecode 后先有流内 RL objSize（R2010+ 除外）再有

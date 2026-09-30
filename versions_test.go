@@ -5,6 +5,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/container"
 	"math"
 	"os"
 	"path/filepath"
@@ -161,7 +162,7 @@ func TestR14SamplesParse(t *testing.T) {
 			t.Errorf("%s 应可解析: %v", name, err)
 			continue
 		}
-		if doc.version != verR14 {
+		if doc.version != container.VerR14 {
 			t.Errorf("%s 版本应为 verR14，得到 %v", name, doc.version)
 		}
 		if len(doc.modelSpace) == 0 {

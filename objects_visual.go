@@ -7,6 +7,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"os"
 )
@@ -17,21 +18,21 @@ import (
 // R2007 前与 R2007 为老序列（face/edge 字段 + 条件尾块）；
 // R2010b+ 为 ext_lighting_model + internal_only + 字段对（值+_int 标志）；
 // R2013b+ 再追加 b_prop/s 系列属性对（num_props 固定 58，dat 流不存）。
-func decodeGenericVISUALSTYLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericVISUALSTYLE(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.T("description", g); err != nil {
 		return err
 	}
 	if err := fr.BL("style_type", g); err != nil {
 		return err
 	}
-	if ver < verR2010 {
+	if ver < container.VerR2010 {
 		return decodeVisualStyleOld(r, ver, fr, g)
 	}
 	return decodeVisualStyleNew(r, ver, fr, g)
 }
 
 // decodeVisualStyleOld R2007 及更早的 VISUALSTYLE 字段序列。
-func decodeVisualStyleOld(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeVisualStyleOld(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	steps := []struct {
 		read func() error
 	}{
@@ -88,7 +89,7 @@ func decodeVisualStyleOld(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g 
 		{false, func() error { return fr.B("internal_only", g) }},
 	}
 	for _, s := range tail {
-		if s.r2007Only && ver != verR2007 {
+		if s.r2007Only && ver != container.VerR2007 {
 			continue
 		}
 		if err := s.read(); err != nil {
@@ -100,7 +101,7 @@ func decodeVisualStyleOld(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g 
 
 // decodeVisualStyleNew R2010b+ 的字段对序列（值 + _int 标志）；
 // R2013b+ 追加 b_prop/s 系列属性对。
-func decodeVisualStyleNew(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeVisualStyleNew(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BS("ext_lighting_model", g); err != nil {
 		return err
 	}
@@ -148,14 +149,14 @@ func decodeVisualStyleNew(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g 
 			return err
 		}
 	}
-	if ver >= verR2013 {
+	if ver >= container.VerR2013 {
 		return decodeVisualStyleProps(ver, fr, g)
 	}
 	return nil
 }
 
 // decodeVisualStyleProps R2013b+ 的 b_prop/s 系列属性对（num_props=58）。
-func decodeVisualStyleProps(ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeVisualStyleProps(ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	bNames := []string{"b_prop1c", "b_prop1d", "b_prop1e", "b_prop1f", "b_prop20",
 		"b_prop21", "b_prop22", "b_prop23", "b_prop24"}
 	for _, n := range bNames {
@@ -211,7 +212,7 @@ func decodeVisualStyleProps(ver dwgVersion, fr *gfRead, g *objGeneric) error {
 // 全部 T 字段经字符串流（has_strings 时）；handle 流 = owner + reactors +
 // xdic + block_header + active_viewport + base_ucs + named_ucs +
 // viewports×num_viewports。
-func decodeGenericLAYOUT(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericLAYOUT(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	steps := []func() error{
 		func() error { return fr.T("plotsettings.printer_cfg_file", g) },
 		func() error { return fr.T("plotsettings.paper_size", g) },
@@ -232,7 +233,7 @@ func decodeGenericLAYOUT(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *
 		func() error {
 			// R2002 及更早（R13/R14/R2000）：plotview_name T
 			// （R2004+ 改为 handle 流的 plotview 句柄）
-			if ver == verR13 || ver == verR14 || ver == verR2000 {
+			if ver == container.VerR13 || ver == container.VerR14 || ver == container.VerR2000 {
 				return fr.T("plotsettings.plotview_name", g)
 			}
 			return nil
@@ -244,19 +245,19 @@ func decodeGenericLAYOUT(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *
 		func() error { return fr.BD("plotsettings.std_scale_factor", g) },
 		func() error { return fr.Point2("plotsettings.paper_image_origin", g) },
 		func() error {
-			if ver < verR2004 {
+			if ver < container.VerR2004 {
 				return nil // shadeplot 系列为 R2004a+
 			}
 			return fr.BS("plotsettings.shadeplot_type", g)
 		},
 		func() error {
-			if ver < verR2004 {
+			if ver < container.VerR2004 {
 				return nil
 			}
 			return fr.BS("plotsettings.shadeplot_reslevel", g)
 		},
 		func() error {
-			if ver < verR2004 {
+			if ver < container.VerR2004 {
 				return nil
 			}
 			return fr.BS("plotsettings.shadeplot_customdpi", g)
@@ -275,7 +276,7 @@ func decodeGenericLAYOUT(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *
 		func() error { return fr.Point3("EXTMIN", g) },
 		func() error { return fr.Point3("EXTMAX", g) },
 		func() error {
-			if ver < verR2004 {
+			if ver < container.VerR2004 {
 				return nil // num_viewports 为 R2004a+
 			}
 			return fr.BL("num_viewports", g)
@@ -337,7 +338,7 @@ func (f *gfRead) Point2RD(key string, g *objGeneric) error {
 // + 6 个 MAT_MAP（blendfactor/projection/tiling/autotransform/
 // transmatrix 16×BD/source/[filename|texture]）+ 标量属性 + R2007a+
 // 的 6 个尾字段。
-func decodeGenericMATERIAL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericMATERIAL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.T("name", g); err != nil {
 		return err
 	}
@@ -432,7 +433,7 @@ func decodeGenericMATERIAL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g
 	if err := matMap("refractionmap"); err != nil {
 		return err
 	}
-	if ver < verR2007 {
+	if ver < container.VerR2007 {
 		return nil
 	}
 	for _, k := range []string{"translucence", "self_illumination"} {
@@ -461,11 +462,11 @@ func decodeGenericMATERIAL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g
 // decodeGenericSKYLIGHTBACKGROUND SKYLIGHT_BACKGROUND（AcDbSkyBackground）：
 // BL class_version + sunid handle（handle 流，extraHandles=1）。
 // R2010 可视化样本 skylight 首次暴露（51 实例）。
-func decodeGenericSKYLIGHTBACKGROUND(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericSKYLIGHTBACKGROUND(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	return fr.BL("class_version", g)
 }
 
-func decodeGenericSUN(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericSUN(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BL("class_version", g); err != nil {
 		return err
 	}
@@ -502,7 +503,7 @@ func decodeGenericSUN(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *obj
 // decodeGenericACSH_HISTORY_CLASS 解析 ACSH_HISTORY_CLASS（类 517）：
 // BL major + BL minor + BL h_nodeid + B show_history + B record_history；
 // handle 流额外含 owner H（1 个）。
-func decodeGenericACSH_HISTORY_CLASS(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericACSH_HISTORY_CLASS(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BL("major", g); err != nil {
 		return err
 	}
@@ -521,7 +522,7 @@ func decodeGenericACSH_HISTORY_CLASS(r *bitstream.BitStream, ver dwgVersion, fr 
 // decodeGenericTABLEGEOMETRY 解析 TABLEGEOMETRY（类 530）头部：
 // BL numrows + BL numcols + BL num_cells；cells 向量内容复杂
 // （geom_data_flag/尺寸/嵌套 handle），当前仅解析行列数。
-func decodeGenericTABLEGEOMETRY(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericTABLEGEOMETRY(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BL("numrows", g); err != nil {
 		return err
 	}
@@ -576,7 +577,7 @@ func decodeGenericTABLEGEOMETRY(r *bitstream.BitStream, ver dwgVersion, fr *gfRe
 }
 
 // decodeGenericPLACEHOLDER 解析 PLACEHOLDER（固定码 0x50）：无 dat 字段。
-func decodeGenericPLACEHOLDER(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericPLACEHOLDER(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	return nil
 }
 
@@ -708,9 +709,9 @@ func readCellStyleFields(r *bitstream.BitStream, fr *gfRead, g *objGeneric, pref
 // sty.cellstyle（CellStyle_fields）+ sty.id/type/name + numoverrides
 // （≠0 时 ovr.cellstyle 同套）；R2007 及更早为 name/flow_direction/
 // flags/margins + 3 组 rowstyles（text_style 句柄在 handle 流）。
-func decodeGenericTABLESTYLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericTABLESTYLE(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	nHdl := 0
-	if ver <= verR2007 {
+	if ver <= container.VerR2007 {
 		if err := fr.T("name", g); err != nil {
 			return err
 		}
@@ -823,7 +824,7 @@ func decodeGenericTABLESTYLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead,
 // decodeGenericTABLESTYLE_HDL TABLESTYLE 的 handle 流：cellstyle +
 // cellstyle 内 text_style/borders ltype + overrides 同套
 // （顺序由 decode 阶段记录的 num_style_handles 决定）。
-func decodeGenericTABLESTYLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericTABLESTYLE_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	n := 0
 	if v, ok := g.Field("num_style_handles").(int64); ok {
 		n = int(v)
@@ -845,9 +846,9 @@ func decodeGenericTABLESTYLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfR
 // line_color CMC + 描述/箭头/文字系 + block_scale 3BD（非 JSON 为 3×BD）
 // + 尾部 SINCE R_2010b attach 系与 R_2013b text_extended。
 // line_type/arrow_head/text_style/block 句柄在 handle 流（4 个）。
-func decodeGenericMLEADERSTYLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericMLEADERSTYLE(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	classVersion := int64(2)
-	if ver >= verR2010 {
+	if ver >= container.VerR2010 {
 		// SINCE R_2010b 从流读 class_version；更早版本固定为 2（不占位）
 		cv, err := fr.BSv("class_version", g)
 		if err != nil {
@@ -967,14 +968,14 @@ func decodeGenericMLEADERSTYLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRea
 	if err := fr.BD("break_size", g); err != nil {
 		return err
 	}
-	if ver >= verR2010 {
+	if ver >= container.VerR2010 {
 		for _, k := range []string{"attach_dir", "attach_top", "attach_bottom"} {
 			if err := fr.BS(k, g); err != nil {
 				return err
 			}
 		}
 	}
-	if ver >= verR2013 {
+	if ver >= container.VerR2013 {
 		if err := fr.B("text_extended", g); err != nil {
 			return err
 		}
@@ -984,7 +985,7 @@ func decodeGenericMLEADERSTYLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRea
 
 // decodeGenericMLEADERSTYLE_HDL MLEADERSTYLE 的 handle 流：
 // line_type + arrow_head + text_style + block（4 个）。
-func decodeGenericMLEADERSTYLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericMLEADERSTYLE_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < 4; i++ {
 		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
@@ -998,7 +999,7 @@ func decodeGenericMLEADERSTYLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *g
 // readModelDocViewStyleHead 读取 SECTIONVIEWSTYLE/DETAILVIEWSTYLE 共用
 // 的 AcDbModelDocViewStyle 头：mdoc_class_version BS + desc T +
 // is_modified_for_recompute B + [R2018+ display_name T + viewstyle_flags BL]。
-func readModelDocViewStyleHead(r *bitstream.BitStream, fr *gfRead, g *objGeneric, ver dwgVersion) error {
+func readModelDocViewStyleHead(r *bitstream.BitStream, fr *gfRead, g *objGeneric, ver container.DwgVersion) error {
 	if err := fr.BS("mdoc_class_version", g); err != nil {
 		return err
 	}
@@ -1008,7 +1009,7 @@ func readModelDocViewStyleHead(r *bitstream.BitStream, fr *gfRead, g *objGeneric
 	if err := fr.B("is_modified_for_recompute", g); err != nil {
 		return err
 	}
-	if ver >= verR2018 {
+	if ver >= container.VerR2018 {
 		if err := fr.T("display_name", g); err != nil {
 			return err
 		}
@@ -1023,7 +1024,7 @@ func readModelDocViewStyleHead(r *bitstream.BitStream, fr *gfRead, g *objGeneric
 // 模型文档视图头 + flags BL + 标识/箭头/边界/标签/连接/边框六个区块。
 // 6 个句柄（identifier_style/arrow_symbol/boundary_ltype/
 // viewlabel_text_style/connection_ltype/borderline_ltype）在 handle 流。
-func decodeGenericDETAILVIEWSTYLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericDETAILVIEWSTYLE(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := readModelDocViewStyleHead(r, fr, g, ver); err != nil {
 		return err
 	}
@@ -1092,7 +1093,7 @@ func decodeGenericDETAILVIEWSTYLE(r *bitstream.BitStream, ver dwgVersion, fr *gf
 }
 
 // decodeGenericDETAILVIEWSTYLE_HDL DETAILVIEWSTYLE 的 handle 流 6 个。
-func decodeGenericDETAILVIEWSTYLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericDETAILVIEWSTYLE_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < 6; i++ {
 		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
@@ -1108,7 +1109,7 @@ func decodeGenericDETAILVIEWSTYLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr
 // 填充区块 + 尾部位置偏移与 hatch_angles 向量。
 // 6 个句柄（identifier_style/arrow_start_symbol/arrow_end_symbol/
 // plane_ltype/bend_ltype/viewlabel_text_style）在 handle 流。
-func decodeGenericSECTIONVIEWSTYLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericSECTIONVIEWSTYLE(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := readModelDocViewStyleHead(r, fr, g, ver); err != nil {
 		return err
 	}
@@ -1215,7 +1216,7 @@ func decodeGenericSECTIONVIEWSTYLE(r *bitstream.BitStream, ver dwgVersion, fr *g
 }
 
 // decodeGenericSECTIONVIEWSTYLE_HDL SECTIONVIEWSTYLE 的 handle 流 6 个。
-func decodeGenericSECTIONVIEWSTYLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericSECTIONVIEWSTYLE_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < 6; i++ {
 		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
@@ -1228,7 +1229,7 @@ func decodeGenericSECTIONVIEWSTYLE_HDL(r *bitstream.BitStream, ver dwgVersion, f
 
 // decodeGenericFIELDLIST 解析 FIELDLIST（AcDbIdSet）：
 // BL num_fields + B unknown；fields 句柄向量在 handle 流。
-func decodeGenericFIELDLIST(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericFIELDLIST(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	n, err := fr.BLv("num_fields", g)
 	if err != nil {
 		return err
@@ -1244,7 +1245,7 @@ func decodeGenericFIELDLIST(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, 
 // class_version + B is_default + BL attachment + 3BD x_axis_dir/ins_pt
 // （二进制序 ODA bug 反转）+ 4×BD 矩形/范围 + 分栏组；scale 句柄在
 // handle 流（extraHandles=1）。fzw 4 实例实证。
-func decodeGenericMTEXTOBJECTCONTEXTDATA(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericMTEXTOBJECTCONTEXTDATA(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BS("class_version", g); err != nil {
 		return err
 	}
@@ -1304,7 +1305,7 @@ func decodeGenericMTEXTOBJECTCONTEXTDATA(r *bitstream.BitStream, ver dwgVersion,
 // decodeGenericSPATIALFILTER SPATIAL_FILTER（AcDbSpatialFilter 剪裁过滤）：
 // BS num_clip_verts + 2RD 向量 + 3BD 挤出/原点 + 显示/前后裁剪标志 +
 // 2×12 BD 变换矩阵。fzw 1 实例实证。
-func decodeGenericSPATIALFILTER(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericSPATIALFILTER(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	ncv, err := fr.BSv("num_clip_verts", g)
 	if err != nil {
 		return err

@@ -5,6 +5,7 @@ package cad
 import (
 	"bytes"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
@@ -48,7 +49,7 @@ func TestPlaceHolderRoundTrip(t *testing.T) {
 		Size:          uint32(len(body2)),
 	}
 	// 重解码：className 用首次解码的真实类名（ACDBPLACEHOLDER）
-	g2, err := decodeInternalObject(rec2.BodyBitStream(), rec2, verR2000, false, 0x50, "ACDBPLACEHOLDER", 30)
+	g2, err := decodeInternalObject(rec2.BodyBitStream(), rec2, container.VerR2000, false, 0x50, "ACDBPLACEHOLDER", 30)
 	if err != nil {
 		t.Fatalf("重解码失败: %v", err)
 	}
@@ -137,7 +138,7 @@ func TestXrecordRoundTripSynthetic(t *testing.T) {
 	original[3] = uint8(datEnd >> 24)
 
 	rec := &objrec.ObjectRecord{Body: original, BodyBitOffset: 0, Size: uint32(len(original))}
-	x1, err := decodeXrecordObject(rec.BodyBitStream(), rec, verR2000, false)
+	x1, err := decodeXrecordObject(rec.BodyBitStream(), rec, container.VerR2000, false)
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
@@ -159,7 +160,7 @@ func TestXrecordRoundTripSynthetic(t *testing.T) {
 	}
 	// 重编码：合成流句柄均为绝对编码，RawHandleBits 原样写回，
 	// 要求位流逐字节一致
-	body2, err := encodeXrecordR2000(x1, verR2000)
+	body2, err := encodeXrecordR2000(x1, container.VerR2000)
 	if err != nil {
 		t.Fatalf("重编码失败: %v", err)
 	}
@@ -167,7 +168,7 @@ func TestXrecordRoundTripSynthetic(t *testing.T) {
 		t.Fatalf("重编码位流不一致:\n got % X\nwant % X", body2, original)
 	}
 	rec2 := &objrec.ObjectRecord{Body: body2, BodyBitOffset: 0, Size: uint32(len(body2))}
-	x2, err := decodeXrecordObject(rec2.BodyBitStream(), rec2, verR2000, false)
+	x2, err := decodeXrecordObject(rec2.BodyBitStream(), rec2, container.VerR2000, false)
 	if err != nil {
 		t.Fatalf("重解码失败: %v", err)
 	}
@@ -217,7 +218,7 @@ func TestXrecordRoundTrip(t *testing.T) {
 			t.Errorf("解析 %s 失败: %v", name, err)
 			continue
 		}
-		supported := doc.version == verR2000
+		supported := doc.version == container.VerR2000
 		for _, x1 := range doc.xrecords {
 			if x1 == nil || x1.xdataSize <= 0 || len(x1.xdata) == 0 {
 				continue
@@ -310,7 +311,7 @@ func TestDictionaryRoundTrip(t *testing.T) {
 			t.Errorf("解析 %s 失败: %v", name, err)
 			continue
 		}
-		supported := doc.version == verR2000
+		supported := doc.version == container.VerR2000
 		for _, d1 := range doc.dictionaries {
 			if d1 == nil || d1.numItems == 0 {
 				continue

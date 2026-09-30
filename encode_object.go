@@ -7,6 +7,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"os"
 	"strings"
 )
@@ -104,7 +105,7 @@ func encodeXdataItems(w *bitstream.EncWriter, items []xdataItem, r2007Plus bool)
 // encodeXrecordR2000 重编码 R2000-R2007 家族的 XRECORD 对象 body
 // （两遍法：先编码 xdata items 得字节数，再整编含 BL 压缩长度的完整流）。
 // EED 维持跳过语义（对称写终止 BS 0）；objid 句柄值为占位。
-func encodeXrecordR2000(x *objXrecord, ver dwgVersion) ([]byte, error) {
+func encodeXrecordR2000(x *objXrecord, ver container.DwgVersion) ([]byte, error) {
 	writeHead := func(w *bitstream.EncWriter) {
 		w.WriteRL(0) // bitsize 占位
 		dbg := os.Getenv("CAD_DECODE_DBG") != ""
@@ -127,7 +128,7 @@ func encodeXrecordR2000(x *objXrecord, ver dwgVersion) ([]byte, error) {
 	}
 	// 第一遍：编码 xdata items 得字节数
 	tmp := bitstream.NewEncWriter()
-	if err := encodeXdataItems(tmp, x.xdata, ver >= verR2007); err != nil {
+	if err := encodeXdataItems(tmp, x.xdata, ver >= container.VerR2007); err != nil {
 		return nil, err
 	}
 	xdBytes := tmp.Bytes()
@@ -136,10 +137,10 @@ func encodeXrecordR2000(x *objXrecord, ver dwgVersion) ([]byte, error) {
 	writeHead(w)
 	w.WriteBL(uint32(x.numReactors)) // num_reactors（解码端在 EED 后、xdata_size 前读取）
 	w.WriteBL(uint32(len(xdBytes)))
-	if err := encodeXdataItems(w, x.xdata, ver >= verR2007); err != nil {
+	if err := encodeXdataItems(w, x.xdata, ver >= container.VerR2007); err != nil {
 		return nil, err
 	}
-	if ver != verR13 && ver != verR14 {
+	if ver != container.VerR13 && ver != container.VerR14 {
 		w.WriteBS(x.cloning)
 		// num_objid_handles 非流字段：objid 句柄原样保留在
 		// RawHandleBits 位串中，无需单独写出
@@ -160,7 +161,7 @@ func encodeXrecordR2000(x *objXrecord, ver dwgVersion) ([]byte, error) {
 
 // encodeDictionaryR2000 重编码 R2000-R2007 家族的 DICTIONARY/
 // DICTIONARYWDFLT 对象 body。
-func encodeDictionaryR2000(d *objDictionary, ver dwgVersion, withDefault bool) ([]byte, error) {
+func encodeDictionaryR2000(d *objDictionary, ver container.DwgVersion, withDefault bool) ([]byte, error) {
 	w := bitstream.NewEncWriter()
 	w.WriteRL(0) // bitsize 占位
 	dbg := os.Getenv("CAD_DECODE_DBG") != ""
@@ -376,7 +377,7 @@ func gfWritePoint3(w *bitstream.EncWriter, g *objGeneric, key string) {
 // gfWriteCommonTableFlags COMMON_TABLE_FLAGS 写出（readCommonTableFlags
 // 的逆）：pre-R2004 为 B is_xref_ref + BS is_xref_resolved + B is_xref_dep，
 // R2004+ 仅 BS is_xref_resolved。
-func gfWriteCommonTableFlags(w *bitstream.EncWriter, g *objGeneric, ver dwgVersion) {
+func gfWriteCommonTableFlags(w *bitstream.EncWriter, g *objGeneric, ver container.DwgVersion) {
 	if verUntilR2004(ver) {
 		w.WriteB(gfBool(g, "is_xref_ref"))
 		w.WriteBS(uint16(gfNum(g, "is_xref_resolved")))
@@ -452,8 +453,8 @@ func gfWriteXdataItemsFromFields(g *objGeneric) []xdataItem {
 
 // gfWriters 通用对象专有字段写出器（镜像读侧 decoders 表的 R2000 分支；
 // 缺席类型无正向编码器，collectForwardObjects 跳过）。
-var gfWriters = map[string]func(w *bitstream.EncWriter, g *objGeneric, ver dwgVersion) error{
-	"PLACEHOLDER":      func(*bitstream.EncWriter, *objGeneric, dwgVersion) error { return nil }, // 无专有字段
+var gfWriters = map[string]func(w *bitstream.EncWriter, g *objGeneric, ver container.DwgVersion) error{
+	"PLACEHOLDER":      func(*bitstream.EncWriter, *objGeneric, container.DwgVersion) error { return nil }, // 无专有字段
 	"DICTIONARYVAR":    gfWriteDictionaryVar,
 	"SCALE":            gfWriteScale,
 	"GROUP":            gfWriteGroup,
@@ -466,7 +467,7 @@ var gfWriters = map[string]func(w *bitstream.EncWriter, g *objGeneric, ver dwgVe
 
 // gfWriteDictionaryVar DICTIONARYVAR：RC schema(280) + T strvalue
 // （镜像 decodeGenericDICTIONARYVAR）。
-func gfWriteDictionaryVar(w *bitstream.EncWriter, g *objGeneric, _ dwgVersion) error {
+func gfWriteDictionaryVar(w *bitstream.EncWriter, g *objGeneric, _ container.DwgVersion) error {
 	gfWriteRC(w, g, "schema")
 	gfWriteTV(w, g, "strvalue")
 	return nil
@@ -474,7 +475,7 @@ func gfWriteDictionaryVar(w *bitstream.EncWriter, g *objGeneric, _ dwgVersion) e
 
 // gfWriteScale SCALE：BS flag(70) + T name(300) + BD paper_units(140) +
 // BD drawing_units(141) + B is_unit_scale(290)（镜像 decodeGenericSCALE）。
-func gfWriteScale(w *bitstream.EncWriter, g *objGeneric, _ dwgVersion) error {
+func gfWriteScale(w *bitstream.EncWriter, g *objGeneric, _ container.DwgVersion) error {
 	gfWriteBS(w, g, "flag")
 	gfWriteTV(w, g, "name")
 	gfWriteBD(w, g, "paper_units")
@@ -486,7 +487,7 @@ func gfWriteScale(w *bitstream.EncWriter, g *objGeneric, _ dwgVersion) error {
 // gfWriteGroup GROUP：T name + BS unnamed + BS selectable + BL num_groups
 // （gold JSON 无 num_groups 键，以 groups 数组长度为准；组员句柄在
 // handle 流，镜像 decodeGenericGROUP）。
-func gfWriteGroup(w *bitstream.EncWriter, g *objGeneric, _ dwgVersion) error {
+func gfWriteGroup(w *bitstream.EncWriter, g *objGeneric, _ container.DwgVersion) error {
 	gfWriteTV(w, g, "name")
 	gfWriteBS(w, g, "unnamed")
 	gfWriteBS(w, g, "selectable")
@@ -495,14 +496,14 @@ func gfWriteGroup(w *bitstream.EncWriter, g *objGeneric, _ dwgVersion) error {
 }
 
 // gfWriteWipeoutVariables WIPEOUTVARIABLES：BS display_frame(70)。
-func gfWriteWipeoutVariables(w *bitstream.EncWriter, g *objGeneric, _ dwgVersion) error {
+func gfWriteWipeoutVariables(w *bitstream.EncWriter, g *objGeneric, _ container.DwgVersion) error {
 	gfWriteBS(w, g, "display_frame")
 	return nil
 }
 
 // gfWriteTableRecordSimple 简单表记录（APPID）：T name +
 // COMMON_TABLE_FLAGS + RC unknown（镜像 decodeGenericAPPID）。
-func gfWriteTableRecordSimple(w *bitstream.EncWriter, g *objGeneric, ver dwgVersion) error {
+func gfWriteTableRecordSimple(w *bitstream.EncWriter, g *objGeneric, ver container.DwgVersion) error {
 	gfWriteTV(w, g, "name")
 	gfWriteCommonTableFlags(w, g, ver)
 	gfWriteRC(w, g, "unknown")
@@ -512,7 +513,7 @@ func gfWriteTableRecordSimple(w *bitstream.EncWriter, g *objGeneric, ver dwgVers
 // gfWriteStyle STYLE 表记录：T name + COMMON_TABLE_FLAGS + is_shape/
 // is_vertical B + 字体尺寸组 + T font_file/bigfont_file
 // （镜像 decodeGenericSTYLE 的 R2000 分支）。
-func gfWriteStyle(w *bitstream.EncWriter, g *objGeneric, ver dwgVersion) error {
+func gfWriteStyle(w *bitstream.EncWriter, g *objGeneric, ver container.DwgVersion) error {
 	gfWriteTV(w, g, "name")
 	gfWriteCommonTableFlags(w, g, ver)
 	gfWriteB(w, g, "is_shape")
@@ -530,16 +531,16 @@ func gfWriteStyle(w *bitstream.EncWriter, g *objGeneric, ver dwgVersion) error {
 // gfWriteXrecordGeneric objGeneric 形态的 XRECORD（JSON 来源）：BL
 // num_reactors（公共段）之后为 BL xdata_size + xdata items（两遍法，
 // 同 encodeXrecordR2000 布局）+ BS cloning。objid 句柄在 handle 流占位。
-func gfWriteXrecordGeneric(w *bitstream.EncWriter, g *objGeneric, ver dwgVersion) error {
+func gfWriteXrecordGeneric(w *bitstream.EncWriter, g *objGeneric, ver container.DwgVersion) error {
 	items := gfWriteXdataItemsFromFields(g)
 	tmp := bitstream.NewEncWriter()
-	if err := encodeXdataItems(tmp, items, ver >= verR2007); err != nil {
+	if err := encodeXdataItems(tmp, items, ver >= container.VerR2007); err != nil {
 		return err
 	}
 	// xdata_size 以重编码实际字节数为准（写读自洽，不回放 gold 声明值）
 	w.WriteBL(uint32(len(tmp.Bytes())))
 	w.WriteTF(tmp.Bytes())
-	if ver != verR13 && ver != verR14 {
+	if ver != container.VerR13 && ver != container.VerR14 {
 		w.WriteBS(uint16(gfNum(g, "cloning")))
 	}
 	return nil
@@ -548,7 +549,7 @@ func gfWriteXrecordGeneric(w *bitstream.EncWriter, g *objGeneric, ver dwgVersion
 // gfWriteLayout LAYOUT（R2000 分支，镜像 decodeGenericLAYOUT 的步骤序）：
 // plotsettings 系 + plotview_name T（R13~R2000）+ layout 头 + INSBASE/
 // LIMMIN/LIMMAX/UCS 段 + EXTMIN/EXTMAX；num_viewports 为 R2004a+ 不写。
-func gfWriteLayout(w *bitstream.EncWriter, g *objGeneric, ver dwgVersion) error {
+func gfWriteLayout(w *bitstream.EncWriter, g *objGeneric, ver container.DwgVersion) error {
 	gfWriteTV(w, g, "plotsettings.printer_cfg_file")
 	gfWriteTV(w, g, "plotsettings.paper_size")
 	gfWriteBS(w, g, "plotsettings.plot_flags")
@@ -565,7 +566,7 @@ func gfWriteLayout(w *bitstream.EncWriter, g *objGeneric, ver dwgVersion) error 
 	gfWriteBS(w, g, "plotsettings.plot_type")
 	gfWritePoint2(w, g, "plotsettings.plot_window_ll")
 	gfWritePoint2(w, g, "plotsettings.plot_window_ur")
-	if ver == verR13 || ver == verR14 || ver == verR2000 {
+	if ver == container.VerR13 || ver == container.VerR14 || ver == container.VerR2000 {
 		gfWriteTV(w, g, "plotsettings.plotview_name")
 	}
 	gfWriteBD(w, g, "plotsettings.paper_units")
@@ -574,7 +575,7 @@ func gfWriteLayout(w *bitstream.EncWriter, g *objGeneric, ver dwgVersion) error 
 	gfWriteBS(w, g, "plotsettings.std_scale_type")
 	gfWriteBD(w, g, "plotsettings.std_scale_factor")
 	gfWritePoint2(w, g, "plotsettings.paper_image_origin")
-	if ver >= verR2004 {
+	if ver >= container.VerR2004 {
 		gfWriteBS(w, g, "plotsettings.shadeplot_type")
 		gfWriteBS(w, g, "plotsettings.shadeplot_reslevel")
 		gfWriteBS(w, g, "plotsettings.shadeplot_customdpi")
@@ -641,7 +642,7 @@ func gfHandleFirst(g *objGeneric, key string) uint64 {
 // 编码为 R2000 对象 body：RL bitsize + H self + EED 终止 + BL num_reactors
 // + 类型专属字段（gfWriters）→ handle 流（owner + reactors + xdic +
 // 类型专属引用）。dyn 为动态类码表（对象类名 → ≥500 码）。
-func encodeForwardGenericObject(g *objGeneric, ver dwgVersion, dyn map[string]uint16) ([]byte, error) {
+func encodeForwardGenericObject(g *objGeneric, ver container.DwgVersion, dyn map[string]uint16) ([]byte, error) {
 	if g == nil || g.Handle == 0 {
 		return nil, fmt.Errorf("cad: 通用对象缺少句柄")
 	}

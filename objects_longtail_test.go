@@ -7,6 +7,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"strings"
 	"testing"
@@ -54,7 +55,7 @@ func TestIDBufferSynthetic(t *testing.T) {
 	fillR2000Bitsize(body, datEnd)
 
 	rec := &objrec.ObjectRecord{Body: body, BodyBitOffset: 0, Size: uint32(len(body))}
-	g, err := decodeInternalObject(rec.BodyBitStream(), rec, verR2000, false, 0x51, "IDBUFFER", 30)
+	g, err := decodeInternalObject(rec.BodyBitStream(), rec, container.VerR2000, false, 0x51, "IDBUFFER", 30)
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
@@ -89,7 +90,7 @@ func TestIndexSynthetic(t *testing.T) {
 
 	rec := &objrec.ObjectRecord{Body: body, BodyBitOffset: 0, Size: uint32(len(body))}
 	// 0x54：无固定解码器冲突的占位类型码（INDEX 无 R13+ 固定码，经类表路由）
-	g, err := decodeInternalObject(rec.BodyBitStream(), rec, verR2000, false, 0x54, "INDEX", 30)
+	g, err := decodeInternalObject(rec.BodyBitStream(), rec, container.VerR2000, false, 0x54, "INDEX", 30)
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
@@ -127,7 +128,7 @@ func TestLayerIndexSynthetic(t *testing.T) {
 	fillR2000Bitsize(body, datEnd)
 
 	rec := &objrec.ObjectRecord{Body: body, BodyBitOffset: 0, Size: uint32(len(body))}
-	g, err := decodeInternalObject(rec.BodyBitStream(), rec, verR2000, false, 0x53, "LAYER_INDEX", 30)
+	g, err := decodeInternalObject(rec.BodyBitStream(), rec, container.VerR2000, false, 0x53, "LAYER_INDEX", 30)
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
@@ -168,7 +169,7 @@ func TestProxyObjectSynthetic(t *testing.T) {
 	fillR2000Bitsize(body, datEnd)
 
 	rec := &objrec.ObjectRecord{Body: body, BodyBitOffset: 0, Size: uint32(len(body))}
-	g, err := decodeInternalObject(rec.BodyBitStream(), rec, verR2000, false, 0x1F3, "PROXY_OBJECT", 30)
+	g, err := decodeInternalObject(rec.BodyBitStream(), rec, container.VerR2000, false, 0x1F3, "PROXY_OBJECT", 30)
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}

@@ -7,6 +7,7 @@ package cad
 
 import (
 	"bytes"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"os"
 	"os/exec"
@@ -123,7 +124,7 @@ func TestWriteReadR2004(t *testing.T) {
 // r2004GateMapRefs 解析样本的对象图条目（R2004 容器 AcDb:Handles 段）。
 func r2004GateMapRefs(t *testing.T, data []byte) []objrec.ObjectRef {
 	t.Helper()
-	handles, err := loadNamedSectionData(data, "AcDb:Handles")
+	handles, err := container.LoadNamedSectionData(data, "AcDb:Handles")
 	if err != nil {
 		t.Fatalf("加载 AcDb:Handles 段失败: %v", err)
 	}

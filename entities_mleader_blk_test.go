@@ -7,6 +7,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"testing"
 )
@@ -48,7 +49,7 @@ func TestMLeaderContextBlkContent(t *testing.T) {
 	w.WriteB(true)
 
 	m := &entMLeader{}
-	if err := decodeMLeaderContext(bitstream.NewBitStream(w.Bytes()), m, verR2000, 0, nil); err != nil {
+	if err := decodeMLeaderContext(bitstream.NewBitStream(w.Bytes()), m, container.VerR2000, 0, nil); err != nil {
 		t.Fatalf("decodeMLeaderContext 失败: %v", err)
 	}
 	c := &m.ctx

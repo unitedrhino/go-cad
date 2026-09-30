@@ -4,6 +4,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
@@ -159,7 +160,7 @@ func TestParseObjectMapHandlesSkipsNegative(t *testing.T) {
 func TestDecompressLZ77Literal(t *testing.T) {
 	// 字面量长度字段 0x05 → 5+3=8 字节字面量
 	src := append([]byte{0x05}, []byte("ABCDEFGH")...)
-	out, err := decompressLZ77(src, 8)
+	out, err := container.DecompressLZ77(src, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +171,7 @@ func TestDecompressLZ77Literal(t *testing.T) {
 
 func TestDecompressLZ77Terminator(t *testing.T) {
 	// 字面量长度字段 0x01 → 1+3=4 字节 "ABCD"，随后 0x11 终止
-	out, err := decompressLZ77([]byte{0x01, 'A', 'B', 'C', 'D', 0x11}, 4)
+	out, err := container.DecompressLZ77([]byte{0x01, 'A', 'B', 'C', 'D', 0x11}, 4)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +181,7 @@ func TestDecompressLZ77Terminator(t *testing.T) {
 }
 
 func TestLCGMagicSequence(t *testing.T) {
-	seq := lcgKeyStream()
+	seq := container.LcgKeyStream()
 	// LCG(seed=1) 首字节: seed=1*0x343FD+0x269EC3=0x29E3C0 → >>16 = 0x29
 	if seq[0] != 0x29 {
 		t.Fatalf("LCG 序列首字节期望 0x29 得到 %#x", seq[0])
@@ -189,7 +190,7 @@ func TestLCGMagicSequence(t *testing.T) {
 
 func TestReadHeaderData(t *testing.T) {
 	// 构造加密头：明文字段 + XOR 加密
-	hdr := make([]byte, headerSize)
+	hdr := make([]byte, container.HeaderSize)
 	// 0x50 处: page map id(u32) + address(u64) + section map id(u32)
 	put := func(off int, b []byte) { copy(hdr[off:], b) }
 	u32 := func(v uint32) []byte { return []byte{byte(v), byte(v >> 8), byte(v >> 16), byte(v >> 24)} }
@@ -204,19 +205,19 @@ func TestReadHeaderData(t *testing.T) {
 	put(0x54, u64(1000))
 	put(0x5C, u32(7))
 
-	magic := lcgKeyStream()
-	encrypted := make([]byte, headerSize)
+	magic := container.LcgKeyStream()
+	encrypted := make([]byte, container.HeaderSize)
 	for i := range encrypted {
 		encrypted[i] = hdr[i] ^ magic[i]
 	}
-	file := make([]byte, headerOffset+headerSize)
-	copy(file[headerOffset:], encrypted)
+	file := make([]byte, container.HeaderOffset+container.HeaderSize)
+	copy(file[container.HeaderOffset:], encrypted)
 
-	got, err := decryptR2004Header(file)
+	got, err := container.DecryptR2004Header(file)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.sectionPageMapAddress != 1000 || got.sectionMapID != 7 {
+	if got.SectionPageMapAddress != 1000 || got.SectionMapID != 7 {
 		t.Fatalf("容器头解析错误: %+v", got)
 	}
 }
@@ -283,19 +284,19 @@ func TestXformCompose(t *testing.T) {
 }
 
 func TestDetectVersion(t *testing.T) {
-	for magic, want := range map[string]dwgVersion{
-		"AC1015": verR2000,
-		"AC1018": verR2004,
-		"AC1024": verR2010,
-		"AC1027": verR2013,
-		"AC1032": verR2018,
+	for magic, want := range map[string]container.DwgVersion{
+		"AC1015": container.VerR2000,
+		"AC1018": container.VerR2004,
+		"AC1024": container.VerR2010,
+		"AC1027": container.VerR2013,
+		"AC1032": container.VerR2018,
 	} {
-		v, err := detectVersion([]byte(magic + "xxxxxxxx"))
+		v, err := container.DetectVersion([]byte(magic + "xxxxxxxx"))
 		if err != nil || v != want {
 			t.Errorf("%s 识别失败: %v %v", magic, v, err)
 		}
 	}
-	if _, err := detectVersion([]byte("XXXXXX")); err == nil {
+	if _, err := container.DetectVersion([]byte("XXXXXX")); err == nil {
 		t.Error("非法魔数应报错")
 	}
 }

@@ -4,6 +4,7 @@ package cad
 
 import (
 	"encoding/binary"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"testing"
@@ -15,7 +16,7 @@ func TestDecryptDataPageHeader(t *testing.T) {
 		raw[i] = byte(i)
 	}
 	pageAddr := uint64(0x1000)
-	dec := unmaskPageHeader(raw, pageAddr)
+	dec := container.UnmaskPageHeader(raw, pageAddr)
 	// 手工计算首块：mask = 0x4164536B ^ 0x1000；期望 = raw ^ mask
 	mask := uint32(0x4164536B ^ uint32(pageAddr))
 	want := binary.LittleEndian.Uint32(raw[0:]) ^ mask
@@ -42,7 +43,7 @@ func TestReadCString(t *testing.T) {
 		{nil, ""},
 	}
 	for _, c := range cases {
-		if got := readCString(c.in); got != c.want {
+		if got := container.ReadCString(c.in); got != c.want {
 			t.Errorf("readCString(%v)=%q 期望 %q", c.in, got, c.want)
 		}
 	}
@@ -52,28 +53,28 @@ func TestParseR2000SectionDirectory(t *testing.T) {
 	// 0x15 处条目数 + 每条 9 字节（record_no + offset u32 + size u32）
 	buf := make([]byte, 0x15+9*2+0x50+0x10)
 	binary.LittleEndian.PutUint32(buf[0x15:], 2)
-	buf[0x19] = r2000SecObjectMap
+	buf[0x19] = container.R2000SecObjectMap
 	binary.LittleEndian.PutUint32(buf[0x19+1:], 0x30)
 	binary.LittleEndian.PutUint32(buf[0x19+5:], 0x50)
-	buf[0x19+9] = r2000SecClasses
+	buf[0x19+9] = container.R2000SecClasses
 	binary.LittleEndian.PutUint32(buf[0x19+10:], 0x200)
 	binary.LittleEndian.PutUint32(buf[0x19+14:], 0x30)
 
-	locs, err := parseR2000Directory(buf)
+	locs, err := container.ParseR2000Directory(buf)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(locs) != 2 {
 		t.Fatalf("期望 2 条得到 %d", len(locs))
 	}
-	if locs[0].recordNo != r2000SecObjectMap || locs[0].offset != 0x30 || locs[0].size != 0x50 {
+	if locs[0].RecordNo != container.R2000SecObjectMap || locs[0].Offset != 0x30 || locs[0].Size != 0x50 {
 		t.Fatalf("条目 0 错误: %+v", locs[0])
 	}
-	if locs[1].recordNo != r2000SecClasses || locs[1].offset != 0x200 {
+	if locs[1].RecordNo != container.R2000SecClasses || locs[1].Offset != 0x200 {
 		t.Fatalf("条目 1 错误: %+v", locs[1])
 	}
 	// readR2000Section 按段号取数据
-	sec, err := readR2000Section(buf, r2000SecObjectMap)
+	sec, err := container.ReadR2000Section(buf, container.R2000SecObjectMap)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,13 +82,13 @@ func TestParseR2000SectionDirectory(t *testing.T) {
 		t.Fatalf("段长度期望 0x50 得到 %d", len(sec))
 	}
 	// 不存在的段号报错
-	if _, err := readR2000Section(buf, r2000SecMeasurement); err == nil {
+	if _, err := container.ReadR2000Section(buf, container.R2000SecMeasurement); err == nil {
 		t.Error("不存在段应报错")
 	}
 	// 条目数超限报错
 	bad := make([]byte, 0x15+4)
 	binary.LittleEndian.PutUint32(bad[0x15:], 100)
-	if _, err := parseR2000Directory(bad); err == nil {
+	if _, err := container.ParseR2000Directory(bad); err == nil {
 		t.Error("条目数超限应报错")
 	}
 }
@@ -192,7 +193,7 @@ func TestParseObjectMapHandlesTerminator(t *testing.T) {
 func TestParseClassesSectionR13R15(t *testing.T) {
 	// 哨兵 + RL size + 条目（BS classNumber + BS proxy + TV app + TV cpp + TV dxf + B zombie + BS itemID）
 	w := testsupport.NewBitWriter()
-	w.RCS(sentinelClassesBefore[:])
+	w.RCS(container.SentinelClassesBefore[:])
 	w.RL(0x1000) // 数据长度（足够大让循环按 maxClass 终止）
 	// 条目 1：classNumber=500 dxfName=ACDBXYZ
 	w.BS(500)
@@ -210,9 +211,9 @@ func TestParseClassesSectionR13R15(t *testing.T) {
 	w.TV("AcDbABC")
 	w.B(0)
 	w.BS(0x1F3)
-	w.RCS(sentinelClassesAfter[:])
+	w.RCS(container.SentinelClassesAfter[:])
 
-	out, err := parseClassesSectionR13R15(w.Bytes())
+	out, err := container.ParseClassesSectionR13R15(w.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,13 +223,13 @@ func TestParseClassesSectionR13R15(t *testing.T) {
 }
 
 func TestScoreClassName(t *testing.T) {
-	if classNameScore("ACDBXYZ") <= 0 {
+	if container.ClassNameScore("ACDBXYZ") <= 0 {
 		t.Error("正常类名应为正分")
 	}
-	if classNameScore("") >= 0 {
+	if container.ClassNameScore("") >= 0 {
 		t.Error("空名应为负分")
 	}
-	if classNameScore("\x01\x02") >= 0 {
+	if container.ClassNameScore("\x01\x02") >= 0 {
 		t.Error("控制字符应为负分")
 	}
 }

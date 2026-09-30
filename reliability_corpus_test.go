@@ -258,7 +258,7 @@ func corpusRunChain(data []byte) (res corpusChainResult) {
 	// WriteDwg → 再 Parse → 实体数一致：pre-R13 无写出器（功能边界，
 	// WriteDwgR2000 仅覆盖 R13/R14/R2000），该步骤记 N/A 跳过。
 	run("WriteDwg", func() error {
-		if doc.version.preR13() {
+		if doc.version.PreR13() {
 			return nil // N/A
 		}
 		var buf bytes.Buffer

@@ -5,6 +5,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
@@ -52,7 +53,7 @@ func TestDecodeArcDimensionR2018(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeDimension(r, &head, verR2018, dimLayoutArc)
+	ent, err := decodeDimension(r, &head, container.VerR2018, dimLayoutArc)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -6,6 +6,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
@@ -325,14 +326,14 @@ func readDimSpecific(r *bitstream.BitStream, layout dimSpecificLayout) (dimSpeci
 // （LibreDWG dwg.spec COMMON_ENTITY_DIMENSION，已经 dwgread -v9 trace
 // 逐字段核对），优先确定性解码；公共头边界异常导致 body 中途失败时
 // 才回退变体扫描兜底。
-func decodeDimension(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion, layout dimSpecificLayout) (any, error) {
+func decodeDimension(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion, layout dimSpecificLayout) (any, error) {
 	pos := r.TellBits()
 	if d, err := decodeDimCanonical(r, head, ver, layout); err == nil {
 		return d, nil
 	}
 	// 兜底：canonical 失败（公共头边界异常等）时从原起点走变体扫描。
 	r.SetBitPos(pos)
-	if ver == verR2000 || ver == verR13 || ver == verR14 || ver == verR2004 {
+	if ver == container.VerR2000 || ver == container.VerR13 || ver == container.VerR14 || ver == container.VerR2004 {
 		if ent, err := scanDimShapes(r, head, layout, r2000DimShapes, decodeDimR2000Variant); err == nil {
 			return ent, nil
 		} else {
@@ -348,7 +349,7 @@ func decodeDimension(r *bitstream.BitStream, head *commonEntityHead, ver dwgVers
 
 // dimVerR2007Plus R2007 及以后版本（R2007 三个标志位段起始版本）。
 // 显式枚举判断，避免 iota 顺序变化时 >= 比较失真。
-func dimVerR2007Plus(v dwgVersion) bool { return v == verR2007 || v.r2010Plus() }
+func dimVerR2007Plus(v container.DwgVersion) bool { return v == container.VerR2007 || v.R2010Plus() }
 
 // dimStringStream R2007+ 对象尾部字符串流读取器。R2007+ 的字符串内容
 // 不占主位流，集中存放在 bitsize 前的 string stream 区域
@@ -422,11 +423,11 @@ func (s *dimStringStream) readTU(r *bitstream.BitStream, enterPos uint64) string
 // ins_rotation BD → [R2000+ attachment/lspace/measurement] →
 // [R2007+ unknown/flip×2] → clone_ins_pt 2RD → 类型专属尾部 → handle 流
 // （common → dimstyle → block，顺序与 dwg.spec 一致）。
-func decodeDimCanonical(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion, layout dimSpecificLayout) (*entDimension, error) {
+func decodeDimCanonical(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion, layout dimSpecificLayout) (*entDimension, error) {
 	trOn := cadTraceHandle != 0 && cadTraceHandle == head.handle
 	// dimR2000Plus attachment 段起始于 R2000；注意 verR2000 是枚举零值，
 	// 不可用 >= 判断（R13/R14 枚举值更大但布局更旧）。
-	dimR2000Plus := ver == verR2000 || ver == verR2004 || dimVerR2007Plus(ver)
+	dimR2000Plus := ver == container.VerR2000 || ver == container.VerR2004 || dimVerR2007Plus(ver)
 	d := &entDimension{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
 	traceRC := func(name string, dst *uint8) error {
@@ -462,7 +463,7 @@ func decodeDimCanonical(r *bitstream.BitStream, head *commonEntityHead, ver dwgV
 		}
 		return e
 	}
-	if ver.r2010Plus() {
+	if ver.R2010Plus() {
 		if err = traceRC("class_version", &d.classVersion); err != nil {
 			return nil, err
 		}

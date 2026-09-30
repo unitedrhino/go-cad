@@ -10,6 +10,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
@@ -66,7 +67,7 @@ func readBlockConnectionPts(r *bitstream.BitStream, fr *gfRead, g *objGeneric, n
 // decodeBlockElementFields AcDbBlockElement_fields：AcDbEvalExpr
 // （parentid/major/minor/value_code/value/nodeid）+ name T + be_major/
 // be_minor BL（DECODER-only，不产生 JSON 键）+ eed1071 BL。
-func decodeBlockElementFields(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeBlockElementFields(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	hasHandle, err := decodeAcisEvalExprFields(r, ver, fr, g)
 	if err != nil {
 		return err
@@ -86,7 +87,7 @@ func decodeBlockElementFields(r *bitstream.BitStream, ver dwgVersion, fr *gfRead
 // decodeBlockGripFields AcDbBlockGrip_fields：BlockElement + bg_bl91/
 // bg_bl92 BL + bg_location 3BD + bg_insert_cycling B +
 // bg_insert_cycling_weight BLd。
-func decodeBlockGripFields(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeBlockGripFields(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeBlockElementFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -107,7 +108,7 @@ func decodeBlockGripFields(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g
 
 // decodeBlockParameterFields AcDbBlockParameter_fields：BlockElement +
 // show_properties/chain_actions B。
-func decodeBlockParameterFields(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeBlockParameterFields(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeBlockElementFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -120,7 +121,7 @@ func decodeBlockParameterFields(r *bitstream.BitStream, ver dwgVersion, fr *gfRe
 // decodeBlockActionFields AcDbBlockAction_fields（二进制序）：
 // BlockElement + display_location 3BD + num_deps BL（deps 句柄在
 // handle 流）+ num_actions BL + actions BL 向量。
-func decodeBlockActionFields(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) (numDeps int, err error) {
+func decodeBlockActionFields(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) (numDeps int, err error) {
 	if err = decodeBlockElementFields(r, ver, fr, g); err != nil {
 		return
 	}
@@ -155,7 +156,7 @@ func decodeBlockActionFields(r *bitstream.BitStream, ver dwgVersion, fr *gfRead,
 
 // readBlockPropInfo 读 BlockParam_PropInfo（前缀如 "prop1"）：
 // num_connections BL + connections×N（code BL + name T，元素内键）。
-func readBlockPropInfo(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric, prefix string) error {
+func readBlockPropInfo(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric, prefix string) error {
 	nc, err := fr.BLv(prefix+".num_connections", g)
 	if err != nil {
 		return err
@@ -179,7 +180,7 @@ func readBlockPropInfo(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *ob
 // decodeBlock2PtParameterFields AcDbBlock2PtParameter_fields：参数 +
 // def_basept/def_endpt 3BD + prop1..4 PropInfo + prop_states BL×4 +
 // parameter_base_location BS。
-func decodeBlock2PtParameterFields(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeBlock2PtParameterFields(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeBlockParameterFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -208,7 +209,7 @@ func decodeBlock2PtParameterFields(r *bitstream.BitStream, ver dwgVersion, fr *g
 
 // decodeBlock1PtParameterFields AcDbBlock1PtParameter_fields：参数 +
 // def_pt 3BD + prop1/prop2 PropInfo + num_propinfos BL（尾部）。
-func decodeBlock1PtParameterFields(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeBlock1PtParameterFields(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeBlockParameterFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -227,7 +228,7 @@ func decodeBlock1PtParameterFields(r *bitstream.BitStream, ver dwgVersion, fr *g
 // decodeBlockParamValueSet AcDbBlockParamValueSet_fields：desc T +
 // flags BL + minimum/maximum/increment BD + num_valuelist BS +
 // valuelist BD 向量（gold 无 num_valuelist 键，仅消费位）。
-func decodeBlockParamValueSet(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeBlockParamValueSet(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.T("desc", g); err != nil {
 		return err
 	}
@@ -264,7 +265,7 @@ func decodeBlockParamValueSet(r *bitstream.BitStream, ver dwgVersion, fr *gfRead
 
 // decodeBlockActionWithBasePtFields AcDbBlockActionWithBasePt_fields：
 // BlockAction + offset 3BD + ConnectionPts×2 + dependent B + base_pt 3BD。
-func decodeBlockActionWithBasePtFields(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) (int, error) {
+func decodeBlockActionWithBasePtFields(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) (int, error) {
 	nd, err := decodeBlockActionFields(r, ver, fr, g)
 	if err != nil {
 		return 0, err
@@ -286,7 +287,7 @@ func decodeBlockActionWithBasePtFields(r *bitstream.BitStream, ver dwgVersion, f
 
 // decodeBlockActionDoublesFields AcDbBlockAction_doubles_fields：
 // action_offset_x/action_offset_y/angle_offset BD。
-func decodeBlockActionDoublesFields(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeBlockActionDoublesFields(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	for _, k := range []string{"action_offset_x", "action_offset_y", "angle_offset"} {
 		if err := fr.BD(k, g); err != nil {
 			return err
@@ -299,13 +300,13 @@ func decodeBlockActionDoublesFields(r *bitstream.BitStream, ver dwgVersion, fr *
 
 // decodeGenericBLOCKVISIBILITYGRIP 等纯 Grip 类（LOOKUP/ROTATION/XY
 // 同布局无附加字段）。
-func decodeGenericBLOCKVISIBILITYGRIP(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKVISIBILITYGRIP(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	return decodeBlockGripFields(r, ver, fr, g)
 }
 
 // decodeGenericBLOCKORIENTATIONGRIP 带 orientation 3BD_1 的 Grip
 // （ALIGNMENT/LINEAR）。
-func decodeGenericBLOCKORIENTATIONGRIP(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKORIENTATIONGRIP(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeBlockGripFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -314,7 +315,7 @@ func decodeGenericBLOCKORIENTATIONGRIP(r *bitstream.BitStream, ver dwgVersion, f
 
 // decodeGenericBLOCKFLIPGRIP BLOCKFLIPGRIP：Grip + combined_state BL +
 // orientation 3BD_1。
-func decodeGenericBLOCKFLIPGRIP(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKFLIPGRIP(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeBlockGripFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -326,7 +327,7 @@ func decodeGenericBLOCKFLIPGRIP(r *bitstream.BitStream, ver dwgVersion, fr *gfRe
 
 // decodeGenericBLOCKGRIPLOCATIONCOMPONENT BLOCKGRIPLOCATIONCOMPONENT：
 // AcDbEvalExpr + AcDbBlockGripExpr（grip_type BL + grip_expr T）。
-func decodeGenericBLOCKGRIPLOCATIONCOMPONENT(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKGRIPLOCATIONCOMPONENT(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	hasHandle, err := decodeAcisEvalExprFields(r, ver, fr, g)
 	if err != nil {
 		return err
@@ -339,7 +340,7 @@ func decodeGenericBLOCKGRIPLOCATIONCOMPONENT(r *bitstream.BitStream, ver dwgVers
 }
 
 // decodeGenericBLOCKALIGNMENTPARAMETER：2Pt 参数 + align_perpendicular B。
-func decodeGenericBLOCKALIGNMENTPARAMETER(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKALIGNMENTPARAMETER(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeBlock2PtParameterFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -348,7 +349,7 @@ func decodeGenericBLOCKALIGNMENTPARAMETER(r *bitstream.BitStream, ver dwgVersion
 
 // decodeGenericBLOCKLINEARPARAMETER：2Pt 参数 + distance_name/
 // distance_desc T + distance BD + ParamValueSet。
-func decodeGenericBLOCKLINEARPARAMETER(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKLINEARPARAMETER(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeBlock2PtParameterFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -366,7 +367,7 @@ func decodeGenericBLOCKLINEARPARAMETER(r *bitstream.BitStream, ver dwgVersion, f
 
 // decodeGenericBLOCKFLIPPARAMETER：2Pt 参数 + 4 个状态标签 T +
 // def_label_pt 3BD + bl96 BL + tooltip T。
-func decodeGenericBLOCKFLIPPARAMETER(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKFLIPPARAMETER(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeBlock2PtParameterFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -386,7 +387,7 @@ func decodeGenericBLOCKFLIPPARAMETER(r *bitstream.BitStream, ver dwgVersion, fr 
 
 // decodeGenericBLOCKROTATIONPARAMETER：2Pt 参数 + def_base_angle_pt
 // 3BD + angle_name/angle_desc T + angle BD + ParamValueSet。
-func decodeGenericBLOCKROTATIONPARAMETER(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKROTATIONPARAMETER(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeBlock2PtParameterFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -407,7 +408,7 @@ func decodeGenericBLOCKROTATIONPARAMETER(r *bitstream.BitStream, ver dwgVersion,
 
 // decodeGenericBLOCKPOLARPARAMETER：2Pt 参数 + 4 个名称/描述 T +
 // offset BD + angle/distance 两个 ParamValueSet。
-func decodeGenericBLOCKPOLARPARAMETER(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKPOLARPARAMETER(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeBlock2PtParameterFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -426,7 +427,7 @@ func decodeGenericBLOCKPOLARPARAMETER(r *bitstream.BitStream, ver dwgVersion, fr
 }
 
 // decodeGenericBLOCKBASEPOINTPARAMETER：1Pt 参数 + pt/base_pt 3BD。
-func decodeGenericBLOCKBASEPOINTPARAMETER(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKBASEPOINTPARAMETER(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeBlock1PtParameterFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -438,7 +439,7 @@ func decodeGenericBLOCKBASEPOINTPARAMETER(r *bitstream.BitStream, ver dwgVersion
 
 // decodeGenericBLOCKPOINTPARAMETER：1Pt 参数 + position_name/
 // position_desc T + def_label_pt 3BD。
-func decodeGenericBLOCKPOINTPARAMETER(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKPOINTPARAMETER(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeBlock1PtParameterFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -453,7 +454,7 @@ func decodeGenericBLOCKPOINTPARAMETER(r *bitstream.BitStream, ver dwgVersion, fr
 
 // decodeGenericBLOCKXYPARAMETER：2Pt 参数 + 4 个标签 T + x_value/
 // y_value BD + x/y 两个 ParamValueSet（二进制序 x 先）。
-func decodeGenericBLOCKXYPARAMETER(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKXYPARAMETER(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeBlock2PtParameterFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -476,7 +477,7 @@ func decodeGenericBLOCKXYPARAMETER(r *bitstream.BitStream, ver dwgVersion, fr *g
 
 // decodeGenericBLOCKLOOKUPPARAMETER：1Pt 参数 + index BL + lookup_name/
 // lookup_desc T + unknown_t T。
-func decodeGenericBLOCKLOOKUPPARAMETER(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKLOOKUPPARAMETER(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeBlock1PtParameterFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -494,7 +495,7 @@ func decodeGenericBLOCKLOOKUPPARAMETER(r *bitstream.BitStream, ver dwgVersion, f
 
 // decodeGenericBLOCKUSERPARAMETER：1Pt 参数 + flag BS + expr T +
 // AcDbEvalVariant + type BS；assocvariable/value.handle 句柄在 handle 流。
-func decodeGenericBLOCKUSERPARAMETER(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKUSERPARAMETER(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeBlock1PtParameterFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -513,7 +514,7 @@ func decodeGenericBLOCKUSERPARAMETER(r *bitstream.BitStream, ver dwgVersion, fr 
 // blockvisi_name/blockvisi_desc T + unknown_bool B + num_blocks BL
 // （blocks 句柄向量）+ num_states BL + states×N（name T + num_blocks
 // BL + blocks 句柄 + num_params BL + params 句柄）。
-func decodeGenericBLOCKVISIBILITYPARAMETER(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKVISIBILITYPARAMETER(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeBlock1PtParameterFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -572,7 +573,7 @@ func decodeGenericBLOCKVISIBILITYPARAMETER(r *bitstream.BitStream, ver dwgVersio
 
 // decodeGenericBLOCKVISIBILITYPARAMETER_HDL handle 流：handle91 + 顶层
 // blocks 与 states 的 blocks/params 句柄（按 hdlCount 累计数）。
-func decodeGenericBLOCKVISIBILITYPARAMETER_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKVISIBILITYPARAMETER_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if g.valueHandle91 {
 		if _, e := objrec.ReadHandleReference(r, g.Handle); e != nil {
 			return e
@@ -590,8 +591,8 @@ func decodeGenericBLOCKVISIBILITYPARAMETER_HDL(r *bitstream.BitStream, ver dwgVe
 
 // makeBlockAction 生成 BLOCK*ACTION 解码器（deps 句柄数经 hdlCount
 // 传递给 handle 流）。
-func makeBlockAction(body func(*bitstream.BitStream, dwgVersion, *gfRead, *objGeneric) error) func(*bitstream.BitStream, dwgVersion, *gfRead, *objGeneric) error {
-	return func(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func makeBlockAction(body func(*bitstream.BitStream, container.DwgVersion, *gfRead, *objGeneric) error) func(*bitstream.BitStream, container.DwgVersion, *gfRead, *objGeneric) error {
+	return func(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 		nd, err := decodeBlockActionFields(r, ver, fr, g)
 		if err != nil {
 			return err
@@ -602,7 +603,7 @@ func makeBlockAction(body func(*bitstream.BitStream, dwgVersion, *gfRead, *objGe
 }
 
 // decodeGenericBLOCKMOVEACTION：Action + ConnectionPt×2 + doubles。
-func decodeGenericBLOCKMOVEACTION(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKMOVEACTION(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := readBlockConnectionPts(r, fr, g, 2); err != nil {
 		return err
 	}
@@ -610,13 +611,13 @@ func decodeGenericBLOCKMOVEACTION(r *bitstream.BitStream, ver dwgVersion, fr *gf
 }
 
 // decodeGenericBLOCKFLIPACTION：Action + ConnectionPts×4。
-func decodeGenericBLOCKFLIPACTION(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKFLIPACTION(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	return readBlockConnectionPts(r, fr, g, 4)
 }
 
 // decodeGenericBLOCKARRAYACTION：Action + ConnectionPts×4 +
 // column_offset/row_offset BD。
-func decodeGenericBLOCKARRAYACTION(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKARRAYACTION(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := readBlockConnectionPts(r, fr, g, 4); err != nil {
 		return err
 	}
@@ -630,7 +631,7 @@ func decodeGenericBLOCKARRAYACTION(r *bitstream.BitStream, ver dwgVersion, fr *g
 // 公共头）+ ConnectionPt（第 3 个，spec conn_pts[2] 起点 1 个）。
 // hdlCount 在此设置：WithBasePt 族注册不经 makeBlockAction（否则公共头
 // 被读两遍，dat 流错位）。
-func decodeGenericBLOCKROTATEACTION(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKROTATEACTION(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	nd, err := decodeBlockActionWithBasePtFields(r, ver, fr, g)
 	if err != nil {
 		return err
@@ -641,7 +642,7 @@ func decodeGenericBLOCKROTATEACTION(r *bitstream.BitStream, ver dwgVersion, fr *
 
 // decodeGenericBLOCKSCALEACTION：ActionWithBasePt（自含公共头）+
 // ConnectionPts×3。
-func decodeGenericBLOCKSCALEACTION(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKSCALEACTION(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	nd, err := decodeBlockActionWithBasePtFields(r, ver, fr, g)
 	if err != nil {
 		return err
@@ -654,7 +655,7 @@ func decodeGenericBLOCKSCALEACTION(r *bitstream.BitStream, ver dwgVersion, fr *g
 // BL + pts 2RD 向量 + num_hdls BL + hdls（hdl 句柄 + num_indexes BS +
 // indexes BL 向量）+ num_codes BL + codes（bl95 BL + num_indexes BS +
 // indexes BL 向量）+ doubles。hdls 句柄占 handle 流。
-func decodeGenericBLOCKSTRETCHACTION(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKSTRETCHACTION(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := readBlockConnectionPts(r, fr, g, 2); err != nil {
 		return err
 	}
@@ -740,7 +741,7 @@ func decodeGenericBLOCKSTRETCHACTION(r *bitstream.BitStream, ver dwgVersion, fr 
 
 // decodeGenericBLOCKSTRETCHACTION_HDL handle 流：deps×num_deps +
 // hdls×num_hdls（spec 声明顺序：BlockAction deps 在前）。
-func decodeGenericBLOCKSTRETCHACTION_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKSTRETCHACTION_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if g.valueHandle91 {
 		if _, e := objrec.ReadHandleReference(r, g.Handle); e != nil {
 			return e
@@ -774,7 +775,7 @@ func decodeBlockActionHandles(r *bitstream.BitStream, g *objGeneric, numDeps int
 }
 
 // decodeGenericBLOCKACTION_HDL 通用 BLOCK*ACTION handle 流：deps×N。
-func decodeGenericBLOCKACTION_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKACTION_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if g.valueHandle91 {
 		if _, e := objrec.ReadHandleReference(r, g.Handle); e != nil {
 			return e
@@ -787,7 +788,7 @@ func decodeGenericBLOCKACTION_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gf
 
 // decodeGenericBLOCKGRIPLOCATIONCOMPONENT_HDL handle 流：
 // evalexpr.value.handle91（value_code=91 时占 1 个引用）。
-func decodeGenericBLOCKGRIPLOCATIONCOMPONENT_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKGRIPLOCATIONCOMPONENT_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if g.valueHandle91 {
 		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
@@ -800,7 +801,7 @@ func decodeGenericBLOCKGRIPLOCATIONCOMPONENT_HDL(r *bitstream.BitStream, ver dwg
 
 // decodeGenericBLOCKUSERPARAMETER_HDL handle 流：assocvariable +
 // value.u.handle（EvalVariant 为 HANDLE 类型时）。
-func decodeGenericBLOCKUSERPARAMETER_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKUSERPARAMETER_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	h, e := objrec.ReadHandleReference(r, g.Handle) // assocvariable
 	if e != nil {
 		return e
@@ -819,12 +820,12 @@ func decodeGenericBLOCKUSERPARAMETER_HDL(r *bitstream.BitStream, ver dwgVersion,
 // decodeGenericBLOCKREPRESENTATION / DYNAMICBLOCKPURGEPREVENTER：
 // flag BS；block 句柄在 handle 流（START_OBJECT_HANDLE_STREAM 之后
 // 的 FIELD_HANDLE(block)）。
-func decodeGenericBLOCKREPRESENTATION(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKREPRESENTATION(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	return fr.BS("flag", g)
 }
 
 // decodeGenericBLOCKREPRESENTATION_HDL handle 流：block 句柄。
-func decodeGenericBLOCKREPRESENTATION_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKREPRESENTATION_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	h, e := objrec.ReadHandleReference(r, g.Handle)
 	if e != nil {
 		return e
@@ -835,10 +836,10 @@ func decodeGenericBLOCKREPRESENTATION_HDL(r *bitstream.BitStream, ver dwgVersion
 
 // init 注册动态块族解码器。
 func init() {
-	grip := func(d func(*bitstream.BitStream, dwgVersion, *gfRead, *objGeneric) error) internalObjectSpec {
+	grip := func(d func(*bitstream.BitStream, container.DwgVersion, *gfRead, *objGeneric) error) internalObjectSpec {
 		return internalObjectSpec{decode: d}
 	}
-	action := func(d func(*bitstream.BitStream, dwgVersion, *gfRead, *objGeneric) error) internalObjectSpec {
+	action := func(d func(*bitstream.BitStream, container.DwgVersion, *gfRead, *objGeneric) error) internalObjectSpec {
 		return internalObjectSpec{decode: makeBlockAction(d), hdl: decodeGenericBLOCKACTION_HDL}
 	}
 	for name, spec := range map[string]internalObjectSpec{

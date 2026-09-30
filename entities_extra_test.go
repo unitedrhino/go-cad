@@ -4,6 +4,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
@@ -35,7 +36,7 @@ func TestDecodeMTextR2004FromBits(t *testing.T) {
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
-	ent, err := decodeMTextVer(r, &head, 30, false, false, verR2000)
+	ent, err := decodeMTextVer(r, &head, 30, false, false, container.VerR2000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +69,7 @@ func TestDecodeMTextR2018FromBits(t *testing.T) {
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
-	ent, err := decodeMText(r, &head, 30, verR2007)
+	ent, err := decodeMText(r, &head, 30, container.VerR2007)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +98,7 @@ func TestDecodeAttribFromBits(t *testing.T) {
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
-	ent, err := decodeAttribVer(r, &head, 30, true, verR2018, false)
+	ent, err := decodeAttribVer(r, &head, 30, true, container.VerR2018, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +139,7 @@ func TestDecodeInsertWithHandleStream(t *testing.T) {
 		t.Fatal(herr)
 	}
 	_ = rec // 记录元数据由 head 携带
-	ent, derr := decodeInsert(r, &head, verR2013)
+	ent, derr := decodeInsert(r, &head, container.VerR2013)
 	if derr != nil {
 		t.Fatalf("INSERT 解码失败: %v", derr)
 	}
@@ -263,7 +264,7 @@ func TestParseCommonEntityHeadLayoutVariants(t *testing.T) {
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
 	// 第一个候选布局应成功且字段正确
-	parsers := headParsersForVersion(verR2018)
+	parsers := headParsersForVersion(container.VerR2018)
 	if len(parsers) == 0 {
 		t.Fatal("R2018 应有候选布局")
 	}
@@ -275,7 +276,7 @@ func TestParseCommonEntityHeadLayoutVariants(t *testing.T) {
 		t.Fatalf("布局解析: handle=%d entmode=%d lts=%v", head.handle, head.entityMode, head.ltypeScale)
 	}
 	// 各版本候选集非空且名称唯一
-	for _, v := range []dwgVersion{verR2000, verR2004, verR2010, verR2013, verR2018} {
+	for _, v := range []container.DwgVersion{container.VerR2000, container.VerR2004, container.VerR2010, container.VerR2013, container.VerR2018} {
 		ps := headParsersForVersion(v)
 		if len(ps) == 0 {
 			t.Fatalf("版本 %v 候选为空", v)

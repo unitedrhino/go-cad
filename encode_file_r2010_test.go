@@ -9,6 +9,7 @@ package cad
 
 import (
 	"bytes"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"os"
 	"path/filepath"
@@ -135,7 +136,7 @@ func TestWriteReadR2010Family(t *testing.T) {
 // r2010FamilyGateMapRefs 解析样本的对象图条目（R2010+ 容器同用 AcDb:Handles 段）。
 func r2010FamilyGateMapRefs(t *testing.T, data []byte) []objrec.ObjectRef {
 	t.Helper()
-	handles, err := loadNamedSectionData(data, "AcDb:Handles")
+	handles, err := container.LoadNamedSectionData(data, "AcDb:Handles")
 	if err != nil {
 		t.Fatalf("加载 AcDb:Handles 段失败: %v", err)
 	}

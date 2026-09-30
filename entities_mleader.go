@@ -9,6 +9,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 )
@@ -189,14 +190,14 @@ type entMLeader struct {
 // readMLeaderCMC 读颜色字段（对齐 LibreDWG bit_read_CMC 的版本分支）：
 // R2004+ 为 BS index + BL rgb + RC flag（flag>=4 非法清零；method 越界
 // 修正为 0xc2；index 按调色板反查覆盖），更早版本仅 BS 索引。
-func readMLeaderCMC(r *bitstream.BitStream, ver dwgVersion) (mleaderCMC, error) {
+func readMLeaderCMC(r *bitstream.BitStream, ver container.DwgVersion) (mleaderCMC, error) {
 	var c mleaderCMC
 	idx, err := r.ReadBS()
 	if err != nil {
 		return c, err
 	}
 	c.index = idx
-	if ver < verR2004 {
+	if ver < container.VerR2004 {
 		return c, nil
 	}
 	c.isTrue = true
@@ -248,12 +249,12 @@ func (s *mleaderStrArea) next() string {
 }
 
 // decodeMLeader MULTILEADER 主体：公共头之后按 spec 顺序解码。
-func decodeMLeader(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion, codepage uint16) (any, error) {
+func decodeMLeader(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion, codepage uint16) (any, error) {
 	m := &entMLeader{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
-	r2010 := ver >= verR2010
-	r2013 := ver >= verR2013
+	r2010 := ver >= container.VerR2010
+	r2013 := ver >= container.VerR2013
 	var strArea *mleaderStrArea
-	if ver >= verR2007 {
+	if ver >= container.VerR2007 {
 		// 字符串区容量上界：default_text 1 条 + blocklabels 上界（计数
 		// 未知，预读按非空即停；样本 blocklabels 恒 0）
 		strArea = &mleaderStrArea{strs: readStringAreaStrings(r, head, 4)}
@@ -366,7 +367,7 @@ func decodeMLeader(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersio
 	}
 
 	// VERSIONS(R_14, R_2007)：箭头/块标签数组（R13 无该段，R2010b+ 移除）
-	if ver == verR14 || ver == verR2000 || ver == verR2004 || ver == verR2007 {
+	if ver == container.VerR14 || ver == container.VerR2000 || ver == container.VerR2004 || ver == container.VerR2007 {
 		numArrowheads, e := r.ReadBL()
 		if e != nil {
 			return nil, e
@@ -392,7 +393,7 @@ func decodeMLeader(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersio
 		}
 		for i := uint32(0); i < numLabels; i++ {
 			var bl mleaderBlockLabel
-			if ver >= verR2007 {
+			if ver >= container.VerR2007 {
 				bl.labelText = strArea.next() // 字符串区，dat 不占位
 			} else {
 				if bl.labelText, e = r.ReadTV(codepage); e != nil {
@@ -536,7 +537,7 @@ func decodeMLeader(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersio
 
 // decodeMLeaderLeaders ctx.num_leaders + 三层嵌套 REPEAT
 // （leaders→lines→breaks/points），数量越界视为布局错位。
-func decodeMLeaderLeaders(r *bitstream.BitStream, m *entMLeader, ver dwgVersion, r2010 bool) error {
+func decodeMLeaderLeaders(r *bitstream.BitStream, m *entMLeader, ver container.DwgVersion, r2010 bool) error {
 	numLeaders, err := r.ReadBL()
 	if err != nil {
 		return err
@@ -662,7 +663,7 @@ func decodeMLeaderLeaders(r *bitstream.BitStream, m *entMLeader, ver dwgVersion,
 
 // decodeMLeaderContext MLEADER_CONTEXT_DATA_fields（非 DXF 顺序：leaders
 // 之后）：标量组 → txt/blk 内容联合 → base 三点 + is_normal_reversed。
-func decodeMLeaderContext(r *bitstream.BitStream, m *entMLeader, ver dwgVersion, codepage uint16, strArea *mleaderStrArea) error {
+func decodeMLeaderContext(r *bitstream.BitStream, m *entMLeader, ver container.DwgVersion, codepage uint16, strArea *mleaderStrArea) error {
 	c := &m.ctx
 	var err error
 	if c.scaleFactor, err = r.ReadBD(); err != nil {
@@ -701,7 +702,7 @@ func decodeMLeaderContext(r *bitstream.BitStream, m *entMLeader, ver dwgVersion,
 		t := &c.txt
 		// DECODER 语义：txt 分支 contentType=2；default_text R2007+ 走
 		// 字符串区（dat 不占位）
-		if ver >= verR2007 && strArea != nil {
+		if ver >= container.VerR2007 && strArea != nil {
 			t.defaultText = strArea.next()
 		} else {
 			if t.defaultText, err = r.ReadTV(codepage); err != nil {

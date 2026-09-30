@@ -5,13 +5,14 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 )
 
 // buildObjectIndex 解析 AcDb:Handles 段，构建 handle→offset 对象索引。
 func buildObjectIndex(fileData []byte) ([]objrec.ObjectRef, error) {
-	handlesData, err := loadNamedSectionData(fileData, "AcDb:Handles")
+	handlesData, err := container.LoadNamedSectionData(fileData, "AcDb:Handles")
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +49,7 @@ const (
 const layerTypeCode = 0x33
 
 // selectBestDuplicateHandles 对重复句柄的候选记录评分择优，输出保持原顺序。
-func selectBestDuplicateHandles(objectsData []byte, refs []objrec.ObjectRef, ver dwgVersion, dynamicTypes map[uint16]string) []objrec.ObjectRef {
+func selectBestDuplicateHandles(objectsData []byte, refs []objrec.ObjectRef, ver container.DwgVersion, dynamicTypes map[uint16]string) []objrec.ObjectRef {
 	grouped := map[uint64][]objrec.ObjectRef{}
 	for _, r := range refs {
 		grouped[r.Handle] = append(grouped[r.Handle], r)
@@ -159,9 +160,9 @@ func selectBestDuplicateHandles(objectsData []byte, refs []objrec.ObjectRef, ver
 
 // inspectCandidate 解析单个候选记录的摘要信息：类型码/数据量/实体归类，
 // 实体类再解公共头验证句柄一致性（仅常见实体类型码）。
-func inspectCandidate(objectsData []byte, c objrec.ObjectRef, ver dwgVersion, dynamicTypes map[uint16]string) dedupeSelect {
+func inspectCandidate(objectsData []byte, c objrec.ObjectRef, ver container.DwgVersion, dynamicTypes map[uint16]string) dedupeSelect {
 	var info dedupeSelect
-	rec, err := objrec.ParseObjectRecord(objectsData, c, ver.r2010Plus())
+	rec, err := objrec.ParseObjectRecord(objectsData, c, ver.R2010Plus())
 	if err != nil {
 		return info
 	}

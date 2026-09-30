@@ -7,6 +7,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"os"
 	"strings"
@@ -38,13 +39,13 @@ type objDictionary struct {
 // + [R2004+ B is_xdic_missing] + [R2013+ B has_ds_data] + BL numitems
 // + [R2000b+ BS cloning] + RC is_hardowner + numitems×T 文字（R2007+ TU，更早 TV）。
 // handle 流（bitsize 起）：ownerhandle + reactors + xdic + itemhandles×numitems。
-func decodeDictionaryObject(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver dwgVersion, r2013Plus bool) (*objDictionary, error) {
+func decodeDictionaryObject(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver container.DwgVersion, r2013Plus bool) (*objDictionary, error) {
 	return decodeDictionaryObjectFull(r, rec, ver, r2013Plus, false)
 }
 
 // decodeDictionaryObjectFull 解析 DICTIONARY；withDefault 为 true 时
 // 按 DICTIONARYWDFLT 在 itemhandles 后追加读取 defaultid 句柄。
-func decodeDictionaryObjectFull(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver dwgVersion, r2013Plus bool, withDefault bool) (*objDictionary, error) {
+func decodeDictionaryObjectFull(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver container.DwgVersion, r2013Plus bool, withDefault bool) (*objDictionary, error) {
 	d := &objDictionary{}
 	var err error
 	// bitsize 定位策略：R2000-R2007 内联 RL 在最前；R13/R14 在 EED 后；
@@ -78,7 +79,7 @@ func decodeDictionaryObjectFull(r *bitstream.BitStream, rec *objrec.ObjectRecord
 		return nil, fmt.Errorf("cad: DICTIONARY reactors 异常 %d", numReactors)
 	}
 	d.numReactors = int(numReactors)
-	if ver >= verR2004 {
+	if ver >= container.VerR2004 {
 		if xdic, e := r.ReadB(); e != nil {
 			return nil, e
 		} else {
@@ -102,12 +103,12 @@ func decodeDictionaryObjectFull(r *bitstream.BitStream, rec *objrec.ObjectRecord
 	// 起（AC1012 早于 R13c3 无此字段）。
 	// DICTIONARYWDFLT（withDefault）例外：spec 中 cloning/is_hardowner
 	// 为无条件字段（该类为后期补充，文件内字段恒存在）。
-	if withDefault || (ver != verR13 && ver != verR14) {
+	if withDefault || (ver != container.VerR13 && ver != container.VerR14) {
 		if d.cloning, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
 	}
-	if withDefault || ver != verR13 {
+	if withDefault || ver != container.VerR13 {
 		if isHardOwner, e := r.ReadRC(); e != nil {
 			return nil, e
 		} else {
@@ -121,7 +122,7 @@ func decodeDictionaryObjectFull(r *bitstream.BitStream, rec *objrec.ObjectRecord
 	for i := 0; i < d.numItems; i++ {
 		tvStart := r.TellBits()
 		var s string
-		if ver >= verR2007 {
+		if ver >= container.VerR2007 {
 			if s, err = r.ReadTU(); err != nil {
 				return nil, err
 			}
@@ -200,7 +201,7 @@ func (x *objXrecord) XdataItems() []xdataItem { return x.xdata }
 // + [R2004+ B is_xdic_missing] + [R2013+ B has_ds_data] + BL xdata_size
 // + xdata 原始字节（内容暂不解析） + [R2000b+ BS cloning]。
 // handle 流（bitsize 起）：ownerhandle + reactors + xdic + objid_handles 至流尾。
-func decodeXrecordObject(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver dwgVersion, r2013Plus bool) (*objXrecord, error) {
+func decodeXrecordObject(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver container.DwgVersion, r2013Plus bool) (*objXrecord, error) {
 	x := &objXrecord{}
 	var err error
 	bitsizePos := dictBitsizePos(ver)
@@ -246,7 +247,7 @@ func decodeXrecordObject(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver d
 		return nil, fmt.Errorf("cad: XRECORD reactors 异常 %d", numReactors)
 	}
 	x.numReactors = int(numReactors)
-	if ver >= verR2004 {
+	if ver >= container.VerR2004 {
 		if xdic, e := r.ReadB(); e != nil {
 			return nil, e
 		} else {
@@ -273,7 +274,7 @@ func decodeXrecordObject(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver d
 		fmt.Fprintf(os.Stderr, "[xr] xdataSize=%d @%d 位串(36..100)=%v\n", x.xdataSize, r.TellBits(), bitstream.CollectBits(r, 36, 100))
 	}
 	// 扩展数据：类型化值序列（DXF 组码 + 对应类型值，字节定长区）
-	if x.xdata, err = decodeXdataItems(r, x.xdataSize, ver >= verR2007); err != nil {
+	if x.xdata, err = decodeXdataItems(r, x.xdataSize, ver >= container.VerR2007); err != nil {
 		return nil, err
 	}
 	if os.Getenv("CAD_DECODE_DBG") != "" {
@@ -282,7 +283,7 @@ func decodeXrecordObject(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver d
 	// cloning BS 为 R2000b+ 字段（R13/R14 无）。注意流中没有
 	// num_objid_handles 字段：LibreDWG dwg2.spec 中该值由解码端在
 	// handle 流中推导（读到 handlestream_size 为止）
-	if ver != verR13 && ver != verR14 {
+	if ver != container.VerR13 && ver != container.VerR14 {
 		if x.cloning, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
@@ -340,11 +341,11 @@ const (
 // dictBitsizePos 返回版本的 DICTIONARY/XRECORD bitsize 定位策略。
 // 注意版本枚举非时间序（verR2000=0、verR14=1），范围比较会把 R14
 // 误判为 R2000+，这里必须显式枚举成员。
-func dictBitsizePos(ver dwgVersion) objBitsizePos {
+func dictBitsizePos(ver container.DwgVersion) objBitsizePos {
 	switch {
-	case ver >= verR2010:
+	case ver >= container.VerR2010:
 		return bitsizePosDerived
-	case ver == verR2000 || ver == verR2004 || ver == verR2007:
+	case ver == container.VerR2000 || ver == container.VerR2004 || ver == container.VerR2007:
 		return bitsizePosHead
 	default:
 		return bitsizePosTail
@@ -380,7 +381,7 @@ func readHandleValue(r *bitstream.BitStream) (uint64, error) {
 // 其余 RC 长度 + RS_BE 码页）、1=RS、2=RC、3=layer(RS+RLL)、4=二进制、
 // 5=RLL_BE、10-15=3×RD、40-42=RD、70=RS 符号、71=RL 符号。
 // 解析失败时回退到 skipEEDChain 语义（保序跳过，不产生 eed 字段）。
-func parseEEDChain(r *bitstream.BitStream, ver dwgVersion, out *[]objField) error {
+func parseEEDChain(r *bitstream.BitStream, ver container.DwgVersion, out *[]objField) error {
 	start := r.TellBits()
 	savedLen := len(*out)
 	i := 0
@@ -428,7 +429,7 @@ func parseEEDChain(r *bitstream.BitStream, ver dwgVersion, out *[]objField) erro
 			var val any
 			switch code {
 			case 0:
-				if ver >= verR2007 {
+				if ver >= container.VerR2007 {
 					l, e := r.ReadRS()
 					if e != nil {
 						return fail(e)
@@ -784,7 +785,7 @@ func decodeXdataItems(r *bitstream.BitStream, sizeBytes int, r2007Plus bool) ([]
 						}
 						sb = append(sb, byte(ch), byte(ch>>8))
 					}
-					it.Str = decodeUTF16LE(sb)
+					it.Str = container.DecodeUTF16LE(sb)
 				}
 			} else {
 				cp, e := r.ReadRC()

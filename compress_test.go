@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -139,13 +140,13 @@ func assertRoundTrip(t *testing.T, name string, src []byte, compress func([]byte
 
 func TestCompressLZ77RoundTripEdges(t *testing.T) {
 	for name, src := range roundTripCases(t) {
-		assertRoundTrip(t, "LZ77/"+name, src, compressLZ77, decompressLZ77)
+		assertRoundTrip(t, "LZ77/"+name, src, container.CompressLZ77, container.DecompressLZ77)
 	}
 }
 
 func TestCompressR21RoundTripEdges(t *testing.T) {
 	for name, src := range roundTripCases(t) {
-		assertRoundTrip(t, "R21/"+name, src, compressR21, decompressR21)
+		assertRoundTrip(t, "R21/"+name, src, container.CompressR21, container.DecompressR21)
 	}
 }
 
@@ -166,8 +167,8 @@ func TestCompressRoundTripRealFiles(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		assertRoundTrip(t, name, data, compressLZ77, decompressLZ77)
-		assertRoundTrip(t, name, data, compressR21, decompressR21)
+		assertRoundTrip(t, name, data, container.CompressLZ77, container.DecompressLZ77)
+		assertRoundTrip(t, name, data, container.CompressR21, container.DecompressR21)
 		checked++
 	}
 	if checked < 50 {
@@ -237,7 +238,7 @@ func TestCompressLZ77RealPageStreams(t *testing.T) {
 		if len(streams) == 0 {
 			continue
 		}
-		checkStreams(t, name, streams, compressLZ77, decompressLZ77)
+		checkStreams(t, name, streams, container.CompressLZ77, container.DecompressLZ77)
 		checked++
 	}
 	if checked < 30 {
@@ -248,51 +249,51 @@ func TestCompressLZ77RealPageStreams(t *testing.T) {
 // r2004PageStreams 解析 R2004+ 容器页表/段表，切出每个压缩数据页的
 // 原始 LZ77 压缩流（与 assembleSection 的页遍历同一路径）。
 func r2004PageStreams(data []byte) ([]compStream, error) {
-	header, err := decryptR2004Header(data)
+	header, err := container.DecryptR2004Header(data)
 	if err != nil {
 		return nil, err
 	}
-	pages, err := parsePageMap(data, header)
+	pages, err := container.ParsePageMap(data, header)
 	if err != nil {
 		return nil, err
 	}
-	sections, err := parseSectionMap(data, header, pages)
+	sections, err := container.ParseSectionMap(data, header, pages)
 	if err != nil {
 		return nil, err
 	}
-	lookup := make(map[uint32]pageSlot, len(pages))
+	lookup := make(map[uint32]container.PageSlot, len(pages))
 	for _, p := range pages {
-		if p.id > 0 {
-			lookup[uint32(p.id)] = p
+		if p.Id > 0 {
+			lookup[uint32(p.Id)] = p
 		}
 	}
 	var streams []compStream
 	for i := range sections {
 		sec := &sections[i]
-		if sec.compressed != 2 || len(sec.pageIDs) == 0 {
+		if sec.Compressed != 2 || len(sec.PageIDs) == 0 {
 			continue
 		}
-		for _, pageID := range sec.pageIDs {
+		for _, pageID := range sec.PageIDs {
 			entry, ok := lookup[pageID]
 			if !ok {
 				continue
 			}
-			if int(entry.address)+32 > len(data) {
+			if int(entry.Address)+32 > len(data) {
 				return nil, fmt.Errorf("cad: 数据页头越界")
 			}
-			hb := unmaskPageHeader(data[entry.address:int(entry.address)+32], entry.address)
-			if sig := binary.LittleEndian.Uint32(hb); sig != dataSectionMagic {
+			hb := container.UnmaskPageHeader(data[entry.Address:int(entry.Address)+32], entry.Address)
+			if sig := binary.LittleEndian.Uint32(hb); sig != container.DataSectionMagic {
 				continue
 			}
 			compSize := int(binary.LittleEndian.Uint32(hb[8:]))
-			start := int(entry.address) + 32
+			start := int(entry.Address) + 32
 			end := start + compSize
 			if end > len(data) {
 				return nil, fmt.Errorf("cad: 数据页内容越界")
 			}
 			streams = append(streams, compStream{
 				src:     data[start:end],
-				dstSize: int(sec.maxDecompressedSz),
+				dstSize: int(sec.MaxDecompressedSz),
 			})
 		}
 	}
@@ -326,7 +327,7 @@ func TestCompressR21RealStreams(t *testing.T) {
 		if len(streams) == 0 {
 			continue
 		}
-		checkStreams(t, name, streams, compressR21, decompressR21)
+		checkStreams(t, name, streams, container.CompressR21, container.DecompressR21)
 		checked++
 	}
 	if checked < 5 {
@@ -340,19 +341,19 @@ func r2007R21Streams(data []byte) ([]compStream, error) {
 	var streams []compStream
 
 	// 第二头部：0x80 起 RS(239,3,method4) 去交织，0x20 偏移处为压缩体
-	encoded := data[r2007SecondHeaderOffset : r2007SecondHeaderOffset+r2007SecondHeaderRSSize]
-	decoded, err := r2007Deinterleave(encoded, 239, 3, 4)
+	encoded := data[container.R2007SecondHeaderOffset : container.R2007SecondHeaderOffset+container.R2007SecondHeaderRSSize]
+	decoded, err := container.R2007Deinterleave(encoded, 239, 3, 4)
 	if err != nil {
 		return nil, err
 	}
 	if compressedSize := int64(binary.LittleEndian.Uint32(decoded[24:])); compressedSize > 0 {
 		streams = append(streams, compStream{
-			src:     decoded[r2007SecondHeaderPayload : r2007SecondHeaderPayload+int(compressedSize)],
-			dstSize: r2007SecondHeaderBodySize,
+			src:     decoded[container.R2007SecondHeaderPayload : container.R2007SecondHeaderPayload+int(compressedSize)],
+			dstSize: container.R2007SecondHeaderBodySize,
 		})
 	}
 
-	hdr, err := decodeR2007Header(data)
+	hdr, err := container.DecodeR2007Header(data)
 	if err != nil {
 		return nil, err
 	}
@@ -361,14 +362,14 @@ func r2007R21Streams(data []byte) ([]compStream, error) {
 		if sizeCompressed >= sizeUncompressed {
 			return nil // 存储态非压缩流
 		}
-		compressedPadded := alignUp(sizeCompressed, r2007SysPageCRCBlock)
-		blockCount := divCeil(compressedPadded*cf, r2007SysPageRSDataSize)
-		pageSize := alignUp(blockCount*r2007SysPageRSCodeWord, r2007SysPageAlign)
+		compressedPadded := container.AlignUp(sizeCompressed, container.R2007SysPageCRCBlock)
+		blockCount := container.DivCeil(compressedPadded*cf, container.R2007SysPageRSDataSize)
+		pageSize := container.AlignUp(blockCount*container.R2007SysPageRSCodeWord, container.R2007SysPageAlign)
 		start, end := int(address), int(address+pageSize)
 		if start > len(data) || end > len(data) || start > end {
 			return nil
 		}
-		dec, err := r2007Deinterleave(data[start:end], 239, int(blockCount), 4)
+		dec, err := container.R2007Deinterleave(data[start:end], 239, int(blockCount), 4)
 		if err != nil {
 			return nil
 		}
@@ -378,67 +379,67 @@ func r2007R21Streams(data []byte) ([]compStream, error) {
 		streams = append(streams, compStream{dec[:sizeCompressed], int(sizeUncompressed)})
 		return nil
 	}
-	if err := sysStream(r2007StreamBaseOffset+hdr.pagesMapOffset, hdr.pagesMapSizeCompressed,
-		hdr.pagesMapSizeUncompressed, hdr.pagesMapCorrectionFactor); err != nil {
+	if err := sysStream(container.R2007StreamBaseOffset+hdr.PagesMapOffset, hdr.PagesMapSizeCompressed,
+		hdr.PagesMapSizeUncompressed, hdr.PagesMapCorrectionFactor); err != nil {
 		return nil, err
 	}
-	pages, err := parseR2007PageMap(data, hdr)
+	pages, err := container.ParseR2007PageMap(data, hdr)
 	if err != nil {
 		return nil, err
 	}
 	for _, p := range pages {
-		if p.id == int64(hdr.sectionsMapID) {
-			if err := sysStream(p.address, hdr.sectionsMapSizeCompressed,
-				hdr.sectionsMapSizeUncompressed, hdr.sectionsMapCorrectionFactor); err != nil {
+		if p.Id == int64(hdr.SectionsMapID) {
+			if err := sysStream(p.Address, hdr.SectionsMapSizeCompressed,
+				hdr.SectionsMapSizeUncompressed, hdr.SectionsMapCorrectionFactor); err != nil {
 				return nil, err
 			}
 			break
 		}
 	}
 	// 数据页压缩流
-	sections, err := parseR2007SectionMap(data, hdr, pages)
+	sections, err := container.ParseR2007SectionMap(data, hdr, pages)
 	if err != nil {
 		return nil, err
 	}
-	lookup := make(map[int64]r2007PageSlot, len(pages))
+	lookup := make(map[int64]container.R2007PageSlot, len(pages))
 	for _, p := range pages {
-		lookup[p.id] = p
+		lookup[p.Id] = p
 	}
 	for si := range sections {
 		sec := &sections[si]
-		for _, pg := range sec.pages {
-			if pg.sizeCompressed >= pg.sizeUncompressed {
+		for _, pg := range sec.Pages {
+			if pg.SizeCompressed >= pg.SizeUncompressed {
 				continue
 			}
-			entry, ok := lookup[int64(pg.id)]
+			entry, ok := lookup[int64(pg.Id)]
 			if !ok {
 				continue
 			}
-			blockCount := r2007DataPageBlocks(pg.sizeCompressed)
-			readSize := entry.size
-			if minSize := r2007DataPageRSDataSize * blockCount; readSize < minSize {
+			blockCount := container.R2007DataPageBlocks(pg.SizeCompressed)
+			readSize := entry.Size
+			if minSize := container.R2007DataPageRSDataSize * blockCount; readSize < minSize {
 				readSize = minSize
 			}
-			start, end := int(entry.address), int(entry.address+readSize)
+			start, end := int(entry.Address), int(entry.Address+readSize)
 			if start > len(data) || end > len(data) || start > end {
 				continue
 			}
 			var dec []byte
-			switch method := byte(sec.encoded); method {
+			switch method := byte(sec.Encoded); method {
 			case 0:
 				dec = append([]byte(nil), data[start:end]...)
 			case 1, 4:
-				dec, err = r2007Deinterleave(data[start:end], 251, int(blockCount), method)
+				dec, err = container.R2007Deinterleave(data[start:end], 251, int(blockCount), method)
 				if err != nil {
 					continue
 				}
 			default:
 				continue
 			}
-			if pg.sizeCompressed > uint64(len(dec)) {
+			if pg.SizeCompressed > uint64(len(dec)) {
 				continue
 			}
-			streams = append(streams, compStream{dec[:pg.sizeCompressed], int(pg.sizeUncompressed)})
+			streams = append(streams, compStream{dec[:pg.SizeCompressed], int(pg.SizeUncompressed)})
 		}
 	}
 	return streams, nil
@@ -462,9 +463,9 @@ func TestCompressRatioSampleSummary(t *testing.T) {
 			string(data[:6]) != "AC1014" && string(data[:6]) != "AC1012" {
 			if streams, err := r2004PageStreams(data); err == nil {
 				for _, s := range streams {
-					if plain, err := decompressLZ77(s.src, s.dstSize); err == nil {
+					if plain, err := container.DecompressLZ77(s.src, s.dstSize); err == nil {
 						lzPlain += len(plain)
-						lzComp += len(compressLZ77(plain))
+						lzComp += len(container.CompressLZ77(plain))
 					}
 				}
 			}
@@ -472,9 +473,9 @@ func TestCompressRatioSampleSummary(t *testing.T) {
 		if len(data) >= 6 && string(data[:6]) == "AC1021" {
 			if streams, err := r2007R21Streams(data); err == nil {
 				for _, s := range streams {
-					if plain, err := decompressR21(s.src, s.dstSize); err == nil {
+					if plain, err := container.DecompressR21(s.src, s.dstSize); err == nil {
 						r21Plain += len(plain)
-						r21Comp += len(compressR21(plain))
+						r21Comp += len(container.CompressR21(plain))
 					}
 				}
 			}

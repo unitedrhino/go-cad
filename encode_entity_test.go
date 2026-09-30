@@ -7,6 +7,7 @@ package cad
 import (
 	"bytes"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"testing"
 )
@@ -83,7 +84,7 @@ func TestEntityRoundTripSynthetic(t *testing.T) {
 	}
 	rr := rec.BodyBitStream()
 	rr.SetBitPos(h.DataStartBit)
-	e1, err := decodeEntityFieldsVer(rr, h, 50, rec.Size, "LINE", 0x13, verR2000, 0, nil, "")
+	e1, err := decodeEntityFieldsVer(rr, h, 50, rec.Size, "LINE", 0x13, container.VerR2000, 0, nil, "")
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
@@ -120,7 +121,7 @@ func TestEntityRoundTripSynthetic(t *testing.T) {
 		t.Errorf("r2010Plus 应为 false")
 	}
 	// 回放编码：要求与构造位流逐字节一致（位级门禁）
-	body2, datEnd2, err := encodeEntityR200x(e1, verR2000)
+	body2, datEnd2, err := encodeEntityR200x(e1, container.VerR2000)
 	if err != nil {
 		t.Fatalf("回放编码失败: %v", err)
 	}
@@ -138,7 +139,7 @@ func TestEntityRoundTripSynthetic(t *testing.T) {
 	}
 	rr2 := rec2.BodyBitStream()
 	rr2.SetBitPos(h2.DataStartBit)
-	e2, err := decodeEntityFieldsVer(rr2, h2, 50, rec2.Size, "LINE", 0x13, verR2000, 0, nil, "")
+	e2, err := decodeEntityFieldsVer(rr2, h2, 50, rec2.Size, "LINE", 0x13, container.VerR2000, 0, nil, "")
 	if err != nil {
 		t.Fatalf("重解码失败: %v", err)
 	}

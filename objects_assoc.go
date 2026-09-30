@@ -8,6 +8,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
@@ -20,7 +21,7 @@ import (
 // num_xrefs BL + [osnap_type≠0: main_subent_type BL + main_gsmarker BL +
 // num_xrefpaths BL + xrefpaths T 向量] + osnap_dist BD + osnap_pt 3BD +
 // [osnap_type∈{6,11}: intsectobj 计数字段] + has_lastpt_ref B。
-func decodeGenericDIMASSOC(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericDIMASSOC(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BL("associativity", g); err != nil {
 		return err
 	}
@@ -112,7 +113,7 @@ func decodeGenericDIMASSOC(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g
 // decodeGenericDIMASSOC_HDL DIMASSOC 的 handle 流
 // （owner/reactors/xdic 之后）：dimensionobj + 各启用 ref 块的
 // xrefs 向量与 intsectobj 向量。
-func decodeGenericDIMASSOC_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericDIMASSOC_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	assoc, _ := g.Field("associativity").(int64)
 	// 重建各 ref 块的启用与计数（与 dat 流相同的条件链）
 	hasLast := false
@@ -187,7 +188,7 @@ func itoa(i int) string {
 // max_assoc_dep_index BL + num_deps BL + deps×N）+ AcDbAssocNetwork
 // （network_version BS + network_action_index BL + num_actions BL +
 // actions×N + num_owned_actions BL）。
-func decodeGenericASSOCNETWORK(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericASSOCNETWORK(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BS("class_version", g); err != nil {
 		return err
 	}
@@ -212,7 +213,7 @@ func decodeGenericASSOCNETWORK(r *bitstream.BitStream, ver dwgVersion, fr *gfRea
 	// 对照 v9 实测：R2010+ 在 num_deps 后为 BS + BL num_owned_params +
 	// BS + BL num_values 四个字段（dwg2.spec 未收录，值 0 占 2 位）；
 	// R2007 无这段
-	if ver >= verR2010 {
+	if ver >= container.VerR2010 {
 		if err = fr.BS("assoc_unknown_bs1", g); err != nil {
 			return err
 		}
@@ -249,7 +250,7 @@ func decodeGenericASSOCNETWORK(r *bitstream.BitStream, ver dwgVersion, fr *gfRea
 // （owner/reactors/xdic 之后）：owningnetwork + actionbody +
 // deps×num_deps 的 dep + actions×num_actions 的 dep +
 // owned_actions×num_owned_actions。
-func decodeGenericASSOCNETWORK_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericASSOCNETWORK_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	numDeps, _ := g.Field("num_deps").(int64)
 	numActions, _ := g.Field("num_actions").(int64)
 	numOwned, _ := g.Field("num_owned_actions").(int64)
@@ -269,7 +270,7 @@ func decodeGenericASSOCNETWORK_HDL(r *bitstream.BitStream, ver dwgVersion, fr *g
 // decodeGenericASSOCACTION 解析 ASSOCACTION（类 519）的 dat 流：
 // BS class_version + BL geometry_status + BL action_index +
 // BL max_assoc_dep_index + BL num_deps + deps×N（B is_owned）。
-func decodeGenericASSOCACTION(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericASSOCACTION(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BS("class_version", g); err != nil {
 		return err
 	}
@@ -296,7 +297,7 @@ func decodeGenericASSOCACTION(r *bitstream.BitStream, ver dwgVersion, fr *gfRead
 
 // decodeGenericASSOCACTION_HDL ASSOCACTION 的 handle 流
 // （owner/reactors/xdic 之后）：owningnetwork + actionbody + deps×N dep。
-func decodeGenericASSOCACTION_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericASSOCACTION_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	numDeps, _ := g.Field("num_deps").(int64)
 	total := 2 + int(numDeps)
 	for i := 0; i < total; i++ {
@@ -315,7 +316,7 @@ func decodeGenericASSOCACTION_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gf
 // B has_name（=1 时跟 name T）。dep_on/readdep/node/dep_body 四个
 // 句柄在 handle 流，dat 不占位。prefix 为键名前缀（ASSOCGEOMDEPENDENCY
 // 的依赖字段带 "assocdep." 前缀，ASSOCDEPENDENCY 无前缀）。
-func decodeGenericASSOCDEPENDENCY_body(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric, prefix string) error {
+func decodeGenericASSOCDEPENDENCY_body(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric, prefix string) error {
 	if err := fr.BS(prefix+"class_version", g); err != nil {
 		return err
 	}
@@ -343,7 +344,7 @@ func decodeGenericASSOCDEPENDENCY_body(r *bitstream.BitStream, ver dwgVersion, f
 
 // decodeGenericASSOCDEPENDENCY 解析 ASSOCDEPENDENCY（类 524）：
 // 依赖体字段 + depbodyid BLd；handle 流含 dep_on/readdep/node/dep_body。
-func decodeGenericASSOCDEPENDENCY(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericASSOCDEPENDENCY(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeGenericASSOCDEPENDENCY_body(r, ver, fr, g, ""); err != nil {
 		return err
 	}
@@ -352,7 +353,7 @@ func decodeGenericASSOCDEPENDENCY(r *bitstream.BitStream, ver dwgVersion, fr *gf
 
 // decodeGenericASSOCDEPENDENCY_HDL ASSOCDEPENDENCY 的 handle 流：
 // dep_on + readdep + node + dep_body（4 个）。
-func decodeGenericASSOCDEPENDENCY_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericASSOCDEPENDENCY_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < 4; i++ {
 		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
@@ -367,7 +368,7 @@ func decodeGenericASSOCDEPENDENCY_HDL(r *bitstream.BitStream, ver dwgVersion, fr
 // AcDbAssocDependency_fields（含尾部 depbodyid BLd，v9 R2000 实测
 // @137..147）+ class_version BS + enabled B + classname T +
 // dependent_on_compound_object B；handle 流同 ASSOCDEPENDENCY（4 个）。
-func decodeGenericASSOCGEOMDEPENDENCY(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericASSOCGEOMDEPENDENCY(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeGenericASSOCDEPENDENCY_body(r, ver, fr, g, "assocdep."); err != nil {
 		return err
 	}
@@ -393,7 +394,7 @@ func decodeGenericASSOCGEOMDEPENDENCY(r *bitstream.BitStream, ver dwgVersion, fr
 // [≠32 时截断] + nextid BLd + node 4×BLd）+ BL num_edges + edges×N
 // （id BL + nextid/e1/e2/e3 BLd + out_edge×5 BLd）。
 // nodes 的 evalexpr 句柄在 handle 流。
-func decodeGenericEVALUATION_GRAPH(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericEVALUATION_GRAPH(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BL("first_nodeid", g); err != nil {
 		return err
 	}
@@ -454,7 +455,7 @@ func decodeGenericEVALUATION_GRAPH(r *bitstream.BitStream, ver dwgVersion, fr *g
 
 // decodeGenericEVALUATION_GRAPH_HDL EVALUATION_GRAPH 的 handle 流：
 // 每 node 1 个 evalexpr 句柄。
-func decodeGenericEVALUATION_GRAPH_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericEVALUATION_GRAPH_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	numNodes, _ := g.Field("num_nodes").(int64)
 	for i := 0; i < int(numNodes); i++ {
 		h, e := objrec.ReadHandleReference(r, g.Handle)
@@ -472,8 +473,8 @@ func decodeGenericEVALUATION_GRAPH_HDL(r *bitstream.BitStream, ver dwgVersion, f
 // decodeGenericMLINESTYLE_HDL MLINESTYLE 的 handle 流：
 // lines×N 的 lt_ltype 句柄仅 R2018+ 存在（pre-R2018 线型内联为
 // lt_index，无 hdl 引用）。
-func decodeGenericMLINESTYLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
-	if ver < verR2018 {
+func decodeGenericMLINESTYLE_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
+	if ver < container.VerR2018 {
 		return nil
 	}
 	numLines, _ := g.Field("num_lines").(int64)
@@ -493,12 +494,12 @@ func decodeGenericMLINESTYLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfR
 // （类 521）的 dat 流：BS is_r2013 + BL aap_version + T name（字符串流）+
 // BS class_version + BS bs1 + BL num_params + BS status + RC osnap_mode +
 // BD param。
-func decodeGenericASSOCOSNAPPOINTREFACTIONPARAM(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericASSOCOSNAPPOINTREFACTIONPARAM(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BS("is_r2013", g); err != nil {
 		return err
 	}
 	// aap_version 仅 SINCE R_2013b（pre-R2013 文件无此字段）
-	if ver >= verR2013 {
+	if ver >= container.VerR2013 {
 		if err := fr.BL("aap_version", g); err != nil {
 			return err
 		}
@@ -531,7 +532,7 @@ func decodeGenericASSOCOSNAPPOINTREFACTIONPARAM(r *bitstream.BitStream, ver dwgV
 
 // decodeGenericASSOCOSNAPPOINTREFACTIONPARAM_HDL handle 流：
 // params×num_params。
-func decodeGenericASSOCOSNAPPOINTREFACTIONPARAM_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericASSOCOSNAPPOINTREFACTIONPARAM_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	numParams, _ := g.Field("num_params").(int64)
 	for i := 0; i < int(numParams); i++ {
 		h, e := objrec.ReadHandleReference(r, g.Handle)
@@ -546,12 +547,12 @@ func decodeGenericASSOCOSNAPPOINTREFACTIONPARAM_HDL(r *bitstream.BitStream, ver 
 // decodeGenericASSOCVERTEXACTIONPARAM 解析 ASSOCVERTEXACTIONPARAM
 // （类 522）的 dat 流：BS is_r2013 + BL aap_version + T name（字符串流）+
 // BL asdap_class_version + BL class_version + 3BD pt。
-func decodeGenericASSOCVERTEXACTIONPARAM(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericASSOCVERTEXACTIONPARAM(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BS("is_r2013", g); err != nil {
 		return err
 	}
 	// aap_version 仅 SINCE R_2013b（pre-R2013 文件无此字段）
-	if ver >= verR2013 {
+	if ver >= container.VerR2013 {
 		if err := fr.BL("aap_version", g); err != nil {
 			return err
 		}

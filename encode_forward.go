@@ -18,6 +18,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"sort"
@@ -88,7 +89,7 @@ var forwardEntityCode = map[string]uint16{
 // forwardEntEncoder 实体 body 专有字段正向编码器：公共头之后、handle 流
 // 之前的 dat 流段。编码顺序与读侧解码器（decodeLine/decodeCircle 等）
 // 逐字段对称。
-type forwardEntEncoder func(w *bitstream.EncWriter, ent any, ver dwgVersion) error
+type forwardEntEncoder func(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error
 
 // forwardEntityEncoders 实体专有字段编码器注册表。SEQEND/ENDBLK 无
 // 专有字段（BLOCK 为块名），注册表缺席即视为无字段。
@@ -506,7 +507,7 @@ func patchRL(w *bitstream.EncWriter, bitOff uint64, v uint32) {
 // 专有字段 + handle 流。bitsize 语义与读侧一致：handle 流起点在 body 内
 // 的绝对位（含 BS 类型码前导）。dyn 为动态类名 → 已分配类型码映射
 // （writeDwgForwardR2000 按文档实际出现的动态类分配）。
-func encodeForwardEntityBody(ent any, ver dwgVersion, dyn map[string]uint16) ([]byte, error) {
+func encodeForwardEntityBody(ent any, ver container.DwgVersion, dyn map[string]uint16) ([]byte, error) {
 	b := entBase(ent)
 	if b == nil || b.handle == 0 {
 		return nil, fmt.Errorf("cad: 正向编码缺少实体句柄")
@@ -590,7 +591,7 @@ func writeHdlSelf(w *bitstream.EncWriter, h uint64) {
 }
 
 // encFwdLine LINE：z 全零位 + x/y 起点直读、终点差分 + [z 对] + 厚度 + 挤出。
-func encFwdLine(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdLine(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	e := ent.(*entLine)
 	zZero := e.start.z == 0 && e.end.z == 0
 	w.WriteB(zZero)
@@ -609,7 +610,7 @@ func encFwdLine(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 }
 
 // encFwdCircle CIRCLE：3BD 圆心 + BD 半径 + 厚度 + 挤出。
-func encFwdCircle(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdCircle(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	e := ent.(*entCircle)
 	write3BD(w, e.center)
 	w.WriteBD(e.radius)
@@ -620,7 +621,7 @@ func encFwdCircle(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 }
 
 // encFwdArc ARC：圆/厚/挤同 CIRCLE，多出起止角（弧度）。
-func encFwdArc(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdArc(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	e := ent.(*entArc)
 	write3BD(w, e.center)
 	w.WriteBD(e.radius)
@@ -633,7 +634,7 @@ func encFwdArc(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 }
 
 // encFwdPoint POINT：3BD 定位 + 厚度 + 挤出 + x 轴角度。
-func encFwdPoint(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdPoint(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	e := ent.(*entPoint)
 	write3BD(w, e.location)
 	writeBT(w, fwdExtraF(&e.baseEntity, "thickness", 0))
@@ -645,7 +646,7 @@ func encFwdPoint(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 
 // encFwdEllipse ELLIPSE：3BD 圆心 + 3BD 主轴 + 3BD 挤出（主体内）+
 // BD 轴比 + 起止角。
-func encFwdEllipse(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdEllipse(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	e := ent.(*entEllipse)
 	write3BD(w, e.center)
 	write3BD(w, e.majorAxis)
@@ -671,7 +672,7 @@ type textFieldSource struct {
 // encFwdTextFields TEXT 布局字段段：RC dataflags（0=全字段）+ 高程 +
 // 2RD 插入点 + 2DD 对齐点（相对插入点差分）+ 挤出 + 厚度 + 倾角 + 旋转 +
 // 字高 + 宽度因子 + 文本串 + 生成/水平/垂直对齐（顺序对照 decodeTextVer）。
-func encFwdTextFields(w *bitstream.EncWriter, s textFieldSource, ver dwgVersion) {
+func encFwdTextFields(w *bitstream.EncWriter, s textFieldSource, ver container.DwgVersion) {
 	w.WriteRC(0) // dataflags：全部字段在场
 	w.WriteRD(fwdExtraF(s.base, "elevation", s.insertion.z))
 	w.WriteRD(s.insertion.x)
@@ -689,7 +690,7 @@ func encFwdTextFields(w *bitstream.EncWriter, s textFieldSource, ver dwgVersion)
 	w.WriteRD(s.rotation)
 	w.WriteRD(s.height)
 	w.WriteRD(fwdExtraF(s.base, "width_factor", 1))
-	if ver >= verR2007 {
+	if ver >= container.VerR2007 {
 		w.WriteTU(s.text)
 	} else {
 		w.WriteTV(s.text)
@@ -700,7 +701,7 @@ func encFwdTextFields(w *bitstream.EncWriter, s textFieldSource, ver dwgVersion)
 }
 
 // encFwdText TEXT 实体：字段段见 encFwdTextFields。
-func encFwdText(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
+func encFwdText(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error {
 	e := ent.(*entText)
 	encFwdTextFields(w, textFieldSource{
 		base: &e.baseEntity, text: e.text, insertion: e.insertion,
@@ -713,7 +714,7 @@ func encFwdText(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
 // encFwdMText MTEXT：插入点/挤出/轴向量 3BD×3 + 矩形宽/字高 BD +
 // 附加/流向 BS + 范围 BD×2 + 文本 + 行距样式/因子 + 未知位（顺序对照
 // decodeMTextVer 的 R2000 分支；R2004+ 背景段不写）。
-func encFwdMText(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
+func encFwdMText(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error {
 	e := ent.(*entMText)
 	write3BD(w, e.insertion)
 	ex := fwdExtraVec(&e.baseEntity, "extrusion", point3{0, 0, 1})
@@ -729,7 +730,7 @@ func encFwdMText(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
 	w.WriteBS(uint16(flow))
 	w.WriteBD(fwdExtraF(&e.baseEntity, "extents_height", 0))
 	w.WriteBD(fwdExtraF(&e.baseEntity, "extents_width", 0))
-	if ver >= verR2007 {
+	if ver >= container.VerR2007 {
 		w.WriteTU(e.text)
 	} else {
 		w.WriteTV(e.text)
@@ -743,7 +744,7 @@ func encFwdMText(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
 // encFwdLwPolyline LWPOLYLINE：标志驱动的可选段 + 顶点差分数组
 // （首点绝对 RD，其余 DD 相对前点）。标志位按内容反推（0x01 挤出 3BD、
 // 0x02 厚度、0x04 常量宽、0x08 标高、0x10 凸度、0x20 段宽）。
-func encFwdLwPolyline(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
+func encFwdLwPolyline(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error {
 	e := ent.(*entLwPolyline)
 	ex := fwdExtraVec(&e.baseEntity, "extrusion", point3{0, 0, 1})
 	thickness := fwdExtraF(&e.baseEntity, "thickness", e.thickness)
@@ -811,7 +812,7 @@ func encFwdLwPolyline(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
 
 // encFwdInsert INSERT：插入点 + BB 缩放标志（差分/全 1）+ 旋转 + 挤出 +
 // 属性存在位。块头与属性句柄在 handle 流（encFwdInsertHandles）。
-func encFwdInsert(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdInsert(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	e := ent.(*entInsert)
 	write3BD(w, e.position)
 	switch {
@@ -836,13 +837,13 @@ func encFwdInsert(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 // encFwdInsertHandles INSERT handle 流附加：块头句柄 + [R13~R2000 语义的
 // 首/末属性句柄与 SEQEND]（对照 decodeInsert 的 handle 流消费顺序；
 // 无属性时仅块头）。
-func encFwdInsertHandles(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
+func encFwdInsertHandles(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error {
 	e := ent.(*entInsert)
 	writeHdlAbs(w, e.blockHeader)
 	if len(e.attribs) == 0 {
 		return nil
 	}
-	if ver == verR13 || ver == verR14 || ver == verR2000 {
+	if ver == container.VerR13 || ver == container.VerR14 || ver == container.VerR2000 {
 		writeHdlAbs(w, e.attribs[0])
 		writeHdlAbs(w, e.attribs[len(e.attribs)-1])
 	} else {
@@ -893,14 +894,14 @@ func (p *entPolylinePface) seqendPlaceholder() uint64 {
 
 // encFwdAttrib ATTRIB：TEXT 同构字段（值文本）+ 标签串 + 字段长度 +
 // 标志（对照 decodeAttribVer 的 R2000 分支）。
-func encFwdAttrib(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
+func encFwdAttrib(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error {
 	e := ent.(*entAttrib)
 	encFwdTextFields(w, textFieldSource{
 		base: &e.baseEntity, text: e.text, insertion: e.insertion,
 		height: e.height, rotation: e.rotation,
 		hAlign: e.hAlign, vAlign: e.vAlign, gen: e.gen, alignPt: nil,
 	}, ver)
-	if ver >= verR2007 {
+	if ver >= container.VerR2007 {
 		w.WriteTU(e.tag)
 	} else {
 		w.WriteTV(e.tag)
@@ -911,7 +912,7 @@ func encFwdAttrib(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
 }
 
 // encFwdSolid SOLID/TRACE：厚度 + 高程 + 4 角点（2RD×4）+ 挤出。
-func encFwdSolid(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdSolid(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	e := ent.(*entSolid)
 	writeBT(w, e.thickness)
 	w.WriteBD(e.elevation)
@@ -925,7 +926,7 @@ func encFwdSolid(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 
 // encFwdFace3d 3DFACE：无标志位 + z 全零位 + 首点 RD + 3×3DD 差分 +
 // [不可见边标志]（对照 decodeFace3d 的 R2000+ 分支）。
-func encFwdFace3d(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdFace3d(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	e := ent.(*entFace3d)
 	noFlags := e.invisibleEdgeFlags == 0
 	zZero := e.p1.z == 0
@@ -951,7 +952,7 @@ func encFwdFace3d(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 
 // encFwdVertex2d VERTEX_2D：RC 标志 + 3BD 位置 + 起末宽（起=末时以负起宽
 // 复用）+ 凸度 + 切向（对照 decodeVertex2d）。
-func encFwdVertex2d(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdVertex2d(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	e := ent.(*entVertex2d)
 	w.WriteRC(uint8(e.flags))
 	write3BD(w, e.position)
@@ -969,7 +970,7 @@ func encFwdVertex2d(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 // encFwdPolyline2d POLYLINE_2D：标志 + 曲线类型 + 起末宽 + 厚度 + 高程 +
 // 挤出（对照 decodePolyline2d 的 R2000 分支：无 owned 计数）。顶点句柄
 // 在 handle 流附加段。
-func encFwdPolyline2d(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdPolyline2d(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	e := ent.(*entPolyline2d)
 	w.WriteBS(e.flags)
 	w.WriteBS(e.curveType)
@@ -986,9 +987,9 @@ func encFwdPolyline2d(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 // encFwdPolylineHandles POLYLINE_2D handle 流附加：R13~R2000 语义的
 // 首/末顶点句柄 + SEQEND 占位（JSON 来源缺省空引用，顶点经 owner 归属
 // 聚合还原；读侧保存 seqend 供 gold 对照，值不参与渲染）。
-func encFwdPolylineHandles(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
+func encFwdPolylineHandles(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error {
 	e := ent.(*entPolyline2d)
-	if ver == verR13 || ver == verR14 || ver == verR2000 {
+	if ver == container.VerR13 || ver == container.VerR14 || ver == container.VerR2000 {
 		writeHdlAbs(w, e.firstVertex)
 		writeHdlAbs(w, e.lastVertex)
 	}
@@ -997,9 +998,9 @@ func encFwdPolylineHandles(w *bitstream.EncWriter, ent any, ver dwgVersion) erro
 }
 
 // encFwdBlock BLOCK：公共头后仅块名（对照 decodeBlockLike）。
-func encFwdBlock(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
+func encFwdBlock(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error {
 	e := ent.(*entBlockLike)
-	if ver >= verR2007 {
+	if ver >= container.VerR2007 {
 		w.WriteTU(e.name)
 	} else {
 		w.WriteTV(e.name)
@@ -1014,7 +1015,7 @@ func encFwdBlock(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
 // 控制点模式：rational/closed/periodic 3 位 + 两容差 + 节点/控制点计数 +
 // weighted 回显位 + 数组；拟合点模式：拟合容差 + 起末切线（结构化来源
 // 无字段，零向量占位）+ 拟合点数组。
-func encFwdSpline(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdSpline(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	e := ent.(*entSpline)
 	w.WriteBL(e.scenario)
 	w.WriteBL(e.degree)
@@ -1053,7 +1054,7 @@ func encFwdSpline(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 // encFwdHatch HATCH（R2000 无渐变段）：高程/挤出/图案名/填充与关联位 +
 // 边界路径数组（边集逐段曲线类型分派 / 多段线顶点带可选凸度）+ 图案样式
 // 与定义线段 + 种子点段（对照 decodeHatchBody 的 R2000 分支）。
-func encFwdHatch(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdHatch(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	h := ent.(*entHatch)
 	w.WriteBD(h.elevation)
 	write3BD(w, h.extrusion)
@@ -1168,7 +1169,7 @@ func encFwdHatch(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 func writeBL(w *bitstream.EncWriter, v uint32) { w.WriteBL(v) }
 
 // encFwdRay RAY/XLINE：3BD 起点 + 3BD 单位方向。
-func encFwdRay(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdRay(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	e := ent.(*entRay)
 	write3BD(w, e.start)
 	write3BD(w, e.unitVector)
@@ -1178,7 +1179,7 @@ func encFwdRay(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 // encFwdLeader LEADER：未知位 + 注释/路径类型 + 折点数组 + 原点/挤出/X 向/
 // 插入偏移/端点投影 3BD×5 + 文本框宽高 + 钩线与箭头标志 + 箭头类型 +
 // 尾部两未知位（对照 decodeLeader 的 R2000 分支，R14 专属段不写）。
-func encFwdLeader(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdLeader(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	l := ent.(*entLeader)
 	w.WriteB(l.unknownBit1)
 	w.WriteBS(l.annotationType)
@@ -1230,7 +1231,7 @@ func splitEven(arr []float64, n int) [][]float64 {
 // encFwdMLine MLINE：比例/对齐 RC + 基点与挤出 3BD 占位 + 开闭标志 +
 // 线数 RC + 顶点数组（位置/方向/miter 3BD×3 + 逐线段/区域参数计数式数组）
 // （对照 decodeMline；基点/挤出 JSON 来源未建模，零占位）。
-func encFwdMLine(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdMLine(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	m := ent.(*entMLine)
 	w.WriteBD(m.scale)
 	w.WriteRC(m.justification)
@@ -1268,19 +1269,19 @@ func encFwdMLine(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 
 // encFwdMLineHandles MLINE handle 流附加：多线样式记录句柄（code 5，
 // DXF 340；读侧从 common 流后按序取首个引用）。
-func encFwdMLineHandles(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdMLineHandles(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	writeHdlCode(w, 5, ent.(*entMLine).styleHandle)
 	return nil
 }
 
 // encFwdTolerance TOLERANCE（R2000 无 R13/R14 头）：插入点/对称轴/挤出
 // 3BD×3 + 标注文本内联 TV（对照 decodeToleranceVer 的非 R13/R14 分支）。
-func encFwdTolerance(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
+func encFwdTolerance(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error {
 	t := ent.(*entTolerance)
 	write3BD(w, t.insertion)
 	write3BD(w, t.xDirection)
 	write3BD(w, t.extrusion)
-	if ver >= verR2007 {
+	if ver >= container.VerR2007 {
 		w.WriteTU(t.text)
 	} else {
 		w.WriteTV(t.text)
@@ -1289,7 +1290,7 @@ func encFwdTolerance(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
 }
 
 // encFwdToleranceHandles TOLERANCE handle 流附加：标注样式句柄。
-func encFwdToleranceHandles(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdToleranceHandles(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	writeHdlCode(w, 5, ent.(*entTolerance).dimstyle)
 	return nil
 }
@@ -1297,7 +1298,7 @@ func encFwdToleranceHandles(w *bitstream.EncWriter, ent any, _ dwgVersion) error
 // encFwdShape SHAPE：插入点/缩放/旋转/宽度因子/倾斜/厚度 + STYLE 表索引
 // BS + 挤出（对照 decodeShape 与 dwg.spec SHAPE SINCE(R_13b1)；样式记录
 // 句柄以空引用占位）。
-func encFwdShape(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdShape(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	s := ent.(*entShape)
 	write3BD(w, s.insertion)
 	w.WriteBD(s.scale)
@@ -1315,7 +1316,7 @@ func encFwdShape(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 // 圆缩放 BS + 冻结层数/状态 BL + 样式表 TV + 渲染模式 RC + UCS 段
 // （对照 decodeViewportVer 的 R2000 分支；R2004+ shadeplot 与 R2007+
 // grid_major/灯光段不写）。冻结层句柄数恒 0（无句柄来源）。
-func encFwdViewport(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
+func encFwdViewport(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error {
 	vp := ent.(*entViewport)
 	write3BD(w, vp.center)
 	w.WriteBD(vp.width)
@@ -1339,7 +1340,7 @@ func encFwdViewport(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
 	w.WriteBS(vp.circleZoom)
 	w.WriteBL(vp.numFrozenLayers)
 	w.WriteBL(vp.statusFlag)
-	if ver < verR2007 {
+	if ver < container.VerR2007 {
 		w.WriteTV(vp.styleSheet)
 	}
 	w.WriteRC(vp.renderMode)
@@ -1355,7 +1356,7 @@ func encFwdViewport(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
 
 // encFwdVertex3d VERTEX_3D/VERTEX_MESH/VERTEX_PFACE：RC 标志 + 3BD 位置
 // （三顶点变体同布局，对照 decodeVertex3d/decodeVertexPface）。
-func encFwdVertex3d(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdVertex3d(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	switch v := ent.(type) {
 	case *entVertex3d:
 		w.WriteRC(v.flags)
@@ -1369,7 +1370,7 @@ func encFwdVertex3d(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 
 // encFwdVertexPfaceFace VERTEX_PFACE_FACE：4×BS 顶点索引（1 基，0 表边
 // 结束；负值按 BSd 有符号语义回绕，对照 decodeVertexPfaceFace）。
-func encFwdVertexPfaceFace(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdVertexPfaceFace(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	f := ent.(*entVertexPfaceFace)
 	for i := 0; i < 4; i++ {
 		w.WriteBS(uint16(int16(f.vertind[i])))
@@ -1379,7 +1380,7 @@ func encFwdVertexPfaceFace(w *bitstream.EncWriter, ent any, _ dwgVersion) error 
 
 // encFwdPolyline3d POLYLINE_3D：曲线类型/标志 RC×2（R2000 无 owned 计数，
 // 顶点句柄在 handle 流附加段，对照 decodePolyline3d 的 R2000 分支）。
-func encFwdPolyline3d(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdPolyline3d(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	p := ent.(*entPolyline3d)
 	w.WriteRC(p.flags75)
 	w.WriteRC(p.flags70)
@@ -1389,9 +1390,9 @@ func encFwdPolyline3d(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 // encFwdPolyline3dHandles POLYLINE_3D handle 流附加：R13~R2000 语义的
 // 首/末顶点句柄 + SEQEND 占位（JSON 来源缺省空引用，顶点经 owner 归属
 // 聚合还原；读侧保存 seqend 供 gold 对照，值不参与渲染）。
-func encFwdPolyline3dHandles(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
+func encFwdPolyline3dHandles(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error {
 	p := ent.(*entPolyline3d)
-	if ver == verR13 || ver == verR14 || ver == verR2000 {
+	if ver == container.VerR13 || ver == container.VerR14 || ver == container.VerR2000 {
 		writeHdlAbs(w, p.firstVertex)
 		writeHdlAbs(w, p.lastVertex)
 	}
@@ -1403,9 +1404,9 @@ func encFwdPolyline3dHandles(w *bitstream.EncWriter, ent any, ver dwgVersion) er
 // 的首/末顶点句柄 + SEQEND 占位（与 POLYLINE_2D 同构，对照
 // decodePolylinePface 的 R13~R2000 分支；R2004+ 语义的 owned 向量正向
 // 编码器不产生——writeDwgForwardR2000 恒为 R2000 布局）。
-func encFwdPolylinePfaceHandles(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
+func encFwdPolylinePfaceHandles(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error {
 	p := ent.(*entPolylinePface)
-	if ver == verR13 || ver == verR14 || ver == verR2000 {
+	if ver == container.VerR13 || ver == container.VerR14 || ver == container.VerR2000 {
 		writeHdlAbs(w, p.firstVertex)
 		writeHdlAbs(w, p.lastVertex)
 	}
@@ -1415,7 +1416,7 @@ func encFwdPolylinePfaceHandles(w *bitstream.EncWriter, ent any, ver dwgVersion)
 
 // encFwdPolylinePface POLYLINE_PFACE：BS 顶点数 + BS 面数
 // （对照 decodePolylinePface；顶点/面记录由 owner 归属聚合）。
-func encFwdPolylinePface(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdPolylinePface(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	p := ent.(*entPolylinePface)
 	w.WriteBS(uint16(p.numVertices))
 	w.WriteBS(uint16(p.numFaces))
@@ -1424,7 +1425,7 @@ func encFwdPolylinePface(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 
 // encFwdPolylineMesh POLYLINE_MESH：6×BS 网格参数（R2000 无 owned 计数，
 // 对照 decodePolylineMesh 的 R2000 分支）。
-func encFwdPolylineMesh(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdPolylineMesh(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	m := ent.(*entPolylineMesh)
 	w.WriteBS(m.flags)
 	w.WriteBS(m.curveType)
@@ -1440,14 +1441,14 @@ func encFwdPolylineMesh(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 // → user_text TV → 文本/水平角 BD → ins_scale 3BD → ins_rotation BD →
 // attachment/lspace/measurement → clone_ins_pt 2RD → 专属尾部）。
 // R2007+ 字符串流与 R2010+ 类版本段不写。
-func encFwdDimension(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
+func encFwdDimension(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error {
 	d := ent.(*entDimension)
 	write3BD(w, d.extrusion)
 	w.WriteRD(d.textMidpoint.x)
 	w.WriteRD(d.textMidpoint.y)
 	w.WriteBD(d.elevation)
 	w.WriteRC(d.dimFlags)
-	if ver >= verR2007 {
+	if ver >= container.VerR2007 {
 		w.WriteTU(d.userText)
 	} else {
 		w.WriteTV(d.userText)
@@ -1545,7 +1546,7 @@ func writeDimSpecific(w *bitstream.EncWriter, layout dimSpecificLayout, d *entDi
 
 // encFwdDimensionHandles DIMENSION handle 流附加：标注样式 + 匿名块
 // （顺序对照 decodeDimHandles）。
-func encFwdDimensionHandles(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdDimensionHandles(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	d := ent.(*entDimension)
 	writeHdlCode(w, 5, d.dimstyleHandle)
 	writeHdlCode(w, 2, d.anonymousBlock)
@@ -1558,7 +1559,7 @@ func encFwdDimensionHandles(w *bitstream.EncWriter, ent any, _ dwgVersion) error
 // 3BD + 尺寸 2RD + 显示属性 + 裁剪位与亮度组 + 裁剪边界（类型 1 固定两角，
 // 其余 BL 计数式，对照 decodeImageVer 的 R2000 分支）。imagedef 系句柄在
 // handle 流附加段。
-func encFwdImage(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
+func encFwdImage(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error {
 	img := ent.(*entWipeout)
 	w.WriteBL(img.classVersion)
 	write3BD(w, img.pt0)
@@ -1571,7 +1572,7 @@ func encFwdImage(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
 	w.WriteRC(img.brightness)
 	w.WriteRC(img.contrast)
 	w.WriteRC(img.fade)
-	if ver >= verR2010 {
+	if ver >= container.VerR2010 {
 		w.WriteB(img.clipMode != 0)
 	}
 	w.WriteBS(img.clipBoundaryType)
@@ -1600,7 +1601,7 @@ func encFwdImage(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
 
 // encFwdImageHandles IMAGE handle 流附加：图像定义（code 5）+ 定义反应器
 // （code 3），顺序对照 decodeImageVer；无来源时写空引用保持流结构。
-func encFwdImageHandles(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdImageHandles(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	img := ent.(*entWipeout)
 	writeHdlCode(w, 5, 0)
 	writeHdlCode(w, 3, 0)
@@ -1612,7 +1613,7 @@ func encFwdImageHandles(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 // 上下文（leaders 空、无文字/块内容），写出空引线数组 + 上下文标量段 +
 // 主体尾段（对照 decodeMLeader 的 R2000 分支：R2010+ 类版本段与
 // R2007+ 字符串流不写；颜色 CMC 为 R2004 前的 BS 索引形态）。
-func encFwdMLeader(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdMLeader(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	m := ent.(*entMLeader)
 	// 上下文：空引线 + 全缺省标量（读侧 decodeMLeaderLeaders/Context 逐字段消费）
 	w.WriteBL(0)          // num_leaders
@@ -1668,7 +1669,7 @@ func writeMLeaderCMCIndex(w *bitstream.EncWriter) { w.WriteBS(0) }
 // encFwdMLeaderHandles MULTILEADER handle 流附加：多线样式/箭头/文字样式/
 // 块样式/线型五引用（顺序对照 decodeMLeader 尾部；空引线上下文时
 // leaders/content 系列无句柄）。
-func encFwdMLeaderHandles(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
+func encFwdMLeaderHandles(w *bitstream.EncWriter, ent any, _ container.DwgVersion) error {
 	m := ent.(*entMLeader)
 	writeHdlCode(w, 5, m.mleaderStyle)
 	writeHdlCode(w, 5, m.arrowHandle)
@@ -1681,17 +1682,17 @@ func encFwdMLeaderHandles(w *bitstream.EncWriter, ent any, _ dwgVersion) error {
 // encFwdLight LIGHT（R2000 基线布局，光度子段不写）：类版本 + 名称 +
 // 类型/状态/颜色索引 + 强度与位置/目标 + 衰减段 + 阴影段
 // （对照 decodeLight 的非 CMC 分支）。
-func encFwdLight(w *bitstream.EncWriter, ent any, ver dwgVersion) error {
+func encFwdLight(w *bitstream.EncWriter, ent any, ver container.DwgVersion) error {
 	l := ent.(*entLight)
 	w.WriteBL(l.classVersion)
-	if ver >= verR2007 {
+	if ver >= container.VerR2007 {
 		w.WriteTU(l.name)
 	} else {
 		w.WriteTV(l.name)
 	}
 	w.WriteBL(l.lightType)
 	w.WriteB(l.status)
-	if ver >= verR2004 {
+	if ver >= container.VerR2004 {
 		// CMC 结构（BS 索引 + BL rgb + RC flag）：结构化来源仅索引
 		w.WriteBS(l.lightColorIndex)
 		w.WriteBL(l.lightColorRGB)
@@ -1874,7 +1875,7 @@ func encodeForwardBlockHeaderBody(bh forwardBlockHeader, blockEnt, endblkEnt uin
 // encodeForwardDictionaryBody DICTIONARY 对象（对照 decodeDictionaryObject
 // 的 R2000 dat 流）：reactors 原值保留但句柄以空引用占位（解码侧不保留
 // reactor 句柄列表，结构化重建以数量守恒为准）。
-func encodeForwardDictionaryBody(d *objDictionary, ver dwgVersion) ([]byte, error) {
+func encodeForwardDictionaryBody(d *objDictionary, ver container.DwgVersion) ([]byte, error) {
 	w := bitstream.NewEncWriter()
 	w.WriteBS(uint16(0x2A))
 	rlOff := w.TellBits()
@@ -1896,7 +1897,7 @@ func encodeForwardDictionaryBody(d *objDictionary, ver dwgVersion) ([]byte, erro
 		w.WriteRC(0)
 	}
 	for _, s := range d.texts {
-		if ver >= verR2007 {
+		if ver >= container.VerR2007 {
 			w.WriteTU(s)
 		} else {
 			w.WriteTV(s)
@@ -1966,7 +1967,7 @@ func writeDwgForwardR2000(doc *Document) ([]byte, error) {
 	}
 	clsSec := buildForwardClassesSection(clsEntries)
 	// 布局定址（目录条目数固定 3：HeaderVars/Classes/ObjectMap）
-	dirEnd := uint64(0x15 + 4 + 3*9 + 2 + len(r2000LocatorSentinel))
+	dirEnd := uint64(0x15 + 4 + 3*9 + 2 + len(container.R2000LocatorSentinel))
 	hvOff := dirEnd
 	clsOff := hvOff + uint64(len(hvSec))
 	objBase := clsOff + uint64(len(clsSec))
@@ -1996,17 +1997,17 @@ func writeDwgForwardR2000(doc *Document) ([]byte, error) {
 	hdr[0x14] = uint8(cp >> 8)
 	w.WriteTF(hdr[:])
 	w.WriteRL(3)
-	w.WriteRC(r2000SecHeaderVars)
+	w.WriteRC(container.R2000SecHeaderVars)
 	w.WriteRL(uint32(hvOff))
 	w.WriteRL(uint32(len(hvSec)))
-	w.WriteRC(r2000SecClasses)
+	w.WriteRC(container.R2000SecClasses)
 	w.WriteRL(uint32(clsOff))
 	w.WriteRL(uint32(len(clsSec)))
-	w.WriteRC(r2000SecObjectMap)
+	w.WriteRC(container.R2000SecObjectMap)
 	w.WriteRL(uint32(mapOff))
 	w.WriteRL(uint32(len(mapPayload)))
 	w.WriteCRCSeed(0, 0xC0C1)
-	w.WriteTF(r2000LocatorSentinel[:])
+	w.WriteTF(container.R2000LocatorSentinel[:])
 	// 段数据：HeaderVars 模板 → Classes → 对象区 → 对象图
 	w.WriteTF(hvSec)
 	w.WriteTF(clsSec)
@@ -2120,7 +2121,7 @@ func collectForwardObjects(doc *Document, dyn map[string]uint16) ([]fwdObject, e
 		if code == 0 && kind == "" {
 			continue // 无编码器：能力边界外实体
 		}
-		body, err := encodeForwardEntityBody(ent, verR2000, dyn)
+		body, err := encodeForwardEntityBody(ent, container.VerR2000, dyn)
 		if err != nil {
 			return nil, fmt.Errorf("cad: 实体 %s(%d) 编码失败: %w", b.typeName, b.handle, err)
 		}
@@ -2145,7 +2146,7 @@ func collectForwardObjects(doc *Document, dyn map[string]uint16) ([]fwdObject, e
 		if _, ok := gfWriters[g.Name]; !ok {
 			continue // 无 gfWrite 编码器的类型：能力边界外
 		}
-		body, err := encodeForwardGenericObject(g, verR2000, dyn)
+		body, err := encodeForwardGenericObject(g, container.VerR2000, dyn)
 		if err != nil {
 			return nil, fmt.Errorf("cad: 通用对象 %s(%d) 编码失败: %w", g.Name, h, err)
 		}
@@ -2156,7 +2157,7 @@ func collectForwardObjects(doc *Document, dyn map[string]uint16) ([]fwdObject, e
 		if d == nil || seen[h] {
 			continue
 		}
-		body, err := encodeForwardDictionaryBody(d, verR2000)
+		body, err := encodeForwardDictionaryBody(d, container.VerR2000)
 		if err != nil {
 			return nil, fmt.Errorf("cad: DICTIONARY %d 编码失败: %w", h, err)
 		}
@@ -2360,7 +2361,7 @@ type forwardClassInfo struct {
 // parseClassesSectionR13R15 的 R2000 条目布局，app 名用 ObjectDBX 惯例）。
 func buildForwardClassesSection(entries []forwardClassInfo) []byte {
 	w := bitstream.NewEncWriter()
-	w.WriteTF(sentinelClassesBefore[:])
+	w.WriteTF(container.SentinelClassesBefore[:])
 	sizePos := w.TellBits()
 	if len(entries) == 0 {
 		w.WriteRL(0)
@@ -2370,7 +2371,7 @@ func buildForwardClassesSection(entries []forwardClassInfo) []byte {
 		sizeEnd := w.TellBits()
 		patchRL(w, sizePos, uint32((sizeEnd-sizePos-32)/8))
 		w.WriteCRCSeed(sizePos, 0xC0C1)
-		w.WriteTF(sentinelClassesAfter[:])
+		w.WriteTF(container.SentinelClassesAfter[:])
 		return w.Bytes()
 	}
 	dataStart := w.TellBits()
@@ -2395,6 +2396,6 @@ func buildForwardClassesSection(entries []forwardClassInfo) []byte {
 	}
 	patchRL(w, sizePos, uint32((w.TellBits()-dataStart)/8))
 	w.WriteCRCSeed(sizePos, 0xC0C1)
-	w.WriteTF(sentinelClassesAfter[:])
+	w.WriteTF(container.SentinelClassesAfter[:])
 	return w.Bytes()
 }

@@ -23,6 +23,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"math"
 	"strconv"
 	"strings"
@@ -207,7 +208,7 @@ func (st *dxfState) parseHeader() error {
 // applyCodepage HEADER 键就绪后同步词法层码页：仅 pre-R13（R12 系）
 // 应用——R13+ 的 DXF 文本不走码页；未知码页（0）显式禁用（字节直读）。
 func (st *dxfState) applyCodepage() {
-	if st.doc.version.preR13() {
+	if st.doc.version.PreR13() {
 		st.lexer.cp = st.doc.codepage
 	}
 }
@@ -232,26 +233,26 @@ func dxfCodepageValue(name string) uint16 {
 }
 
 // dxfVersionMap DXF $ACADVER 版本串 → DWG 版本枚举。
-var dxfVersionMap = map[string]dwgVersion{
-	"AC1004": verR9,
-	"AC1006": verR10,
-	"AC1009": verR11,
-	"AC1012": verR13,
-	"AC1014": verR14,
-	"AC1015": verR2000,
-	"AC1018": verR2004,
-	"AC1021": verR2007,
-	"AC1024": verR2010,
-	"AC1027": verR2013,
-	"AC1032": verR2018,
+var dxfVersionMap = map[string]container.DwgVersion{
+	"AC1004": container.VerR9,
+	"AC1006": container.VerR10,
+	"AC1009": container.VerR11,
+	"AC1012": container.VerR13,
+	"AC1014": container.VerR14,
+	"AC1015": container.VerR2000,
+	"AC1018": container.VerR2004,
+	"AC1021": container.VerR2007,
+	"AC1024": container.VerR2010,
+	"AC1027": container.VerR2013,
+	"AC1032": container.VerR2018,
 }
 
 // dxfVersionEnum 版本串转枚举；未知值保守归 R2018（仅影响 Version() 展示）。
-func dxfVersionEnum(ver string) dwgVersion {
+func dxfVersionEnum(ver string) container.DwgVersion {
 	if v, ok := dxfVersionMap[strings.TrimSpace(ver)]; ok {
 		return v
 	}
-	return verR2018
+	return container.VerR2018
 }
 
 // ---- TABLES 段 ----
@@ -2373,7 +2374,7 @@ type dxfLexer struct {
 	binary  bool // "AutoCAD Binary DXF" 变体
 	preR14  bool // 二进制 pre-R14：1 字节组码（0xFF 前缀扩展到 RS）
 	back    *dxfPair
-	version dwgVersion
+	version container.DwgVersion
 	cp      uint16 // 文本解码码页（R12 系由 HEADER $DWGCODEPAGE 启用；0=字节直读）
 }
 
@@ -2384,7 +2385,7 @@ func newDXFLexer(data []byte) (*dxfLexer, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return nil, fmt.Errorf("cad: DXF 输入为空")
 	}
-	l := &dxfLexer{data: data, version: verR2018}
+	l := &dxfLexer{data: data, version: container.VerR2018}
 	if bytes.HasPrefix(data, dxfBinaryMagic) {
 		l.binary = true
 		l.pos = len(dxfBinaryMagic)
@@ -2393,10 +2394,10 @@ func newDXFLexer(data []byte) (*dxfLexer, error) {
 			return nil, fmt.Errorf("cad: 二进制 DXF 头部不完整")
 		}
 		if data[l.pos] == 0 && l.pos+1 < len(data) && data[l.pos+1] == 0 {
-			l.version = verR14
+			l.version = container.VerR14
 		} else {
 			l.preR14 = true
-			l.version = verR13
+			l.version = container.VerR13
 		}
 	}
 	return l, nil

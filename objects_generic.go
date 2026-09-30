@@ -8,6 +8,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"os"
 	"strings"
@@ -119,12 +120,12 @@ func (g *objGeneric) DebugFields() map[string]any {
 
 // internalObjectSpec 内部对象类型描述。
 type internalObjectSpec struct {
-	decode          func(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error // dat 流专有字段
-	hdl             func(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error // 自定义 handle 流（owner/reactors/xdic 之后调用）
-	extraHandles    int                                                                           // handle 流中 xdic 之后的固定引用数
-	handleVectorKey string                                                                        // 引用数量字段名（如 GROUP 的 num_groups）：handle 流读该数量的引用
-	forceStrings    bool                                                                          // SCALE 特例：has_strings 位恒 0 但 LibreDWG 强制按 1 处理（decode_r2007.c FIXME wrong bit）
-	jsonName        string                                                                        // gold JSON object 名与类表 DXF 名不一致时覆盖（如 DYNAMICBLOCKPURGEPREVENTER）
+	decode          func(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error // dat 流专有字段
+	hdl             func(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error // 自定义 handle 流（owner/reactors/xdic 之后调用）
+	extraHandles    int                                                                                     // handle 流中 xdic 之后的固定引用数
+	handleVectorKey string                                                                                  // 引用数量字段名（如 GROUP 的 num_groups）：handle 流读该数量的引用
+	forceStrings    bool                                                                                    // SCALE 特例：has_strings 位恒 0 但 LibreDWG 强制按 1 处理（decode_r2007.c FIXME wrong bit）
+	jsonName        string                                                                                  // gold JSON object 名与类表 DXF 名不一致时覆盖（如 DYNAMICBLOCKPURGEPREVENTER）
 }
 
 // internalFixedDecoders 固定类型码的内部对象（键为位级类型码）。
@@ -225,8 +226,8 @@ func init() {
 }
 
 // verUntilR2004 版本是否为 R2004 及更早（版本枚举非时间序，禁止范围比较）。
-func verUntilR2004(ver dwgVersion) bool {
-	return ver == verR13 || ver == verR14 || ver == verR2000 || ver == verR2004
+func verUntilR2004(ver container.DwgVersion) bool {
+	return ver == container.VerR13 || ver == container.VerR14 || ver == container.VerR2000 || ver == container.VerR2004
 }
 
 // gfRead 字段读取辅助：T 随版本与对象字符串流标志切换读取方式。
@@ -234,7 +235,7 @@ func verUntilR2004(ver dwgVersion) bool {
 // （dat 流不占位，LibreDWG FIELD_T 宏行为）；否则 R2007 前 TV 内联。
 type gfRead struct {
 	r        *bitstream.BitStream
-	ver      dwgVersion
+	ver      container.DwgVersion
 	strs     []string // 字符串区预读的 TU 序列（R2007+ 字符串流对象）
 	strIdx   int      // 下一个待取的字符串下标
 	codepage uint16   // 文档码页（pre-R2007 的 TV 文本按此解码，fzw ANSI_936 实证）
@@ -242,7 +243,7 @@ type gfRead struct {
 
 // T 读文字字段。
 func (f *gfRead) T(key string, g *objGeneric) error {
-	if f.ver < verR2007 {
+	if f.ver < container.VerR2007 {
 		s, err := f.r.ReadTV(f.codepage)
 		if err != nil {
 			return err
@@ -319,7 +320,7 @@ func (f gfRead) RD2(key string, g *objGeneric) error {
 // decodeGenericAPPID 解析 APPID（dwg.spec DWG_TABLE(APPID)）：
 // dat 流 = COMMON_TABLE_FLAGS（name T + xref 标志）+ RC unknown(71)；
 // handle 流 = owner + reactors + xdic + xref。
-func decodeGenericAPPID(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericAPPID(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 
 	if err := fr.T("name", g); err != nil {
 		return err
@@ -332,7 +333,7 @@ func decodeGenericAPPID(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *o
 
 // decodeGenericDICTIONARYVAR 解析 DICTIONARYVAR（dwg.spec）：
 // dat 流 = RCd schema(280) + T strvalue。
-func decodeGenericDICTIONARYVAR(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericDICTIONARYVAR(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 
 	if err := fr.RC("schema", g); err != nil {
 		return err
@@ -343,7 +344,7 @@ func decodeGenericDICTIONARYVAR(r *bitstream.BitStream, ver dwgVersion, fr *gfRe
 // decodeGenericSCALE 解析 SCALE（dwg2.spec DWG_OBJECT(SCALE)）：
 // dat 流 = BS flag(70) + T name(300) + BD paper_units(140) +
 // BD drawing_units(141) + B is_unit_scale(290)。
-func decodeGenericSCALE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericSCALE(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 
 	if err := fr.BS("flag", g); err != nil {
 		return err
@@ -362,7 +363,7 @@ func decodeGenericSCALE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *o
 
 // decodeInternalObject 按类型码/类名查找并解码通用内部对象：
 // dat 流专有字段 → handle 流（owner + reactors + xdic + 附加引用）。
-func decodeInternalObject(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver dwgVersion, r2013Plus bool, typeCode uint16, className string, codepage uint16) (*objGeneric, error) {
+func decodeInternalObject(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver container.DwgVersion, r2013Plus bool, typeCode uint16, className string, codepage uint16) (*objGeneric, error) {
 	// UNDERLAY 引用实体：实体布局但经对象分发（此前 UNKNOWN_OBJ 兜底），
 	// 按实体头 + UNDERLAY_fields 解码（见 objects_underlay.go）
 	if className == "PDFUNDERLAY" || className == "DWFUNDERLAY" || className == "DGNUNDERLAY" {
@@ -393,7 +394,7 @@ func decodeInternalObject(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver 
 		if nr, uerr := r.ReadBL(); uerr == nil && nr <= 4096 {
 			ug.NumReactors = int(nr)
 		}
-		if ver >= verR2004 {
+		if ver >= container.VerR2004 {
 			if xd, e := r.ReadB(); e == nil {
 				ug.XdicMissing = xd == 1
 			}
@@ -479,7 +480,7 @@ func decodeInternalObject(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver 
 		// 保留原始类名供统计与后续补齐解码器
 		origClass := className
 		className = "UNKNOWN_OBJ"
-		spec = internalObjectSpec{decode: func(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, gg *objGeneric) error {
+		spec = internalObjectSpec{decode: func(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, gg *objGeneric) error {
 			gg.Unknown = true
 			gg.OrigClass = origClass
 			return nil
@@ -535,7 +536,7 @@ func decodeInternalObject(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver 
 		return nil, fmt.Errorf("cad: 内部对象 reactors 异常 %d", numReactors)
 	}
 	g.NumReactors = int(numReactors)
-	if ver >= verR2004 {
+	if ver >= container.VerR2004 {
 		if xdic, e := r.ReadB(); e != nil {
 			return nil, e
 		} else {
@@ -556,7 +557,7 @@ func decodeInternalObject(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver 
 	// 故位串检测与字符串区定位需加 rec.handleSizeFieldBits。
 	g.controlType = typeCode
 	fr := &gfRead{r: r, ver: ver, codepage: codepage}
-	if ver >= verR2007 {
+	if ver >= container.VerR2007 {
 		bitsize := g.ObjSizeBit
 		if bitsize == 0 { // R2010+：由记录头推导
 			bitsize = rec.DataEndBit() - rec.BodyBitOffset - uint64(rec.HandleSizeFieldBits)
@@ -567,7 +568,7 @@ func decodeInternalObject(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver 
 		r.SetBitPos(libreBase + bitsize - 1)
 		b, e := r.ReadB()
 		if (e == nil && b == 1) || spec.forceStrings {
-			fr.strs = readStringAreaBitRange(r, libreBase+bitsize, 64, ver >= verR2013)
+			fr.strs = readStringAreaBitRange(r, libreBase+bitsize, 64, ver >= container.VerR2013)
 		}
 		r.SetBitPos(savedBits)
 	}
@@ -722,7 +723,7 @@ func (f gfRead) BLd(key string, g *objGeneric) error {
 // decodeGenericGROUP 解析 GROUP（dwg.spec DWG_OBJECT(GROUP)）：
 // dat 流 = T name(300) + BS unnamed(70) + BS selectable(71) + BL num_groups；
 // handle 流 = owner + reactors + xdic + groups×num_groups。
-func decodeGenericGROUP(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericGROUP(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.T("name", g); err != nil {
 		return err
 	}
@@ -737,7 +738,7 @@ func decodeGenericGROUP(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *o
 
 // decodeGenericWIPEOUTVARIABLES 解析 WIPEOUTVARIABLES（dwg2.spec）：
 // dat 流 = BS display_frame(70)。
-func decodeGenericWIPEOUTVARIABLES(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericWIPEOUTVARIABLES(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	return fr.BS("display_frame", g)
 }
 
@@ -746,7 +747,7 @@ func decodeGenericWIPEOUTVARIABLES(r *bitstream.BitStream, ver dwgVersion, fr *g
 // sort_ents×num_ents —— 该句柄数组特殊地内联在 dat 流（spec 以
 // str_dat=hdl_dat; hdl_dat=dat 显式切换，code 0 绝对引用），
 // 先于公共 handle 流存储。
-func decodeGenericSORTENTSTABLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericSORTENTSTABLE(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	num, err := r.ReadBL()
 	if err != nil {
 		return err
@@ -770,7 +771,7 @@ func decodeGenericSORTENTSTABLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRe
 // decodeGenericSORTENTSTABLE_HDL SORTENTSTABLE 的 handle 流附加引用：
 // block_owner（排序所属的 mspace/pspace BLOCK_HEADER，soft owner）+
 // ents×num_ents（排序前顺序的实体引用，与 sort_ents 按下标配对）。
-func decodeGenericSORTENTSTABLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericSORTENTSTABLE_HDL(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	h, e := objrec.ReadHandleReference(r, g.Handle)
 	if e != nil {
 		return e
@@ -794,7 +795,7 @@ func decodeGenericSORTENTSTABLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *
 // T file_path + B is_loaded + RC resunits + 2RD pixel_size。位级字段
 // 顺序与 DXF 顺序不同（DXF 端 file_path 首位）；R2007+ 的 file_path
 // 走对象字符串流（gfRead.T）。
-func decodeGenericIMAGEDEF(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericIMAGEDEF(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BL("class_version", g); err != nil {
 		return err
 	}
@@ -820,7 +821,7 @@ func decodeGenericIMAGEDEF(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g
 // decodeGenericIMAGEDEF_REACTOR 解析 IMAGEDEF_REACTOR（dwg.spec
 // DWG_OBJECT(IMAGEDEF_REACTOR)，AcDbRasterImageDefReactor）：dat 流仅
 // BL class_version(90)，其余为公共 handle 流（框架统一处理）。
-func decodeGenericIMAGEDEF_REACTOR(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericIMAGEDEF_REACTOR(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BL("class_version", g); err != nil {
 		return err
 	}
@@ -834,7 +835,7 @@ func decodeGenericIMAGEDEF_REACTOR(r *bitstream.BitStream, ver dwgVersion, fr *g
 // decodeGenericRASTERVARIABLES 解析 RASTERVARIABLES（dwg2.spec
 // AcDbRasterVariables）：BL class_version（>10 越界放弃）+ BS
 // image_frame + BS image_quality + BS units。
-func decodeGenericRASTERVARIABLES(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericRASTERVARIABLES(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	cv, err := fr.BLv("class_version", g)
 	if err != nil {
 		return err
@@ -854,7 +855,7 @@ func decodeGenericRASTERVARIABLES(r *bitstream.BitStream, ver dwgVersion, fr *gf
 // decodeGenericUNDERLAYDEFINITION 解析 UNDERLAY 定义对象（dwg2.spec
 // PDFDEFINITION/DGNDEFINITION/DWFDEFINITION，AcDbUnderlayDefinition）：
 // dat 流 = T filename(1) + T name(2)；三类同构共用，R2007+ 走字符串流。
-func decodeGenericUNDERLAYDEFINITION(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericUNDERLAYDEFINITION(r *bitstream.BitStream, ver container.DwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.T("filename", g); err != nil {
 		return err
 	}
@@ -868,7 +869,7 @@ func decodeGenericUNDERLAYDEFINITION(r *bitstream.BitStream, ver dwgVersion, fr 
 // method（rgb 高字节）∈[0xC0,0xC8]；R2004 前仅 BS index。
 // 返回与 dwgread JSON 同形的 map（{"index":..,"rgb":"..","name":..}）。
 func (f *gfRead) CMC(key string, g *objGeneric) error {
-	if f.ver < verR2004 {
+	if f.ver < container.VerR2004 {
 		idx, err := f.r.ReadBS()
 		if err != nil {
 			return err

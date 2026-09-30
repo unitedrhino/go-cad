@@ -34,6 +34,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/container"
 	"io"
 	"math"
 	"strconv"
@@ -261,10 +262,10 @@ func (x *dxfWriter) writeHeader(doc *Document) {
 // dxfTargetVersion DXF 的 $ACADVER：R13+ 直接透传源版本（同版式）；
 // pre-R13 源无对应现代 DXF 版式，统一写出为 R2000（AC1015）。
 func dxfTargetVersion(doc *Document) string {
-	if doc.version.preR13() {
+	if doc.version.PreR13() {
 		return "AC1015"
 	}
-	return doc.version.verString()
+	return doc.version.VerString()
 }
 
 // dxfCodepageName 代码页 → DXF 代码页名（31/39 为简体中文 GBK，其余按
@@ -1038,7 +1039,7 @@ func (x *dxfWriter) writeProxyEntity(e *entProxyEntity, pspace bool) {
 	x.subclass("AcDbProxyEntity")
 	x.int(90, int64(e.proxyID))
 	version := e.version
-	if x.doc != nil && x.doc.version >= verR2018 {
+	if x.doc != nil && x.doc.version >= container.VerR2018 {
 		version = (e.maintVersion << 8) | e.dwgVersionNum
 	}
 	x.int(95, int64(version))
@@ -1168,7 +1169,7 @@ func (x *dxfWriter) writeRasterImage(record, subclass string, classVersion uint3
 		x.flt(14, v.x)
 		x.flt(24, v.y)
 	}
-	if clipMode != 0 && x.doc != nil && x.doc.version >= verR2010 {
+	if clipMode != 0 && x.doc != nil && x.doc.version >= container.VerR2010 {
 		x.int(290, int64(clipMode))
 	}
 }
