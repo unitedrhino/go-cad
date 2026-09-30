@@ -529,7 +529,7 @@ func TestTessSpline(t *testing.T) {
 	xf := drawing.IdentityXform()
 
 	// fit 模式（scenario=2）
-	spFit := &entity.EntSpline{Scenario: 2, Degree: 3, FitPoints: []entity.Point3{{0, 0, 0}, {5, 5, 0}, {10, 0, 0}}}
+	spFit := &entity.EntSpline{Scenario: 2, Degree: 3, FitPoints: []entity.Point3{{X: 0, Y: 0, Z: 0}, {X: 5, Y: 5, Z: 0}, {X: 10, Y: 0, Z: 0}}}
 	st1 := drawing.TessSpline(spFit, xf)
 	if len(st1) == 0 {
 		t.Fatal("fit 模式应产生描边")
@@ -538,7 +538,7 @@ func TestTessSpline(t *testing.T) {
 	// 控制点模式：degree/knots 齐备走 De Boor
 	spCtrl := &entity.EntSpline{
 		Scenario: 1, Degree: 2,
-		ControlPoints: []entity.Point3{{0, 0, 0}, {1, 1, 0}, {2, 0, 0}, {3, 1, 0}},
+		ControlPoints: []entity.Point3{{X: 0, Y: 0, Z: 0}, {X: 1, Y: 1, Z: 0}, {X: 2, Y: 0, Z: 0}, {X: 3, Y: 1, Z: 0}},
 		Knots:         []float64{0, 0, 0, 1, 2, 3, 3, 3},
 	}
 	st2 := drawing.TessSpline(spCtrl, xf)
@@ -547,7 +547,7 @@ func TestTessSpline(t *testing.T) {
 	}
 
 	// 退化：度数非法 → 控制点折线
-	spDeg := &entity.EntSpline{Scenario: 1, Degree: 9, ControlPoints: []entity.Point3{{0, 0, 0}, {1, 1, 0}}}
+	spDeg := &entity.EntSpline{Scenario: 1, Degree: 9, ControlPoints: []entity.Point3{{X: 0, Y: 0, Z: 0}, {X: 1, Y: 1, Z: 0}}}
 	st3 := drawing.TessSpline(spDeg, xf)
 	if len(st3) == 0 {
 		t.Fatal("退化折线应产生描边")

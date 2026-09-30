@@ -1,7 +1,7 @@
 // render_text_test.go 字形文本渲染链路单测：字体探测与回退、字形光栅缓存、
 // 版式换算（镜像/退化/亚像素/锚点选择）、MTEXT 列宽换行、端到端渲染含
 // 字形墨迹与无字体回退路径。依赖系统字体的用例在无字体环境整体 skip。
-package cad
+package render
 
 import (
 	"bytes"
@@ -75,7 +75,7 @@ func TestGlyphRasterizeAndCache(t *testing.T) {
 	tr := newTextRenderer(&canvas{})
 	sf := tr.faceFor(32)
 	g1 := tr.glyph('中', sf)
-	if g1 == nil || g1.mask == nil || g1.w <= 0 || g1.h <= 0 {
+	if g1 == nil || g1.mask == nil || g1.W <= 0 || g1.h <= 0 {
 		t.Fatal("CJK 字形应光栅化出非空掩码")
 	}
 	g2 := tr.glyph('中', sf)
@@ -124,7 +124,7 @@ func TestTextLayoutOf(t *testing.T) {
 // TestTextLabelWithBasis textLabelWith 差分基向量：旋转 90° 下推进/字面
 // 方向互换且含正确符号。
 func TestTextLabelWithBasis(t *testing.T) {
-	ts := drawing.NewTessellator(&Document{})
+	ts := drawing.NewTessellator(&drawing.Document{})
 	e := &entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "AB", Insertion: entity.Point3{X: 1, Y: 2, Z: 0}, Height: 3}
 	p := ts.TextLabelWith(1, 2, 3, mathPiHalf(), 2, drawing.IdentityXform(), e, "TEXT", drawing.GlyphTextInfo{Lines: []string{"AB"}})
 	tx := p.Lb.Tx
@@ -147,7 +147,7 @@ func mathPiHalf() float64 { return 3.14159265358979323846 / 2 }
 
 // TestTextLabelAnchorSelection 非默认对齐时锚点取 alignment_pt（DXF 语义）。
 func TestTextLabelAnchorSelection(t *testing.T) {
-	ts := drawing.NewTessellator(&Document{})
+	ts := drawing.NewTessellator(&drawing.Document{})
 	e := &entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "X", Insertion: entity.Point3{X: 9, Y: 9, Z: 0},
 		Height: 1, HAlign: 1, VAlign: 2, AlignPt: &entity.Point2{X: 3, Y: 4}}
 	prim := ts.AppendEntity(nil, e, drawing.IdentityXform(), 0)
@@ -164,7 +164,7 @@ func TestTextLabelAnchorSelection(t *testing.T) {
 
 // TestMTextLabelInfo MTEXT 版式信息传播：\P 分行、attachment/rectWidth 透传。
 func TestMTextLabelInfo(t *testing.T) {
-	ts := drawing.NewTessellator(&Document{})
+	ts := drawing.NewTessellator(&drawing.Document{})
 	e := &entity.EntMText{BaseEntity: entity.BaseEntity{}, Text: "A\\PB", Insertion: entity.Point3{X: 0, Y: 0, Z: 0},
 		TextHeight: 2, Attachment: 7, RectWidth: 10}
 	prim := ts.AppendEntity(nil, e, drawing.IdentityXform(), 0)
@@ -281,7 +281,7 @@ func TestWarpMaskDegenerate(t *testing.T) {
 // 线框需≥ 10 像素墨迹），PNG 合法且尺寸随宽度比例。
 func TestRenderPNGGlyphTextE2E(t *testing.T) {
 	requireRenderFont(t)
-	doc := &Document{ModelSpace: []any{
+	doc := &drawing.Document{ModelSpace: []any{
 		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "测试ABC", Insertion: entity.Point3{X: 0, Y: 0, Z: 0}, Height: 1},
 	}}
 	data, err := RenderPNG(doc, RenderOptions{Width: 512})
@@ -307,7 +307,7 @@ func TestRenderPNGGlyphTextE2E(t *testing.T) {
 // TestRenderPNGFontPathOverride FontPath 指向缺失文件时应继续系统探测
 // （本机有 wqy）仍出字形；整体不 panic。
 func TestRenderPNGFontPathOverride(t *testing.T) {
-	doc := &Document{ModelSpace: []any{
+	doc := &drawing.Document{ModelSpace: []any{
 		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "OK", Insertion: entity.Point3{X: 0, Y: 0, Z: 0}, Height: 1},
 	}}
 	data, err := RenderPNG(doc, RenderOptions{Width: 256, FontPath: "/nonexistent/font.ttf"})

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
+	"github.com/unitedrhino/go-cad/internal/render"
 	"os"
 	"testing"
 )
@@ -128,7 +129,7 @@ func layerColorMatches(lc drawing.LayerColor, g *goldColor) (bool, bool) {
 	}
 	low := rgb & 0x00FFFFFF
 	// 索引形与真彩形都以渲染取色为准（与 entityColor 的图层消费完全同径）
-	got, gok := layerRenderColor(lc, true)
+	got, gok := render.LayerRenderColor(lc, true)
 	if low <= 0xFF {
 		if !gok {
 			return false, true

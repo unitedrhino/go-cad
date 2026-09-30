@@ -673,7 +673,7 @@ func TestEntityAuditFieldHelpers(t *testing.T) {
 	if got := entity.Vec3Arr(entity.Point3{X: 1, Y: 2, Z: 3}); got[0] != 1 || got[2] != 3 {
 		t.Errorf("vec3Arr = %v", got)
 	}
-	if got := entity.Pt2Arr([]entity.Point2{{1, 2}, {3, 4}}); len(got) != 4 || got[3] != 4 {
+	if got := entity.Pt2Arr([]entity.Point2{{X: 1, Y: 2}, {X: 3, Y: 4}}); len(got) != 4 || got[3] != 4 {
 		t.Errorf("pt2Arr = %v", got)
 	}
 	if got := entity.F64Arr([]float64{9, 8}); len(got) != 2 || got[0] != 9 {

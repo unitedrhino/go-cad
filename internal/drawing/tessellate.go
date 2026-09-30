@@ -78,10 +78,7 @@ type Xform struct {
 func IdentityXform() Xform { return Xform{Sx: 1, Sy: 1, Cos: 1} }
 
 func (t Xform) Apply(p entity.Point2) entity.Point2 {
-	return entity.Point2{
-		X: p.X*t.Sx*t.Cos - p.Y*t.Sy*t.sin + t.Tx,
-		Y: p.X*t.Sx*t.sin + p.Y*t.Sy*t.Cos + t.Ty,
-	}
+	return entity.Point2{X: p.X*t.Sx*t.Cos - p.Y*t.Sy*t.sin + t.Tx, Y: p.X*t.Sx*t.sin + p.Y*t.Sy*t.Cos + t.Ty}
 }
 
 func (t Xform) lengthScale() float64 {

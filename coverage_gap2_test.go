@@ -494,7 +494,7 @@ func TestSynthAcshHdl(t *testing.T) {
 
 	// BREP version>1（R2007+）：material×num_materials + history_id
 	g2 := &object.ObjGeneric{Name: "ACSH_BREP_CLASS", Handle: gap2BaseHandle}
-	g2.Fields = []object.ObjField{{"version", int64(2)}, {"num_materials", int64(2)}}
+	g2.Fields = []object.ObjField{{Key: "version", Val: int64(2)}, {Key: "num_materials", Val: int64(2)}}
 	w2 := bitstream.NewEncWriter()
 	gap2WriteHandles(w2, 3)
 	fr2 := &object.GfRead{R: bitstream.NewBitStream(w2.Bytes()), Ver: container.VerR2007}
@@ -507,7 +507,7 @@ func TestSynthAcshHdl(t *testing.T) {
 
 	// BREP version<=1：仅 material
 	g3 := &object.ObjGeneric{Name: "ACSH_BREP_CLASS", Handle: gap2BaseHandle}
-	g3.Fields = []object.ObjField{{"version", int64(1)}}
+	g3.Fields = []object.ObjField{{Key: "version", Val: int64(1)}}
 	w3 := bitstream.NewEncWriter()
 	gap2WriteHandles(w3, 1)
 	fr3 := &object.GfRead{R: bitstream.NewBitStream(w3.Bytes()), Ver: container.VerR2004}

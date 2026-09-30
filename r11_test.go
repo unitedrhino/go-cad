@@ -362,7 +362,7 @@ func TestPreR13F23DLine(t *testing.T) {
 // （三样本角点 x/y 一致：(0,7)(4,8)(3,9)(2,8)；R10/R11 经 HAS_ELEVATION
 // 与 opts 位走 2RD 路径，R9 全 2RD）。
 func TestPreR13F23DFace(t *testing.T) {
-	want := [4]entity.Point2{{0, 7}, {4, 8}, {3, 9}, {2, 8}}
+	want := [4]entity.Point2{{X: 0, Y: 7}, {X: 4, Y: 8}, {X: 3, Y: 9}, {X: 2, Y: 8}}
 	for _, rel := range []string{
 		filepath.Join("r9", "entities.dwg"),
 		filepath.Join("r10", "entities.dwg"),
@@ -383,7 +383,7 @@ func TestPreR13F23DFace(t *testing.T) {
 			t.Errorf("%s: 未解出 3DFACE", rel)
 			continue
 		}
-		got := [4]entity.Point2{{face.P1.X, face.P1.Y}, {face.P2.X, face.P2.Y}, {face.P3.X, face.P3.Y}, {face.P4.X, face.P4.Y}}
+		got := [4]entity.Point2{{X: face.P1.X, Y: face.P1.Y}, {X: face.P2.X, Y: face.P2.Y}, {X: face.P3.X, Y: face.P3.Y}, {X: face.P4.X, Y: face.P4.Y}}
 		for i := 0; i < 4; i++ {
 			if !testsupport.NearEq(got[i].X, want[i].X) || !testsupport.NearEq(got[i].Y, want[i].Y) {
 				t.Errorf("%s: 3DFACE corner%d = (%v,%v), want (%g,%g)", rel, i+1, got[i].X, got[i].Y, want[i].X, want[i].Y)

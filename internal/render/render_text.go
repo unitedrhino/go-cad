@@ -17,7 +17,7 @@
 //	版式换算：textLayoutOf（label 世界几何 → 像素空间基向量）
 //	绘制入口：drawLabelText（canvas 懒初始化渲染器并分派单行/MTEXT）
 //	掩码搬运：blitGlyph / warpMask（仿射逆映射 + 双线性覆盖率混合）
-package cad
+package render
 
 import (
 	"github.com/unitedrhino/go-cad/internal/drawing"
@@ -116,7 +116,7 @@ func newSizedFace(f font.Face, px float64) sizedFace {
 // textGlyph 单 rune 光栅化结果（某一字号档）。
 type textGlyph struct {
 	mask    *image.Gray // 覆盖率掩码（0..255）；nil 表示空字形（如空格）
-	w, h    int         // 掩码尺寸（像素）
+	W, h    int         // 掩码尺寸（像素）
 	dx, dy  int         // 掩码左上角相对基线原点的偏移（y 向下为正）
 	advance float64     // 推进宽（档位像素；缺字给默认半角宽防粘连）
 }
@@ -312,7 +312,7 @@ func buildGlyphMask(g *textGlyph, dr image.Rectangle, mask image.Image, maskp im
 		}
 	}
 	g.mask = gray
-	g.w, g.h = w, h
+	g.W, g.h = w, h
 	g.dx, g.dy = dr.Min.X, dr.Min.Y
 }
 

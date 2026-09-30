@@ -11,6 +11,7 @@ import (
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/object"
 	"github.com/unitedrhino/go-cad/internal/objrec"
+	"github.com/unitedrhino/go-cad/internal/render"
 	"os"
 	"path/filepath"
 	"strings"
@@ -119,9 +120,9 @@ func TestGfReadRL(t *testing.T) {
 // TestObjGenericFieldPath FieldPath 三级匹配顺序。
 func TestObjGenericFieldPath(t *testing.T) {
 	g := &object.ObjGeneric{Fields: []object.ObjField{
-		{"plain", int64(1)},
-		{"cells[0]", map[string]any{"inner": int64(2)}},
-		{"arr", []any{int64(3)}},
+		{Key: "plain", Val: int64(1)},
+		{Key: "cells[0]", Val: map[string]any{"inner": int64(2)}},
+		{Key: "arr", Val: []any{int64(3)}},
 	}}
 	if v := g.FieldPath("plain"); v != int64(1) {
 		t.Errorf("精确键 = %v", v)
@@ -272,13 +273,13 @@ func TestMustHandles(t *testing.T) {
 
 // TestDropOversizeStrokes 超长线段剔除与全剔图元丢弃。
 func TestDropOversizeStrokes(t *testing.T) {
-	bbox := drawing.Box2{0, 0, 10, 10} // 对角线≈14.14，limit≈21.2
+	bbox := drawing.Box2{MinX: 0, MinY: 0, MaxX: 10, MaxY: 10} // 对角线≈14.14，limit≈21.2
 	prims := []drawing.Primitive{
-		{Kind: 0, Strokes: []drawing.Stroke{{0, 0, 1, 0}, {0, 0, 100, 0}}},
-		{Kind: 0, Strokes: []drawing.Stroke{{0, 0, 100, 0}}},
+		{Kind: 0, Strokes: []drawing.Stroke{{X1: 0, Y1: 0, X2: 1, Y2: 0}, {X1: 0, Y1: 0, X2: 100, Y2: 0}}},
+		{Kind: 0, Strokes: []drawing.Stroke{{X1: 0, Y1: 0, X2: 100, Y2: 0}}},
 		{Kind: 1, Lb: drawing.Label{X: 1, Y: 1, W: 2, H: 2}},
 	}
-	out := dropOversizeStrokes(prims, bbox)
+	out := render.DropOversizeStrokes(prims, bbox)
 	if len(out) != 2 {
 		t.Fatalf("输出图元数 = %d, 期望 2", len(out))
 	}
@@ -293,7 +294,7 @@ func TestDropOversizeStrokes(t *testing.T) {
 // TestDeBoor De Boor 递推：输出点应落在控制点凸包内且 y/z 为零。
 // knotSpan=3、u=1.5 的值 (2,0,0) 经参数扫描探针固定为回归基线。
 func TestDeBoor(t *testing.T) {
-	ctrl := []entity.Point3{{0, 0, 0}, {1, 0, 0}, {2, 0, 0}, {3, 0, 0}}
+	ctrl := []entity.Point3{{X: 0, Y: 0, Z: 0}, {X: 1, Y: 0, Z: 0}, {X: 2, Y: 0, Z: 0}, {X: 3, Y: 0, Z: 0}}
 	knots := []float64{0, 0, 0, 1, 2, 3, 3, 3}
 	p := entity.DeBoor(ctrl, nil, knots, 2, 3, 1.5)
 	if p.X != 2 || p.Y != 0 || p.Z != 0 {

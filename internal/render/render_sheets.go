@@ -25,7 +25,7 @@
 //   - RenderSheetPNG / RenderSheetSVG / RenderAllSheets：逐张与批量渲染
 //     入口（批量清单首项固定为整图全览单张）
 //   - SanitizeSheetName：图名 → 文件名净化（CLI 输出命名用）
-package cad
+package render
 
 import (
 	"bytes"
@@ -191,7 +191,7 @@ const (
 // 说明页（设计说明/图例表）无标准比例图框、判据天然漏识别，对框外
 // 残余内容网格密度聚类产出补充 Sheet，名字与标准框可区分（最大字号
 // 文本或"补充区域 N"）。
-func DetectSheets(doc *Document) []Sheet {
+func DetectSheets(doc *drawing.Document) []Sheet {
 	if doc == nil {
 		return nil
 	}
@@ -225,7 +225,7 @@ func DetectSheets(doc *Document) []Sheet {
 
 // sheetTextLike 直属文本样本（图名提取用）。
 type sheetTextLike struct {
-	x, y   float64 // 插入点（世界坐标）
+	X, y   float64 // 插入点（世界坐标）
 	hWorld float64 // 世界字高
 	text   string
 }
@@ -233,7 +233,7 @@ type sheetTextLike struct {
 // sheetDetector 图框检测器：共享顶点索引与展开预算，块定义局部展开
 // 结果按块句柄缓存（同一符号块被引用多次只展开一次）。
 type sheetDetector struct {
-	doc         *Document
+	doc         *drawing.Document
 	ts          *drawing.Tessellator                      // 共享顶点索引 + 展开预算
 	blockPrimsC map[uint64][]drawing.Primitive            // 块句柄 → 块定义局部展开图元（缓存）
 	blockBox    map[uint64]drawing.Box2                   // 块句柄 → 块定义局部包围盒（缓存）
@@ -246,7 +246,7 @@ type sheetDetector struct {
 // newSheetDetector 构造检测器：buildVertexIndex 一次供全部块展开共用
 // （POLYLINE 顶点聚合），预算放宽防大块展开中途截断；直属文本清单
 // 供标题栏图名提取。
-func newSheetDetector(doc *Document) *sheetDetector {
+func newSheetDetector(doc *drawing.Document) *sheetDetector {
 	ts := drawing.NewTessellator(doc)
 	ts.BuildVertexIndex()
 	ts.Budget = sheetDetectorBudget
@@ -265,7 +265,7 @@ func newSheetDetector(doc *Document) *sheetDetector {
 
 // textDotSet 直属文本插入点集合（与 contentDots 同源同坐标，浮点精确
 // 匹配），供残余聚类判别分量是文字页还是符号图块区。
-func textDotSet(doc *Document) map[[2]float64]struct{} {
+func textDotSet(doc *drawing.Document) map[[2]float64]struct{} {
 	set := make(map[[2]float64]struct{}, 1024)
 	for _, ent := range doc.ModelSpace {
 		switch e := ent.(type) {
@@ -295,7 +295,7 @@ type sheetCand struct {
 // contentDots 模型空间直属实体的代表点样本（内容密度判定用）：
 // 图框的使命是容纳图内容，框内应落有相当数量的直属图元；
 // 装饰框/设备图例框（同比例、带框线但孤立）框内近乎无直属图元。
-func contentDots(doc *Document) [][2]float64 {
+func contentDots(doc *drawing.Document) [][2]float64 {
 	var dots [][2]float64
 	add := func(x, y float64) {
 		if drawing.Plausible(x, y) {
@@ -445,7 +445,8 @@ func countDotsIn(dots [][2]float64, b drawing.Box2) int {
 // 90° 倍数时高估，仅网格判定粗用；候选最终 bbox 走精确展开）。
 func cornerBox(b drawing.Box2, t drawing.Xform) drawing.Box2 {
 	out := drawing.Box2{MinX: math.Inf(1), MinY: math.Inf(1), MaxX: math.Inf(-1), MaxY: math.Inf(-1)}
-	for _, p := range [4]entity.Point2{{b.MinX, b.MinY}, {b.MaxX, b.MinY}, {b.MinX, b.MaxY}, {b.MaxX, b.MaxY}} {
+	framePts := []entity.Point2{{X: b.MinX, Y: b.MinY}, {X: b.MaxX, Y: b.MinY}, {X: b.MinX, Y: b.MaxY}, {X: b.MaxX, Y: b.MaxY}}
+	for _, p := range framePts {
 		q := t.Apply(p)
 		out.Extend(q.X, q.Y)
 	}
@@ -462,7 +463,7 @@ func cornerBox(b drawing.Box2, t drawing.Xform) drawing.Box2 {
 //     缺失，stroke 级会漏判）。
 //
 // GB 图框必有矩形外框，设备/符号块无此特征，是图框与内容块的本质区分。
-func frameRect(doc *Document, h uint64, prims []drawing.Primitive, b drawing.Box2) bool {
+func frameRect(doc *drawing.Document, h uint64, prims []drawing.Primitive, b drawing.Box2) bool {
 	if rectStrokeFrame(prims, b) {
 		return true
 	}
@@ -724,7 +725,7 @@ func (sd *sheetDetector) sheetTitle(c sheetCand) string {
 	}
 	var inTexts, allTexts []sheetTextLike
 	add := func(x, y, hWorld float64, text string) {
-		t := sheetTextLike{x: x, y: y, hWorld: hWorld, text: text}
+		t := sheetTextLike{X: x, y: y, hWorld: hWorld, text: text}
 		allTexts = append(allTexts, t)
 		if inTitle(x, y) {
 			inTexts = append(inTexts, t)
@@ -741,7 +742,7 @@ func (sd *sheetDetector) sheetTitle(c sheetCand) string {
 		add(p.Lb.X, p.Lb.Y, math.Hypot(p.Lb.Tx.Ux, p.Lb.Tx.Uy)*p.Lb.Tx.HWorld, text)
 	}
 	for _, t := range sd.modelTexts {
-		add(t.x, t.y, t.hWorld, t.text)
+		add(t.X, t.y, t.hWorld, t.text)
 	}
 	if no := pickSheetNo(inTexts, c.box); no != nil {
 		if name := sheetNameNear(no, allTexts); name != "" {
@@ -775,11 +776,11 @@ func pickSheetNo(texts []sheetTextLike, b drawing.Box2) *sheetTextLike {
 			continue
 		}
 		if best == nil || t.hWorld > best.hWorld+1e-9 {
-			best, bestD = t, math.Hypot(t.x-cx, t.y-cy)
+			best, bestD = t, math.Hypot(t.X-cx, t.y-cy)
 			continue
 		}
 		if t.hWorld >= best.hWorld-1e-9 {
-			if d := math.Hypot(t.x-cx, t.y-cy); d < bestD {
+			if d := math.Hypot(t.X-cx, t.y-cy); d < bestD {
 				best, bestD = t, d
 			}
 		}
@@ -793,7 +794,7 @@ func pickSheetNo(texts []sheetTextLike, b drawing.Box2) *sheetTextLike {
 // 线缆表文本右端相距数十倍字高，借此排除），内容为中文为主长文本
 // （sheetCjkName）。多个候选字号大者优先，同级距图号近者优先。
 func sheetNameNear(no *sheetTextLike, texts []sheetTextLike) string {
-	rightNo := no.x + estTextWidth(no.text, no.hWorld)
+	rightNo := no.X + estTextWidth(no.text, no.hWorld)
 	var best *sheetTextLike
 	bestD := 0.0
 	for i := range texts {
@@ -805,7 +806,7 @@ func sheetNameNear(no *sheetTextLike, texts []sheetTextLike) string {
 		if dy <= -1.5*no.hWorld || dy > 25*no.hWorld {
 			continue
 		}
-		if right := t.x + estTextWidth(t.text, t.hWorld); math.Abs(right-rightNo) > 6*no.hWorld {
+		if right := t.X + estTextWidth(t.text, t.hWorld); math.Abs(right-rightNo) > 6*no.hWorld {
 			continue
 		}
 		if best == nil || t.hWorld > best.hWorld+1e-9 {
@@ -876,7 +877,7 @@ func (sd *sheetDetector) fallbackWhole() []Sheet {
 	prims := prim.ExpandAll()
 	bbox := quantileSheetBounds(prims)
 	if bbox.Invalid() {
-		bbox = drawing.Box2{0, 0, 1, 1}
+		bbox = drawing.Box2{MinX: 0, MinY: 0, MaxX: 1, MaxY: 1}
 	}
 	return []Sheet{{
 		Name: "整图",
@@ -1084,9 +1085,7 @@ func mergeCloseComps(comps []residualComp, gapFrac float64) []residualComp {
 		r := find(i)
 		if idx[r] < 0 {
 			idx[r] = len(out)
-			out = append(out, residualComp{box: drawing.Box2{
-				MinX: math.Inf(1), MinY: math.Inf(1), MaxX: math.Inf(-1), MaxY: math.Inf(-1),
-			}})
+			out = append(out, residualComp{box: drawing.Box2{MinX: math.Inf(1), MinY: math.Inf(1), MaxX: math.Inf(-1), MaxY: math.Inf(-1)}})
 		}
 		m := &out[idx[r]]
 		m.pts = append(m.pts, c.pts...)
@@ -1215,9 +1214,7 @@ func gridDensityComponents(dots [][2]float64, p residualGridParams) []residualCo
 		id := len(comps)
 		// 包围盒初始化为 ±Inf：零值 box2{0,0,0,0} 会让全正象限分量的
 		// minX/minY 停留在原点，bbox 被撑到 (0,0) 造成虚假大跨度
-		comps = append(comps, residualComp{box: drawing.Box2{
-			MinX: math.Inf(1), MinY: math.Inf(1), MaxX: math.Inf(-1), MaxY: math.Inf(-1),
-		}})
+		comps = append(comps, residualComp{box: drawing.Box2{MinX: math.Inf(1), MinY: math.Inf(1), MaxX: math.Inf(-1), MaxY: math.Inf(-1)}})
 		cells := []int{start}
 		compID[start] = id
 		for k := 0; k < len(cells); k++ {
@@ -1300,17 +1297,17 @@ func (sd *sheetDetector) textFrac(c residualComp) float64 {
 func (sd *sheetDetector) residualTitle(b drawing.Box2) string {
 	bestH := 0.0
 	for _, t := range sd.modelTexts {
-		if t.hWorld > bestH && pointInBox(t.x, t.y, b) && sheetReadableText(t.text) {
+		if t.hWorld > bestH && pointInBox(t.X, t.y, b) && sheetReadableText(t.text) {
 			bestH = t.hWorld
 		}
 	}
 	best, bestD := "", math.Inf(1)
 	cx := (b.MinX + b.MaxX) / 2
 	for _, t := range sd.modelTexts {
-		if t.hWorld < bestH*0.9 || !pointInBox(t.x, t.y, b) || !sheetReadableText(t.text) {
+		if t.hWorld < bestH*0.9 || !pointInBox(t.X, t.y, b) || !sheetReadableText(t.text) {
 			continue
 		}
-		if d := math.Abs(t.x - cx); d < bestD {
+		if d := math.Abs(t.X - cx); d < bestD {
 			bestD = d
 			best = t.text
 		}
@@ -1381,10 +1378,7 @@ func quantileSheetBounds(prims []drawing.Primitive) drawing.Box2 {
 	at := func(sorted []float64, q float64) float64 {
 		return sorted[int(float64(len(sorted)-1)*q)]
 	}
-	b := drawing.Box2{
-		MinX: at(xs, 0.005), MinY: at(ys, 0.005),
-		MaxX: at(xs, 0.995), MaxY: at(ys, 0.995),
-	}
+	b := drawing.Box2{MinX: at(xs, 0.005), MinY: at(ys, 0.005), MaxX: at(xs, 0.995), MaxY: at(ys, 0.995)}
 	if b.MaxX-b.MinX <= 0 || b.MaxY-b.MinY <= 0 {
 		return drawing.RobustBounds(prims)
 	}
@@ -1471,38 +1465,38 @@ func sheetViewport(b [4]float64) drawing.Box2 {
 	} else if marginY == 0 {
 		marginY = marginX
 	}
-	return drawing.Box2{bb.MinX - marginX, bb.MinY - marginY, bb.MaxX + marginX, bb.MaxY + marginY}
+	return drawing.Box2{MinX: bb.MinX - marginX, MinY: bb.MinY - marginY, MaxX: bb.MaxX + marginX, MaxY: bb.MaxY + marginY}
 }
 
 // sheetPipeline 图框切分渲染的共享素材：整图展开与全局过滤一次完成，
 // 逐张复用（多张出图只展开一遍，RenderAllSheets 的性能基础）。
 type sheetPipeline struct {
-	doc        *Document
+	doc        *drawing.Document
 	prims      []drawing.Primitive
 	modelTexts []sheetTextLike // 直属文本（自适应宽度统计用）
 }
 
 // prepareSheets 构建共享渲染管线：展开/放射线过滤/原点锚定剔除与
 // RenderPNG 完全一致（渲染管线全部复用，金标路径不受影响）。
-func prepareSheets(doc *Document) *sheetPipeline {
+func prepareSheets(doc *drawing.Document) *sheetPipeline {
 	prim := drawing.NewTessellator(doc)
 	prims := prim.ExpandAll()
 	prims = filterRadiatingStrokes(prims)
 	bbox := drawing.RobustBounds(prims)
 	if bbox.Invalid() {
-		bbox = drawing.Box2{0, 0, 1, 1}
+		bbox = drawing.Box2{MinX: 0, MinY: 0, MaxX: 1, MaxY: 1}
 	}
 	prims = dropOriginAnchored(prims, bbox)
 	return &sheetPipeline{doc: doc, prims: prims, modelTexts: collectModelTexts(doc)}
 }
 
 // collectModelTexts 模型空间直属文本清单（图名提取与自适应宽度共用）。
-func collectModelTexts(doc *Document) []sheetTextLike {
+func collectModelTexts(doc *drawing.Document) []sheetTextLike {
 	var out []sheetTextLike
 	add := func(x, y, h float64, text string) {
 		if drawing.Plausible(x, y) && h > 0 {
 			if t := strings.TrimSpace(text); t != "" {
-				out = append(out, sheetTextLike{x: x, y: y, hWorld: h, text: t})
+				out = append(out, sheetTextLike{X: x, y: y, hWorld: h, text: t})
 			}
 		}
 	}
@@ -1540,7 +1534,7 @@ func (sp *sheetPipeline) sheetWidthFor(vp drawing.Box2, sheet Sheet, width int) 
 	}
 	b := drawing.Box2{MinX: sheet.Box[0], MinY: sheet.Box[1], MaxX: sheet.Box[2], MaxY: sheet.Box[3]}
 	for _, t := range sp.modelTexts {
-		if pointInBox(t.x, t.y, b) {
+		if pointInBox(t.X, t.y, b) {
 			hs = append(hs, t.hWorld)
 		}
 	}
@@ -1754,7 +1748,7 @@ func normalizeSheetOptions(opts RenderOptions) RenderOptions {
 // RenderSheetPNG 渲染单个图框为 PNG 字节流。opts.Width 未指定时按框内
 // 文字自适应起步（主体文字像素高 ≥8px，下限 4096），渲染后执行清晰度
 // 自检与自动重渲（见 renderPNG）；显式指定宽度则完全由调用方控制。
-func RenderSheetPNG(doc *Document, sheet Sheet, opts RenderOptions) ([]byte, error) {
+func RenderSheetPNG(doc *drawing.Document, sheet Sheet, opts RenderOptions) ([]byte, error) {
 	if doc == nil {
 		return nil, fmt.Errorf("cad: 文档为空，无法渲染")
 	}
@@ -1764,7 +1758,7 @@ func RenderSheetPNG(doc *Document, sheet Sheet, opts RenderOptions) ([]byte, err
 }
 
 // RenderSheetSVG 渲染单个图框为 SVG 矢量字节流（viewBox 裁剪到图框）。
-func RenderSheetSVG(doc *Document, sheet Sheet, opts RenderOptions) ([]byte, error) {
+func RenderSheetSVG(doc *drawing.Document, sheet Sheet, opts RenderOptions) ([]byte, error) {
 	if doc == nil {
 		return nil, fmt.Errorf("cad: 文档为空，无法渲染")
 	}
@@ -1778,7 +1772,7 @@ func RenderSheetSVG(doc *Document, sheet Sheet, opts RenderOptions) ([]byte, err
 // 单张（整图稳健分位视口 quantileSheetBounds）——用户除逐张图框外总要
 // 一张"整的"；无图框兜底单张（Name "整图"）本身即全览，不重复添加。
 // format 取 "png" 或 "svg"（大小写不敏感），其余报错。
-func RenderAllSheets(doc *Document, opts RenderOptions, format string) ([]SheetResult, error) {
+func RenderAllSheets(doc *drawing.Document, opts RenderOptions, format string) ([]SheetResult, error) {
 	if doc == nil {
 		return nil, fmt.Errorf("cad: 文档为空，无法渲染")
 	}

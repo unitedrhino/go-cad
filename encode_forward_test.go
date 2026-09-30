@@ -68,7 +68,7 @@ func TestWriteForwardSyntheticR2000(t *testing.T) {
 	point := &entity.EntPoint{Location: entity.Point3{X: 33, Y: 44, Z: 0}, Rotation: 1.25}
 	ellipse := &entity.EntEllipse{Center: entity.Point3{X: 1, Y: 2, Z: 0}, MajorAxis: entity.Point3{X: 10, Y: 0, Z: 0}, Ratio: 0.5, StartAng: 0, EndAng: math.Pi}
 	lwp := &entity.EntLwPolyline{
-		Vertices: []entity.Point2{{0, 0}, {10, 0}, {10, 10}, {0, 10}},
+		Vertices: []entity.Point2{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 10, Y: 10}, {X: 0, Y: 10}},
 		Bulges:   []float64{0, 0.5, 0, 0},
 	}
 	text := &entity.EntText{Text: "HELLO_FWD", Insertion: entity.Point3{X: 7, Y: 8, Z: 0}, Height: 3.5, Rotation: 0.25}
@@ -636,13 +636,13 @@ func TestWriteForwardBatchE(t *testing.T) {
 		Scenario: 1, Degree: 3, Rational: true,
 		KnotTolerance: 1e-7, CtrlTolerance: 2e-7,
 		Knots:         []float64{0, 0, 0, 1, 2, 3, 3, 3},
-		ControlPoints: []entity.Point3{{0, 0, 0}, {10, 20, 1}, {30, 10, 2}, {40, 40, 0}},
+		ControlPoints: []entity.Point3{{X: 0, Y: 0, Z: 0}, {X: 10, Y: 20, Z: 1}, {X: 30, Y: 10, Z: 2}, {X: 40, Y: 40, Z: 0}},
 		Weights:       []float64{1, 2, 2, 1},
 	}
 	splineFit := &entity.EntSpline{
 		Scenario: 2, Degree: 3,
 		FitTolerance: 1e-10,
-		FitPoints:    []entity.Point3{{1, 1, 0}, {5, 6, 0}, {9, 2, 0}, {12, 8, 0}},
+		FitPoints:    []entity.Point3{{X: 1, Y: 1, Z: 0}, {X: 5, Y: 6, Z: 0}, {X: 9, Y: 2, Z: 0}, {X: 12, Y: 8, Z: 0}},
 	}
 	// DIMENSION 七型（flag 低 3 位分派）
 	dimLinear := &entity.EntDimension{
@@ -689,7 +689,7 @@ func TestWriteForwardBatchE(t *testing.T) {
 				{CurveType: 2, Center: entity.Point2{X: 10, Y: 5}, Radius: 5, StartAng: 0, EndAng: 1.5, Ccw: true},
 			},
 		}},
-		Seeds: []entity.Point2{{2, 3}, {4, 5}},
+		Seeds: []entity.Point2{{X: 2, Y: 3}, {X: 4, Y: 5}},
 	}
 	hatchPoly := &entity.EntHatch{
 		Name: "SOLID", SolidFill: true, Style: 1, PatternType: 1,
@@ -709,7 +709,7 @@ func TestWriteForwardBatchE(t *testing.T) {
 	xline := &entity.EntRay{Start: entity.Point3{X: 4, Y: 5, Z: 6}, UnitVector: entity.Point3{X: 0, Y: 1, Z: 0}, Xline: true}
 	leader := &entity.EntLeader{
 		AnnotationType: 1, PathType: 0,
-		Points:    []entity.Point3{{0, 0, 0}, {10, 10, 0}, {20, 10, 0}},
+		Points:    []entity.Point3{{X: 0, Y: 0, Z: 0}, {X: 10, Y: 10, Z: 0}, {X: 20, Y: 10, Z: 0}},
 		Origin:    entity.Point3{X: 0, Y: 0, Z: 0},
 		BoxHeight: 3, BoxWidth: 12, ArrowheadOn: true, ArrowheadType: 1,
 	}
@@ -954,7 +954,7 @@ func TestWriteForwardDynamicClasses(t *testing.T) {
 		ImageSize: entity.Point2{X: 1, Y: 1}, DisplayProps: 7, Clipping: true,
 		Brightness: 50, Contrast: 50, Fade: 0,
 		ClipBoundaryType: 1,
-		ClipVerts:        []entity.Point2{{0, 0}, {1, 1}},
+		ClipVerts:        []entity.Point2{{X: 0, Y: 0}, {X: 1, Y: 1}},
 	}
 	image.TypeName = "IMAGE"
 	wipeout := &entity.EntWipeout{
@@ -962,7 +962,7 @@ func TestWriteForwardDynamicClasses(t *testing.T) {
 		Pt0:          entity.Point3{X: 0, Y: 0, Z: 0}, Uvec: entity.Point3{X: 10, Y: 0, Z: 0}, Vvec: entity.Point3{X: 0, Y: 10, Z: 0},
 		ImageSize: entity.Point2{X: 1, Y: 1}, DisplayProps: 7,
 		ClipBoundaryType: 2,
-		ClipVerts:        []entity.Point2{{0, 0}, {0.5, 0.2}, {1, 0.5}, {0.3, 1}},
+		ClipVerts:        []entity.Point2{{X: 0, Y: 0}, {X: 0.5, Y: 0.2}, {X: 1, Y: 0.5}, {X: 0.3, Y: 1}},
 	}
 	wipeout.TypeName = "WIPEOUT"
 	mleader := &entity.EntMLeader{
@@ -1071,72 +1071,72 @@ func TestWriteForwardGenericObjects(t *testing.T) {
 	group := &object.ObjGeneric{
 		Name: "GROUP", Handle: 0x500, Owner: 0x13,
 		Fields: []object.ObjField{
-			{"name", "PROBE_GROUP"}, {"unnamed", float64(0)}, {"selectable", float64(1)},
-			{"num_groups", float64(2)},
-			{"groups", []any{[]any{float64(5), float64(2), float64(0x510), float64(0x510)},
+			{Key: "name", Val: "PROBE_GROUP"}, {Key: "unnamed", Val: float64(0)}, {Key: "selectable", Val: float64(1)},
+			{Key: "num_groups", Val: float64(2)},
+			{Key: "groups", Val: []any{[]any{float64(5), float64(2), float64(0x510), float64(0x510)},
 				[]any{float64(5), float64(2), float64(0x511), float64(0x511)}}},
 		},
 	}
 	xrecord := &object.ObjGeneric{
 		Name: "XRECORD", Handle: 0x501, Owner: 0x14,
 		Fields: []object.ObjField{
-			{"xdata", []any{[]any{float64(70), float64(1)}, []any{float64(1), "BA88-PROBE"},
+			{Key: "xdata", Val: []any{[]any{float64(70), float64(1)}, []any{float64(1), "BA88-PROBE"},
 				[]any{float64(310), "DEADBEEF"}}},
-			{"cloning", float64(1)},
+			{Key: "cloning", Val: float64(1)},
 		},
 	}
 	dictvar := &object.ObjGeneric{
 		Name: "DICTIONARYVAR", Handle: 0x502,
-		Fields: []object.ObjField{{"schema", float64(0)}, {"strvalue", "2"}},
+		Fields: []object.ObjField{{Key: "schema", Val: float64(0)}, {Key: "strvalue", Val: "2"}},
 	}
 	scale := &object.ObjGeneric{
 		Name: "SCALE", Handle: 0x503,
 		Fields: []object.ObjField{
-			{"flag", float64(0)}, {"name", "1:2"},
-			{"paper_units", 1.0}, {"drawing_units", 2.0}, {"is_unit_scale", true},
+			{Key: "flag", Val: float64(0)}, {Key: "name", Val: "1:2"},
+			{Key: "paper_units", Val: 1.0}, {Key: "drawing_units", Val: 2.0}, {Key: "is_unit_scale", Val: true},
 		},
 	}
 	layout := &object.ObjGeneric{
 		Name: "LAYOUT", Handle: 0x504,
 		Fields: []object.ObjField{
-			{"plotsettings.printer_cfg_file", ""}, {"plotsettings.paper_size", "A4"},
-			{"plotsettings.plot_flags", float64(11952)},
-			{"plotsettings.left_margin", 6.35}, {"plotsettings.bottom_margin", 19.05},
-			{"plotsettings.right_margin", 6.35}, {"plotsettings.top_margin", 19.05},
-			{"plotsettings.paper_width", 210.0}, {"plotsettings.paper_height", 297.0},
-			{"plotsettings.canonical_media_name", ""},
-			{"plotsettings.plot_origin", []any{0.0, 0.0}},
-			{"plotsettings.plot_paper_unit", float64(0)},
-			{"plotsettings.plot_rotation_mode", float64(0)},
-			{"plotsettings.plot_type", float64(5)},
-			{"plotsettings.plot_window_ll", []any{0.0, 0.0}},
-			{"plotsettings.plot_window_ur", []any{0.0, 0.0}},
-			{"plotsettings.plotview_name", ""},
-			{"plotsettings.paper_units", 1.0}, {"plotsettings.drawing_units", 1.0},
-			{"plotsettings.stylesheet", ""},
-			{"plotsettings.std_scale_type", float64(0)}, {"plotsettings.std_scale_factor", 1.0},
-			{"plotsettings.paper_image_origin", []any{0.0, 0.0}},
-			{"layout_name", "Layout9"}, {"tab_order", float64(9)}, {"layout_flags", float64(2)},
-			{"INSBASE", []any{0.0, 0.0, 0.0}},
-			{"LIMMIN", []any{0.0, 0.0}}, {"LIMMAX", []any{420.0, 297.0}},
-			{"UCSORG", []any{0.0, 0.0, 0.0}}, {"UCSXDIR", []any{1.0, 0.0, 0.0}},
-			{"UCSYDIR", []any{0.0, 1.0, 0.0}},
-			{"ucs_elevation", 0.0}, {"UCSORTHOVIEW", float64(0)},
-			{"EXTMIN", []any{0.0, 0.0, 0.0}}, {"EXTMAX", []any{100.0, 100.0, 0.0}},
-			{"block_header", []any{float64(4), float64(1), float64(0x55), float64(0x55)}},
-			{"active_viewport", []any{float64(4), float64(2), float64(0x56), float64(0x56)}},
+			{Key: "plotsettings.printer_cfg_file", Val: ""}, {Key: "plotsettings.paper_size", Val: "A4"},
+			{Key: "plotsettings.plot_flags", Val: float64(11952)},
+			{Key: "plotsettings.left_margin", Val: 6.35}, {Key: "plotsettings.bottom_margin", Val: 19.05},
+			{Key: "plotsettings.right_margin", Val: 6.35}, {Key: "plotsettings.top_margin", Val: 19.05},
+			{Key: "plotsettings.paper_width", Val: 210.0}, {Key: "plotsettings.paper_height", Val: 297.0},
+			{Key: "plotsettings.canonical_media_name", Val: ""},
+			{Key: "plotsettings.plot_origin", Val: []any{0.0, 0.0}},
+			{Key: "plotsettings.plot_paper_unit", Val: float64(0)},
+			{Key: "plotsettings.plot_rotation_mode", Val: float64(0)},
+			{Key: "plotsettings.plot_type", Val: float64(5)},
+			{Key: "plotsettings.plot_window_ll", Val: []any{0.0, 0.0}},
+			{Key: "plotsettings.plot_window_ur", Val: []any{0.0, 0.0}},
+			{Key: "plotsettings.plotview_name", Val: ""},
+			{Key: "plotsettings.paper_units", Val: 1.0}, {Key: "plotsettings.drawing_units", Val: 1.0},
+			{Key: "plotsettings.stylesheet", Val: ""},
+			{Key: "plotsettings.std_scale_type", Val: float64(0)}, {Key: "plotsettings.std_scale_factor", Val: 1.0},
+			{Key: "plotsettings.paper_image_origin", Val: []any{0.0, 0.0}},
+			{Key: "layout_name", Val: "Layout9"}, {Key: "tab_order", Val: float64(9)}, {Key: "layout_flags", Val: float64(2)},
+			{Key: "INSBASE", Val: []any{0.0, 0.0, 0.0}},
+			{Key: "LIMMIN", Val: []any{0.0, 0.0}}, {Key: "LIMMAX", Val: []any{420.0, 297.0}},
+			{Key: "UCSORG", Val: []any{0.0, 0.0, 0.0}}, {Key: "UCSXDIR", Val: []any{1.0, 0.0, 0.0}},
+			{Key: "UCSYDIR", Val: []any{0.0, 1.0, 0.0}},
+			{Key: "ucs_elevation", Val: 0.0}, {Key: "UCSORTHOVIEW", Val: float64(0)},
+			{Key: "EXTMIN", Val: []any{0.0, 0.0, 0.0}}, {Key: "EXTMAX", Val: []any{100.0, 100.0, 0.0}},
+			{Key: "block_header", Val: []any{float64(4), float64(1), float64(0x55), float64(0x55)}},
+			{Key: "active_viewport", Val: []any{float64(4), float64(2), float64(0x56), float64(0x56)}},
 		},
 	}
 	wipeoutVars := &object.ObjGeneric{
 		Name: "WIPEOUTVARIABLES", Handle: 0x505,
-		Fields: []object.ObjField{{"display_frame", float64(1)}},
+		Fields: []object.ObjField{{Key: "display_frame", Val: float64(1)}},
 	}
 	placeholder := &object.ObjGeneric{Name: "PLACEHOLDER", Handle: 0x506}
 	appid := &object.ObjGeneric{
 		Name: "APPID", Handle: 0x507,
 		Fields: []object.ObjField{
-			{"name", "PROBE_APP"}, {"is_xref_ref", true},
-			{"is_xref_resolved", float64(1)}, {"is_xref_dep", false}, {"unknown", float64(0)},
+			{Key: "name", Val: "PROBE_APP"}, {Key: "is_xref_ref", Val: true},
+			{Key: "is_xref_resolved", Val: float64(1)}, {Key: "is_xref_dep", Val: false}, {Key: "unknown", Val: float64(0)},
 		},
 	}
 	doc := fwdSynthDoc(t)

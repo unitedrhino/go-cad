@@ -34,7 +34,7 @@ func TestEntityGeometryFinite(t *testing.T) {
 	if !ok(&entity.EntEllipse{Center: entity.Point3{}, MajorAxis: entity.Point3{X: 1, Y: 0, Z: 0}, Ratio: 0.5}) {
 		t.Error("ELLIPSE 合法值应通过")
 	}
-	if !ok(&entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {1, 1}}}) {
+	if !ok(&entity.EntLwPolyline{Vertices: []entity.Point2{{X: 0, Y: 0}, {X: 1, Y: 1}}}) {
 		t.Error("LWPOLYLINE 合法值应通过")
 	}
 	if ok(&entity.EntLwPolyline{}) {
@@ -49,10 +49,10 @@ func TestEntityGeometryFinite(t *testing.T) {
 	if !ok(&entity.EntInsert{Position: entity.Point3{}, Scale: entity.Point3{X: 1, Y: 1, Z: 1}}) {
 		t.Error("INSERT 合法值应通过")
 	}
-	if !ok(&entity.EntSpline{ControlPoints: []entity.Point3{{0, 0, 0}}}) {
+	if !ok(&entity.EntSpline{ControlPoints: []entity.Point3{{X: 0, Y: 0, Z: 0}}}) {
 		t.Error("SPLINE 控制点应通过")
 	}
-	if !ok(&entity.EntSpline{FitPoints: []entity.Point3{{0, 0, 0}}}) {
+	if !ok(&entity.EntSpline{FitPoints: []entity.Point3{{X: 0, Y: 0, Z: 0}}}) {
 		t.Error("SPLINE 拟合点应通过")
 	}
 	if ok(&entity.EntSpline{}) {
@@ -61,7 +61,7 @@ func TestEntityGeometryFinite(t *testing.T) {
 	if !ok(&entity.EntDimension{}) {
 		t.Error("DIMENSION 零值应通过")
 	}
-	if !ok(&entity.EntHatch{Paths: []entity.HatchPath{{Points: []entity.Point2{{1, 1}}}}}) {
+	if !ok(&entity.EntHatch{Paths: []entity.HatchPath{{Points: []entity.Point2{{X: 1, Y: 1}}}}}) {
 		t.Error("HATCH 路径点应通过")
 	}
 	if ok(&entity.EntHatch{}) {
@@ -76,7 +76,7 @@ func TestEntityGeometryFinite(t *testing.T) {
 	if !ok(&entity.EntProxyEntity{}) {
 		t.Error("PROXY 应恒通过")
 	}
-	if !ok(&entity.EntMpolygon{Hatch: &entity.EntHatch{Paths: []entity.HatchPath{{Points: []entity.Point2{{1, 1}}}}}}) {
+	if !ok(&entity.EntMpolygon{Hatch: &entity.EntHatch{Paths: []entity.HatchPath{{Points: []entity.Point2{{X: 1, Y: 1}}}}}}) {
 		t.Error("MPOLYGON 路径应通过")
 	}
 	if !ok(&entity.EntRay{Start: entity.Point3{}, UnitVector: entity.Point3{X: 1, Y: 0, Z: 0}}) {
@@ -88,7 +88,7 @@ func TestEntityGeometryFinite(t *testing.T) {
 	if !ok(&entity.EntFace3d{}) {
 		t.Error("3DFACE 零值应通过")
 	}
-	if !ok(&entity.EntLeader{Points: []entity.Point3{{0, 0, 0}}}) {
+	if !ok(&entity.EntLeader{Points: []entity.Point3{{X: 0, Y: 0, Z: 0}}}) {
 		t.Error("LEADER 点列应通过")
 	}
 	if !ok(&entity.EntMLine{Vertices: []entity.EntMLineVertex{{Position: entity.Point3{}}}}) {
@@ -122,7 +122,7 @@ func TestEntityGeometryScore(t *testing.T) {
 	if entity.EntityGeometryScore(&entity.EntLwPolyline{}) != -50 {
 		t.Error("LWPOLYLINE 空顶点应为 -50")
 	}
-	if entity.EntityGeometryScore(&entity.EntLwPolyline{Vertices: []entity.Point2{{1, 1}}}) <= 0 {
+	if entity.EntityGeometryScore(&entity.EntLwPolyline{Vertices: []entity.Point2{{X: 1, Y: 1}}}) <= 0 {
 		t.Error("LWPOLYLINE 合法顶点应为正分")
 	}
 	if entity.EntityGeometryScore(&entity.EntText{Height: 2.5}) <= 0 {

@@ -1,7 +1,7 @@
 // api_svg_test.go 覆盖 RenderSVG 矢量输出：结构良构、坐标系 Y 翻转、
 // 文本元素（转义/锚点/旋转/中文字面）、path 相对坐标合并、空文档兜底，
 // 以及 testdata 全样本的渲染回归（PNG 金标路径不受影响由既有回归保障）。
-package cad
+package render
 
 import (
 	"bytes"
@@ -22,11 +22,11 @@ import (
 )
 
 // svgSynthDoc 构造含基本图元的合成文档（LINE + 折线 LWPOLYLINE + TEXT）。
-func svgSynthDoc() *Document {
-	return &Document{
+func svgSynthDoc() *drawing.Document {
+	return &drawing.Document{
 		ModelSpace: []any{
 			&entity.EntLine{BaseEntity: entity.BaseEntity{}, Start: entity.Point3{X: 0, Y: 0, Z: 0}, End: entity.Point3{X: 100, Y: 50, Z: 0}},
-			&entity.EntLwPolyline{BaseEntity: entity.BaseEntity{}, Vertices: []entity.Point2{{10, 10}, {60, 10}, {60, 40}}},
+			&entity.EntLwPolyline{BaseEntity: entity.BaseEntity{}, Vertices: []entity.Point2{{X: 10, Y: 10}, {X: 60, Y: 10}, {X: 60, Y: 40}}},
 			&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "HELLO", Insertion: entity.Point3{X: 10, Y: 20, Z: 0}, Height: 2},
 		},
 	}
@@ -97,7 +97,7 @@ func TestRenderSVGStructure(t *testing.T) {
 // TestRenderSVGYFlip 校验 CAD→SVG 坐标系翻转：世界 y=0 应映射到视口底部
 // （y' = maxY - y），首段 M 坐标符合手算值。
 func TestRenderSVGYFlip(t *testing.T) {
-	doc := &Document{ModelSpace: []any{
+	doc := &drawing.Document{ModelSpace: []any{
 		&entity.EntLine{BaseEntity: entity.BaseEntity{}, Start: entity.Point3{X: 0, Y: 0, Z: 0}, End: entity.Point3{X: 100, Y: 50, Z: 0}},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 1000})
@@ -119,7 +119,7 @@ func TestRenderSVGYFlip(t *testing.T) {
 // TestRenderSVGTextElement 校验文本输出：内容、font-size（世界字高）、
 // 中文字面原样（UTF-8 直出）。
 func TestRenderSVGTextElement(t *testing.T) {
-	doc := &Document{ModelSpace: []any{
+	doc := &drawing.Document{ModelSpace: []any{
 		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "HELLO", Insertion: entity.Point3{X: 10, Y: 20, Z: 0}, Height: 2},
 		&entity.EntMText{BaseEntity: entity.BaseEntity{}, Text: "中文标注", Insertion: entity.Point3{X: 0, Y: 0, Z: 0}, TextHeight: 3},
 	}}
@@ -142,7 +142,7 @@ func TestRenderSVGTextElement(t *testing.T) {
 
 // TestRenderSVGMTextStrip 校验 MTEXT 格式码剥离后输出（\P 换行、颜色码等）。
 func TestRenderSVGMTextStrip(t *testing.T) {
-	doc := &Document{ModelSpace: []any{
+	doc := &drawing.Document{ModelSpace: []any{
 		&entity.EntMText{BaseEntity: entity.BaseEntity{}, Text: `\A1;6X5.0X2.5`, Insertion: entity.Point3{X: 0, Y: 0, Z: 0}, TextHeight: 2},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
@@ -159,7 +159,7 @@ func TestRenderSVGMTextStrip(t *testing.T) {
 // TestRenderSVGMTextMultiline 校验 MTEXT 多行文本（\P）拆为 tspan 行：
 // 首行随基线，后续行 dy 下移一行动距，无裸换行残留在文本内容中。
 func TestRenderSVGMTextMultiline(t *testing.T) {
-	doc := &Document{ModelSpace: []any{
+	doc := &drawing.Document{ModelSpace: []any{
 		&entity.EntMText{BaseEntity: entity.BaseEntity{}, Text: `第一行\P第二行`, Insertion: entity.Point3{X: 0, Y: 0, Z: 0}, TextHeight: 2},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
@@ -178,7 +178,7 @@ func TestRenderSVGMTextMultiline(t *testing.T) {
 
 // TestRenderSVGEscape 校验 XML 特殊字符转义与非法控制字符剔除。
 func TestRenderSVGEscape(t *testing.T) {
-	doc := &Document{ModelSpace: []any{
+	doc := &drawing.Document{ModelSpace: []any{
 		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "A<B&C>D\x01E", Insertion: entity.Point3{X: 0, Y: 0, Z: 0}, Height: 2},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
@@ -198,7 +198,7 @@ func TestRenderSVGEscape(t *testing.T) {
 // TestRenderSVGTextAnchor 校验对齐码 → text-anchor 映射：
 // TEXT hAlign 1/4→middle、2→end、0→缺省；MTEXT attachment 右列→end。
 func TestRenderSVGTextAnchor(t *testing.T) {
-	doc := &Document{ModelSpace: []any{
+	doc := &drawing.Document{ModelSpace: []any{
 		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "C", Insertion: entity.Point3{X: 0, Y: 0, Z: 0}, Height: 2, HAlign: 1},
 		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "R", Insertion: entity.Point3{X: 0, Y: 0, Z: 0}, Height: 2, HAlign: 2},
 		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "L", Insertion: entity.Point3{X: 0, Y: 0, Z: 0}, Height: 2},
@@ -223,7 +223,7 @@ func TestRenderSVGTextAnchor(t *testing.T) {
 
 // TestRenderSVGTextRotate 校验旋转文本：Y 翻转后角度取负，绕基线起点旋转。
 func TestRenderSVGTextRotate(t *testing.T) {
-	doc := &Document{ModelSpace: []any{
+	doc := &drawing.Document{ModelSpace: []any{
 		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "R30", Insertion: entity.Point3{X: 0, Y: 0, Z: 0}, Height: 2, Rotation: math.Pi / 6},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
@@ -241,7 +241,7 @@ func TestRenderSVGTextRotate(t *testing.T) {
 // path 重复。（分组键为「颜色×图层」后，组开标签变为 <g id=… stroke=…>，
 // 断言从 `<g stroke=` 前缀匹配改为对 stroke 属性计数。）
 func TestRenderSVGColorGroup(t *testing.T) {
-	doc := &Document{ModelSpace: []any{
+	doc := &drawing.Document{ModelSpace: []any{
 		&entity.EntLine{BaseEntity: entity.BaseEntity{}, Start: entity.Point3{X: 0, Y: 0, Z: 0}, End: entity.Point3{X: 10, Y: 0, Z: 0}},
 		&entity.EntLine{BaseEntity: entity.BaseEntity{}, Start: entity.Point3{X: 0, Y: 5, Z: 0}, End: entity.Point3{X: 10, Y: 5, Z: 0}},
 	}}
@@ -261,8 +261,8 @@ func TestRenderSVGColorGroup(t *testing.T) {
 
 // TestRenderSVGPathMerge 校验 LWPOLYLINE 连续顶点合并为相对段（无逐段 M）。
 func TestRenderSVGPathMerge(t *testing.T) {
-	doc := &Document{ModelSpace: []any{
-		&entity.EntLwPolyline{BaseEntity: entity.BaseEntity{}, Vertices: []entity.Point2{{0, 0}, {10, 0}, {10, 10}, {0, 10}}},
+	doc := &drawing.Document{ModelSpace: []any{
+		&entity.EntLwPolyline{BaseEntity: entity.BaseEntity{}, Vertices: []entity.Point2{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 10, Y: 10}, {X: 0, Y: 10}}},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
 	if err != nil {
@@ -282,7 +282,7 @@ func TestRenderSVGPathMerge(t *testing.T) {
 
 // TestRenderSVGEmptyDoc 空文档应仍输出合法 SVG 骨架（不 panic、无 path）。
 func TestRenderSVGEmptyDoc(t *testing.T) {
-	svg, err := RenderSVG(&Document{}, RenderOptions{Width: 800})
+	svg, err := RenderSVG(&drawing.Document{}, RenderOptions{Width: 800})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,11 +345,9 @@ func nextNum(d string, k *int) float64 {
 // 与源图元坐标逐段对照（连写分隔 bug——"4.15 109.1" 缺分隔连成
 // "4.15109.1" 被解析为 4.15109+0.1——只能靠数值对照发现）。
 func TestRenderSVGPathRoundTrip(t *testing.T) {
-	doc := &Document{ModelSpace: []any{
+	doc := &drawing.Document{ModelSpace: []any{
 		// 折线含正/负/小数增量与斜向段，覆盖 l/h/v 与省字母续写
-		&entity.EntLwPolyline{BaseEntity: entity.BaseEntity{}, Vertices: []entity.Point2{
-			{0, 0}, {109.123, 4.15}, {218.223, 5.14}, {218.223, 105.14}, {118.223, 105.14},
-		}},
+		&entity.EntLwPolyline{BaseEntity: entity.BaseEntity{}, Vertices: []entity.Point2{{X: 0, Y: 0}, {X: 109.123, Y: 4.15}, {X: 218.223, Y: 5.14}, {X: 218.223, Y: 105.14}, {X: 118.223, Y: 105.14}}},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
 	if err != nil {
@@ -362,7 +360,7 @@ func TestRenderSVGPathRoundTrip(t *testing.T) {
 	}
 	d := m[1]
 	// 简易 d 解析：数字流（含命令字母与 . - 空格）
-	want := []struct{ x, y float64 }{
+	want := []struct{ X, y float64 }{
 		{0, 0}, {109.123, 4.15}, {218.223, 5.14}, {218.223, 105.14}, {118.223, 105.14},
 	}
 	// 顺序扫描 d：命令字母切换状态，数字按当前命令消耗（M 绝对两点、
@@ -426,7 +424,7 @@ func TestRenderSVGPathRoundTrip(t *testing.T) {
 	// 小数，容差取 0.06 单位。
 	for i := 1; i < len(pts); i++ {
 		dx, dy := pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]
-		wx, wy := want[i].x-want[i-1].x, -(want[i].y - want[i-1].y)
+		wx, wy := want[i].X-want[i-1].X, -(want[i].y - want[i-1].y)
 		if math.Abs(dx-wx) > 0.06 || math.Abs(dy-wy) > 0.06 {
 			t.Fatalf("增量 %d: (%g,%g) ≠ (%g,%g), d=%q", i, dx, dy, wx, wy, d)
 		}
@@ -446,7 +444,7 @@ func TestRenderSVGAllSamples(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		doc, err := Parse(data)
+		doc, err := drawing.Parse(data)
 		if err != nil {
 			fail++
 			t.Errorf("%s: parse: %v", f, err)
@@ -520,7 +518,7 @@ func TestRenderSVGMetadata(t *testing.T) {
 // TestRenderSVGLayerGroups 校验图层分组：组 id 为 layer:图层名，同图层
 // 同色合并为一组，不同图层（同色）与不同颜色各自成组。
 func TestRenderSVGLayerGroups(t *testing.T) {
-	doc := &Document{
+	doc := &drawing.Document{
 		ModelSpace: []any{
 			&entity.EntLine{BaseEntity: entity.BaseEntity{Layer: 0x10}, Start: entity.Point3{X: 0, Y: 0, Z: 0}, End: entity.Point3{X: 10, Y: 0, Z: 0}},
 			&entity.EntLine{BaseEntity: entity.BaseEntity{Layer: 0x10}, Start: entity.Point3{X: 0, Y: 5, Z: 0}, End: entity.Point3{X: 10, Y: 5, Z: 0}},
@@ -551,7 +549,7 @@ func TestRenderSVGLayerGroups(t *testing.T) {
 // TestRenderSVGLayerHandleFallback 无名图层（layerColors 无记录）分组 id
 // 回退为 layer:handle-<hex>。
 func TestRenderSVGLayerHandleFallback(t *testing.T) {
-	doc := &Document{ModelSpace: []any{
+	doc := &drawing.Document{ModelSpace: []any{
 		&entity.EntLine{BaseEntity: entity.BaseEntity{Layer: 0x1f}, Start: entity.Point3{X: 0, Y: 0, Z: 0}, End: entity.Point3{X: 10, Y: 0, Z: 0}},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
@@ -579,7 +577,7 @@ func TestRenderSVGGroupCapDegraded(t *testing.T) {
 			Start:      entity.Point3{X: float64(i), Y: 0, Z: 0}, End: entity.Point3{X: float64(i) + 5, Y: 0, Z: 0},
 		})
 	}
-	doc := &Document{ModelSpace: ents, LayerColors: lc}
+	doc := &drawing.Document{ModelSpace: ents, LayerColors: lc}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
 	if err != nil {
 		t.Fatal(err)
@@ -600,7 +598,7 @@ func TestRenderSVGGroupCapDegraded(t *testing.T) {
 // TestRenderSVGTextMeta 校验文本 AI 元数据：<text> 携带 data-type（TEXT/
 // MTEXT/ATTRIB）与 data-h（源实体句柄十六进制）。
 func TestRenderSVGTextMeta(t *testing.T) {
-	doc := &Document{ModelSpace: []any{
+	doc := &drawing.Document{ModelSpace: []any{
 		&entity.EntText{BaseEntity: entity.BaseEntity{Handle: 0x2a}, Text: "T1", Insertion: entity.Point3{X: 0, Y: 0, Z: 0}, Height: 2},
 		&entity.EntMText{BaseEntity: entity.BaseEntity{Handle: 0x2b}, Text: "M1", Insertion: entity.Point3{X: 20, Y: 0, Z: 0}, TextHeight: 2},
 		&entity.EntAttrib{BaseEntity: entity.BaseEntity{Handle: 0x2c}, Text: "A1", Insertion: entity.Point3{X: 40, Y: 0, Z: 0}, Height: 2},
@@ -630,7 +628,7 @@ func TestRenderSheetSVGMetadata(t *testing.T) {
 		name     string
 		title    string
 		offset   [2]float64
-		w, hgt   float64
+		W, hgt   float64
 		scale    float64
 		rotation float64
 	}{aSeriesSheet(100, "A1图框", "配电系统图", [2]float64{0, 0})})

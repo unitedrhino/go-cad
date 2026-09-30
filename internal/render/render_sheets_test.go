@@ -2,7 +2,7 @@
 // DetectSheets 的候选识别/比例尺寸过滤/标题栏图名/嵌套块/重叠去重/
 // 无图框兜底，RenderSheetPNG/SVG 的视口裁剪与默认 4096 宽，RenderAllSheets
 // 的批量分派与错误口径，全部 testdata 样本 DetectSheets 不 panic。
-package cad
+package render
 
 import (
 	"bytes"
@@ -29,21 +29,21 @@ func buildSheetDoc(t *testing.T, sheets []struct {
 	name     string
 	title    string
 	offset   [2]float64
-	w, hgt   float64
+	W, hgt   float64
 	scale    float64
 	rotation float64
-}) *Document {
+}) *drawing.Document {
 	t.Helper()
-	doc := &Document{
+	doc := &drawing.Document{
 		Blocks:       map[uint64][]any{},
 		Attribs:      map[uint64]*entity.EntAttrib{},
 		LayerColors:  map[uint64]drawing.LayerColor{},
 		InternalObjs: map[uint64]*object.ObjGeneric{},
 	}
 	for _, s := range sheets {
-		w, hgt := s.w, s.hgt
+		w, hgt := s.W, s.hgt
 		frame := []any{
-			&entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {w, 0}, {w, hgt}, {0, hgt}, {0, 0}}},
+			&entity.EntLwPolyline{Vertices: []entity.Point2{{X: 0, Y: 0}, {X: w, Y: 0}, {X: w, Y: hgt}, {X: 0, Y: hgt}, {X: 0, Y: 0}}},
 		}
 		if s.title != "" {
 			// 图名放在右下角标题栏区（x ∈ [w-w/4, w]，y ∈ [0, h/6]）内
@@ -83,7 +83,7 @@ func aSeriesSheet(h uint64, name, title string, offset [2]float64) struct {
 	name     string
 	title    string
 	offset   [2]float64
-	w, hgt   float64
+	W, hgt   float64
 	scale    float64
 	rotation float64
 } {
@@ -92,10 +92,10 @@ func aSeriesSheet(h uint64, name, title string, offset [2]float64) struct {
 		name     string
 		title    string
 		offset   [2]float64
-		w, hgt   float64
+		W, hgt   float64
 		scale    float64
 		rotation float64
-	}{h: h, name: name, title: title, offset: offset, w: 1189, hgt: 841, scale: 1}
+	}{h: h, name: name, title: title, offset: offset, W: 1189, hgt: 841, scale: 1}
 }
 
 func TestDetectSheetsBasic(t *testing.T) {
@@ -104,7 +104,7 @@ func TestDetectSheetsBasic(t *testing.T) {
 		name     string
 		title    string
 		offset   [2]float64
-		w, hgt   float64
+		W, hgt   float64
 		scale    float64
 		rotation float64
 	}{
@@ -135,7 +135,7 @@ func TestDetectSheetsRotation(t *testing.T) {
 		name     string
 		title    string
 		offset   [2]float64
-		w, hgt   float64
+		W, hgt   float64
 		scale    float64
 		rotation float64
 	}{aSeriesSheet(100, "A1图框", "原理图", [2]float64{0, 0})})
@@ -164,14 +164,14 @@ func TestDetectSheetsRatioAndSizeFilter(t *testing.T) {
 		name     string
 		title    string
 		offset   [2]float64
-		w, hgt   float64
+		W, hgt   float64
 		scale    float64
 		rotation float64
 	}{
 		// 正方形大块：比例 1.0 不入选
-		{h: 100, name: "方块", offset: [2]float64{0, 0}, w: 2000, hgt: 2000, scale: 1},
+		{h: 100, name: "方块", offset: [2]float64{0, 0}, W: 2000, hgt: 2000, scale: 1},
 		// A 系比例但太小（最短边 < 500）：不入选
-		{h: 101, name: "小块", offset: [2]float64{0, 0}, w: 118.9, hgt: 84.1, scale: 1},
+		{h: 101, name: "小块", offset: [2]float64{0, 0}, W: 118.9, hgt: 84.1, scale: 1},
 	})
 	if got := DetectSheets(doc); len(got) != 1 {
 		t.Fatalf("比例/尺寸过滤后应兜底整图 1 张，实际 %d：%+v", len(got), got)
@@ -187,7 +187,7 @@ func TestDetectSheetsTitleFallback(t *testing.T) {
 		name     string
 		title    string
 		offset   [2]float64
-		w, hgt   float64
+		W, hgt   float64
 		scale    float64
 		rotation float64
 	}{aSeriesSheet(100, "A1图框", "", [2]float64{0, 0})})
@@ -205,10 +205,10 @@ func TestDetectSheetsTitleFallback(t *testing.T) {
 
 func TestDetectSheetsNestedInsert(t *testing.T) {
 	// 图框块 200 内嵌标题栏块 201（含图名 TEXT），外框直接 LINE
-	doc := &Document{
+	doc := &drawing.Document{
 		Blocks: map[uint64][]any{
 			200: {
-				&entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {1189, 0}, {1189, 841}, {0, 841}, {0, 0}}},
+				&entity.EntLwPolyline{Vertices: []entity.Point2{{X: 0, Y: 0}, {X: 1189, Y: 0}, {X: 1189, Y: 841}, {X: 0, Y: 841}, {X: 0, Y: 0}}},
 				&entity.EntInsert{Position: entity.Point3{X: 950, Y: 20, Z: 0}, Scale: entity.Point3{X: 1, Y: 1, Z: 1}, BlockHeader: 201},
 			},
 			201: {&entity.EntText{Text: "嵌套图名", Insertion: entity.Point3{X: 0, Y: 30, Z: 0}, Height: 30}},
@@ -237,9 +237,9 @@ func TestDetectSheetsNestedInsert(t *testing.T) {
 
 func TestDetectSheetsAttribTitle(t *testing.T) {
 	// 图名是块参照的 ATTRIB 属性文字
-	doc := &Document{
+	doc := &drawing.Document{
 		Blocks: map[uint64][]any{
-			300: {&entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {1189, 0}, {1189, 841}, {0, 841}, {0, 0}}}},
+			300: {&entity.EntLwPolyline{Vertices: []entity.Point2{{X: 0, Y: 0}, {X: 1189, Y: 0}, {X: 1189, Y: 841}, {X: 0, Y: 841}, {X: 0, Y: 0}}}},
 		},
 		Attribs: map[uint64]*entity.EntAttrib{
 			900: {Text: "属性图名", Insertion: entity.Point3{X: 950, Y: 60, Z: 0}, Height: 30},
@@ -271,7 +271,7 @@ func TestDetectSheetsOverlapDedup(t *testing.T) {
 		name     string
 		title    string
 		offset   [2]float64
-		w, hgt   float64
+		W, hgt   float64
 		scale    float64
 		rotation float64
 	}{
@@ -290,7 +290,7 @@ func TestDetectSheetsOverlapDedup(t *testing.T) {
 
 func TestDetectSheetsFallbackNoInsert(t *testing.T) {
 	// 纯图元模型空间（无 INSERT）→ 兜底整图单张
-	doc := &Document{
+	doc := &drawing.Document{
 		Blocks:       map[uint64][]any{},
 		Attribs:      map[uint64]*entity.EntAttrib{},
 		LayerColors:  map[uint64]drawing.LayerColor{},
@@ -324,7 +324,7 @@ func TestDetectSheetsAllTestdataNoPanic(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		doc, err := Parse(data)
+		doc, err := drawing.Parse(data)
 		if err != nil {
 			continue // 解码失败样本由解码回归覆盖
 		}
@@ -349,7 +349,7 @@ func TestRenderSheetPNGViewport(t *testing.T) {
 		name     string
 		title    string
 		offset   [2]float64
-		w, hgt   float64
+		W, hgt   float64
 		scale    float64
 		rotation float64
 	}{
@@ -391,7 +391,7 @@ func TestRenderSheetSVGViewport(t *testing.T) {
 		name     string
 		title    string
 		offset   [2]float64
-		w, hgt   float64
+		W, hgt   float64
 		scale    float64
 		rotation float64
 	}{aSeriesSheet(100, "A1图框", "配电系统图", [2]float64{0, 0})})
@@ -425,7 +425,7 @@ func TestRenderAllSheets(t *testing.T) {
 		name     string
 		title    string
 		offset   [2]float64
-		w, hgt   float64
+		W, hgt   float64
 		scale    float64
 		rotation float64
 	}{
@@ -483,7 +483,7 @@ func TestRenderAllSheets(t *testing.T) {
 
 func TestRenderAllSheetsFallbackSingle(t *testing.T) {
 	// 无图框样本 → 批量接口兜底整图单张
-	doc := &Document{
+	doc := &drawing.Document{
 		Blocks:       map[uint64][]any{},
 		Attribs:      map[uint64]*entity.EntAttrib{},
 		LayerColors:  map[uint64]drawing.LayerColor{},
@@ -523,16 +523,16 @@ func TestSanitizeSheetName(t *testing.T) {
 // 图号 TEXT 位于右下角标题栏区（insertion (990, 50)），图名 TEXT 位于
 // 图号正上方一个标题栏行距处（右端对齐），titleRegion 之外的布局与
 // 真实设计院标题栏一致；noText/extra 控制干扰文本。
-func buildSheetNoDoc(t *testing.T, no, name string, extra func(block []any) []any) *Document {
+func buildSheetNoDoc(t *testing.T, no, name string, extra func(block []any) []any) *drawing.Document {
 	t.Helper()
-	doc := &Document{
+	doc := &drawing.Document{
 		Blocks:       map[uint64][]any{},
 		Attribs:      map[uint64]*entity.EntAttrib{},
 		LayerColors:  map[uint64]drawing.LayerColor{},
 		InternalObjs: map[uint64]*object.ObjGeneric{},
 	}
 	block := []any{
-		&entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {1189, 0}, {1189, 841}, {0, 841}, {0, 0}}},
+		&entity.EntLwPolyline{Vertices: []entity.Point2{{X: 0, Y: 0}, {X: 1189, Y: 0}, {X: 1189, Y: 841}, {X: 0, Y: 841}, {X: 0, Y: 0}}},
 	}
 	if no != "" {
 		block = append(block, &entity.EntText{Text: no, Insertion: entity.Point3{X: 990, Y: 50, Z: 0}, Height: 30})
@@ -644,12 +644,12 @@ func TestQuantileSheetBounds(t *testing.T) {
 	var prims []drawing.Primitive
 	for i := 0; i < 200; i++ {
 		prims = append(prims, drawing.Primitive{Kind: 0, Strokes: []drawing.Stroke{
-			{float64(i % 100), float64(i / 2), float64(i%100 + 1), float64(i/2 + 1)},
+			{X1: float64(i % 100), Y1: float64(i / 2), X2: float64(i%100 + 1), Y2: float64(i/2 + 1)},
 		}})
 	}
 	prims = append(prims,
-		drawing.Primitive{Kind: 0, Strokes: []drawing.Stroke{{0, 0, 1e6, 1e6}}},
-		drawing.Primitive{Kind: 0, Strokes: []drawing.Stroke{{0, 0, -1e6, -1e6}}},
+		drawing.Primitive{Kind: 0, Strokes: []drawing.Stroke{{X1: 0, Y1: 0, X2: 1e6, Y2: 1e6}}},
+		drawing.Primitive{Kind: 0, Strokes: []drawing.Stroke{{X1: 0, Y1: 0, X2: -1e6, Y2: -1e6}}},
 	)
 	b := quantileSheetBounds(prims)
 	if b.MaxX > 200 || b.MaxY > 200 || b.MinX < -100 || b.MinY < -100 {
@@ -659,12 +659,12 @@ func TestQuantileSheetBounds(t *testing.T) {
 		t.Fatalf("分位包围盒退化: %v", b)
 	}
 	// 坐标全重合（零宽窗口）→ 回退旧口径仍有有限包围盒
-	same := []drawing.Primitive{{Kind: 0, Strokes: []drawing.Stroke{{5, 5, 5, 5}, {5, 5, 5, 5}, {5, 5, 5, 5}}}}
+	same := []drawing.Primitive{{Kind: 0, Strokes: []drawing.Stroke{{X1: 5, Y1: 5, X2: 5, Y2: 5}, {X1: 5, Y1: 5, X2: 5, Y2: 5}, {X1: 5, Y1: 5, X2: 5, Y2: 5}}}}
 	if b2 := quantileSheetBounds(same); b2.MaxX <= b2.MinX || b2.MaxY <= b2.MinY {
 		t.Fatalf("零宽窗口应回退旧口径: %v", b2)
 	}
 	// 样本过少 → primitivesBounds
-	few := []drawing.Primitive{{Kind: 0, Strokes: []drawing.Stroke{{0, 0, 10, 10}}}}
+	few := []drawing.Primitive{{Kind: 0, Strokes: []drawing.Stroke{{X1: 0, Y1: 0, X2: 10, Y2: 10}}}}
 	if b3 := quantileSheetBounds(few); b3.MinX != 0 || b3.MaxX != 10 {
 		t.Fatalf("小样本应回退 primitivesBounds: %v", b3)
 	}
@@ -673,12 +673,12 @@ func TestQuantileSheetBounds(t *testing.T) {
 	var cl []drawing.Primitive
 	for i := 0; i < 300; i++ {
 		cl = append(cl, drawing.Primitive{Kind: 0, Strokes: []drawing.Stroke{
-			{float64(i % 20), float64(i / 3), float64(i%20 + 1), float64(i/3 + 1)},
+			{X1: float64(i % 20), Y1: float64(i / 3), X2: float64(i%20 + 1), Y2: float64(i/3 + 1)},
 		}})
 	}
 	for i := 0; i < 40; i++ { // 孤立簇 (y≈5000)：占比 40/340 > 0.5%，分位保留
 		cl = append(cl, drawing.Primitive{Kind: 0, Strokes: []drawing.Stroke{
-			{float64(i), 5000, float64(i + 1), 5001},
+			{X1: float64(i), Y1: 5000, X2: float64(i + 1), Y2: 5001},
 		}})
 	}
 	bc := quantileSheetBounds(cl)
@@ -692,7 +692,7 @@ func TestQuantileSheetBounds(t *testing.T) {
 
 func TestDetectSheetsFallbackQuantileBox(t *testing.T) {
 	// 无图框 + 离群实体：兜底整图包围盒应贴合主体而非被离群撑爆
-	doc := &Document{
+	doc := &drawing.Document{
 		Blocks:       map[uint64][]any{},
 		Attribs:      map[uint64]*entity.EntAttrib{},
 		LayerColors:  map[uint64]drawing.LayerColor{},
@@ -721,16 +721,16 @@ func TestDetectSheetsFallbackQuantileBox(t *testing.T) {
 // (0,0)-(1189000,841000)（A 系比例 ×1000，含框内直属内容），文字页
 // 位于 (pageX,pageY) 起。坐标取真实施工图量级（百万单位），残余聚类
 // 的格计数/密度阈值均按该量级整定。
-func buildResidualDoc(t *testing.T) *Document {
+func buildResidualDoc(t *testing.T) *drawing.Document {
 	t.Helper()
-	doc := &Document{
+	doc := &drawing.Document{
 		Blocks:       map[uint64][]any{},
 		Attribs:      map[uint64]*entity.EntAttrib{},
 		LayerColors:  map[uint64]drawing.LayerColor{},
 		InternalObjs: map[uint64]*object.ObjGeneric{},
 	}
 	doc.Blocks[100] = []any{
-		&entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {1189000, 0}, {1189000, 841000}, {0, 841000}, {0, 0}}},
+		&entity.EntLwPolyline{Vertices: []entity.Point2{{X: 0, Y: 0}, {X: 1189000, Y: 0}, {X: 1189000, Y: 841000}, {X: 0, Y: 841000}, {X: 0, Y: 0}}},
 	}
 	doc.InternalObjs[100] = &object.ObjGeneric{Name: "BLOCK_HEADER", Fields: []object.ObjField{{Key: "name", Val: "A1图框"}}}
 	doc.ModelSpace = append(doc.ModelSpace,
@@ -840,7 +840,7 @@ func TestGridDensityGapJump(t *testing.T) {
 func TestResidualSheetsOverlapDrop(t *testing.T) {
 	// 白盒：环绕标准框的高密度标注带（分量包围盒与框大面积重叠）应被
 	// 剔除；远离框的同样点云正常产出补充区域
-	doc := &Document{
+	doc := &drawing.Document{
 		Blocks:       map[uint64][]any{},
 		Attribs:      map[uint64]*entity.EntAttrib{},
 		LayerColors:  map[uint64]drawing.LayerColor{},
@@ -856,7 +856,7 @@ func TestResidualSheetsOverlapDrop(t *testing.T) {
 		dots = append(dots, [2]float64{-500, y}, [2]float64{1500, y})
 	}
 	sd.dots = dots
-	if got := sd.residualSheets([]drawing.Box2{{0, 0, 1000, 700}}); len(got) != 0 {
+	if got := sd.residualSheets([]drawing.Box2{{MinX: 0, MinY: 0, MaxX: 1000, MaxY: 700}}); len(got) != 0 {
 		t.Fatalf("环绕标注带应被重叠剔除，实际 %d：%+v", len(got), got)
 	}
 	// 同样点云远离标准框 → 产出 1 张补充区域（无可读文本用序号）
@@ -865,7 +865,7 @@ func TestResidualSheetsOverlapDrop(t *testing.T) {
 		shifted[i] = [2]float64{d[0] + 100000, d[1]}
 	}
 	sd.dots = shifted
-	got := sd.residualSheets([]drawing.Box2{{0, 0, 1000, 700}})
+	got := sd.residualSheets([]drawing.Box2{{MinX: 0, MinY: 0, MaxX: 1000, MaxY: 700}})
 	if len(got) != 1 || got[0].Name != "补充区域 1" {
 		t.Fatalf("远离框点云应产出 1 张补充区域: %+v", got)
 	}
@@ -887,9 +887,9 @@ func captureSheetStdout(t *testing.T, fn func()) string {
 
 // buildMicroTextDoc 单页文档：视口 (0,0)-(w,h) 内一个直属 TEXT（字高
 // hWorld），供清晰度自检/自动重渲用例精确控制达标率。
-func buildMicroTextDoc(t *testing.T, w, h, hWorld float64) *Document {
+func buildMicroTextDoc(t *testing.T, w, h, hWorld float64) *drawing.Document {
 	t.Helper()
-	return &Document{
+	return &drawing.Document{
 		Blocks:       map[uint64][]any{},
 		Attribs:      map[uint64]*entity.EntAttrib{},
 		LayerColors:  map[uint64]drawing.LayerColor{},
@@ -908,17 +908,17 @@ func TestSheetTextPassRate(t *testing.T) {
 		}}
 	}
 	prims := []drawing.Primitive{mkLabel(8), mkLabel(4), mkLabel(2)}
-	rate := sheetTextPassRate(prims, drawing.Box2{0, 0, 100, 100}, 2)
+	rate := sheetTextPassRate(prims, drawing.Box2{MinX: 0, MinY: 0, MaxX: 100, MaxY: 100}, 2)
 	if math.Abs(rate-2.0/3.0) > 1e-9 {
 		t.Fatalf("达标率应 2/3，实际 %v", rate)
 	}
 	// 视口外文本不计入
-	rate = sheetTextPassRate(prims, drawing.Box2{50, 50, 100, 100}, 2)
+	rate = sheetTextPassRate(prims, drawing.Box2{MinX: 50, MinY: 50, MaxX: 100, MaxY: 100}, 2)
 	if rate != 1 {
 		t.Fatalf("视口外文本应不计入（无文本=达标），实际 %v", rate)
 	}
 	// 无文本图框视为达标
-	rate = sheetTextPassRate(nil, drawing.Box2{0, 0, 1, 1}, 1)
+	rate = sheetTextPassRate(nil, drawing.Box2{MinX: 0, MinY: 0, MaxX: 1, MaxY: 1}, 1)
 	if rate != 1 {
 		t.Fatalf("无文本应达标 1，实际 %v", rate)
 	}
@@ -926,15 +926,15 @@ func TestSheetTextPassRate(t *testing.T) {
 
 func TestSheetPixelsOK(t *testing.T) {
 	// 32768×333 扁长画布 ~1094 万像素：允许
-	if !sheetPixelsOK(drawing.Box2{0, 0, 5100, 52}, sheetHardMaxWidth) {
+	if !sheetPixelsOK(drawing.Box2{MinX: 0, MinY: 0, MaxX: 5100, MaxY: 52}, sheetHardMaxWidth) {
 		t.Fatal("扁长视口 32768 宽应在内存上限内")
 	}
 	// 32768×12603 ≈ 4.13 亿像素：拒绝（内存防爆）
-	if sheetPixelsOK(drawing.Box2{0, 0, 2652, 1020}, sheetHardMaxWidth) {
+	if sheetPixelsOK(drawing.Box2{MinX: 0, MinY: 0, MaxX: 2652, MaxY: 1020}, sheetHardMaxWidth) {
 		t.Fatal("竖版视口 32768 宽应超内存上限被拒绝")
 	}
 	// 16384×6301 ≈ 1.03 亿像素：允许
-	if !sheetPixelsOK(drawing.Box2{0, 0, 2652, 1020}, 16384) {
+	if !sheetPixelsOK(drawing.Box2{MinX: 0, MinY: 0, MaxX: 2652, MaxY: 1020}, 16384) {
 		t.Fatal("16384 宽应在内存上限内")
 	}
 }
@@ -1083,7 +1083,7 @@ func TestRenderAllSheetsStats(t *testing.T) {
 		name     string
 		title    string
 		offset   [2]float64
-		w, hgt   float64
+		W, hgt   float64
 		scale    float64
 		rotation float64
 	}{
@@ -1139,10 +1139,10 @@ func TestBoxGap(t *testing.T) {
 		a, b drawing.Box2
 		want float64
 	}{
-		{drawing.Box2{0, 0, 10, 10}, drawing.Box2{5, 5, 15, 15}, 0},                    // 相交
-		{drawing.Box2{0, 0, 10, 10}, drawing.Box2{20, 0, 30, 10}, 10},                  // x 分离
-		{drawing.Box2{0, 0, 10, 10}, drawing.Box2{0, -5, 10, -2}, 2},                   // y 分离
-		{drawing.Box2{0, 0, 10, 10}, drawing.Box2{20, 20, 30, 30}, 14.142135623730951}, // 对角
+		{drawing.Box2{MinX: 0, MinY: 0, MaxX: 10, MaxY: 10}, drawing.Box2{MinX: 5, MinY: 5, MaxX: 15, MaxY: 15}, 0},                    // 相交
+		{drawing.Box2{MinX: 0, MinY: 0, MaxX: 10, MaxY: 10}, drawing.Box2{MinX: 20, MinY: 0, MaxX: 30, MaxY: 10}, 10},                  // x 分离
+		{drawing.Box2{MinX: 0, MinY: 0, MaxX: 10, MaxY: 10}, drawing.Box2{MinX: 0, MinY: -5, MaxX: 10, MaxY: -2}, 2},                   // y 分离
+		{drawing.Box2{MinX: 0, MinY: 0, MaxX: 10, MaxY: 10}, drawing.Box2{MinX: 20, MinY: 20, MaxX: 30, MaxY: 30}, 14.142135623730951}, // 对角
 	}
 	for i, c := range cases {
 		if got := boxGap(c.a, c.b); math.Abs(got-c.want) > 1e-6 {
@@ -1157,8 +1157,8 @@ func TestMergeCloseComps(t *testing.T) {
 	}
 	// 间距 2000 ≥ 0.3×5000=1500：不同页保持拆分
 	in := []residualComp{
-		mk(drawing.Box2{0, 0, 10000, 5000}, 10),
-		mk(drawing.Box2{12000, 0, 22000, 5000}, 20),
+		mk(drawing.Box2{MinX: 0, MinY: 0, MaxX: 10000, MaxY: 5000}, 10),
+		mk(drawing.Box2{MinX: 12000, MinY: 0, MaxX: 22000, MaxY: 5000}, 20),
 	}
 	got := mergeCloseComps(in, sheetResidualGapFrac)
 	if len(got) != 2 {
@@ -1166,8 +1166,8 @@ func TestMergeCloseComps(t *testing.T) {
 	}
 	// 间距 1000 < 1500：同页粘连合并（点/计数/包围盒累加）
 	in = []residualComp{
-		mk(drawing.Box2{0, 0, 10000, 5000}, 10),
-		mk(drawing.Box2{11000, 0, 21000, 5000}, 20),
+		mk(drawing.Box2{MinX: 0, MinY: 0, MaxX: 10000, MaxY: 5000}, 10),
+		mk(drawing.Box2{MinX: 11000, MinY: 0, MaxX: 21000, MaxY: 5000}, 20),
 	}
 	got = mergeCloseComps(in, sheetResidualGapFrac)
 	if len(got) != 1 || got[0].dots != 30 {
@@ -1179,16 +1179,16 @@ func TestMergeCloseComps(t *testing.T) {
 	// 链式传递合并：A-B 间距 250、B-C 间距 250 均 < 300，A-C 间距 500 ≥ 300
 	// → 三者经并查集归并为一组
 	in = []residualComp{
-		mk(drawing.Box2{0, 0, 1000, 1000}, 1),
-		mk(drawing.Box2{1250, 0, 2250, 1000}, 2),
-		mk(drawing.Box2{1500, 0, 2500, 1000}, 4),
+		mk(drawing.Box2{MinX: 0, MinY: 0, MaxX: 1000, MaxY: 1000}, 1),
+		mk(drawing.Box2{MinX: 1250, MinY: 0, MaxX: 2250, MaxY: 1000}, 2),
+		mk(drawing.Box2{MinX: 1500, MinY: 0, MaxX: 2500, MaxY: 1000}, 4),
 	}
 	got = mergeCloseComps(in, sheetResidualGapFrac)
 	if len(got) != 1 || got[0].dots != 7 {
 		t.Fatalf("链式相邻应归并一组: %+v", got)
 	}
 	// 单分量原样返回
-	single := []residualComp{mk(drawing.Box2{0, 0, 1, 1}, 5)}
+	single := []residualComp{mk(drawing.Box2{MinX: 0, MinY: 0, MaxX: 1, MaxY: 1}, 5)}
 	if got = mergeCloseComps(single, sheetResidualGapFrac); len(got) != 1 || got[0].dots != 5 {
 		t.Fatalf("单分量应原样: %+v", got)
 	}

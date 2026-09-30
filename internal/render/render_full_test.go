@@ -1,5 +1,5 @@
 // render_full_test.go 渲染层单元测试：tessellation、过滤、鲁棒视口、颜色解析。
-package cad
+package render
 
 import (
 	"github.com/unitedrhino/go-cad/internal/drawing"
@@ -49,7 +49,7 @@ func TestTessArcSpan(t *testing.T) {
 }
 
 func TestTessLwPolylineLines(t *testing.T) {
-	e := &entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {10, 0}, {10, 10}}}
+	e := &entity.EntLwPolyline{Vertices: []entity.Point2{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 10, Y: 10}}}
 	strokes := drawing.TessLwPolyline(e, drawing.IdentityXform())
 	// 2 段直线
 	if len(strokes) != 2 {
@@ -62,7 +62,7 @@ func TestTessLwPolylineLines(t *testing.T) {
 
 func TestTessLwPolylineClosedByGeometry(t *testing.T) {
 	// 首尾重合 → 几何闭合：最后一段 (10,0)→(0,0) 已回到起点，无需回连段
-	e := &entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {10, 0}, {0, 0}}}
+	e := &entity.EntLwPolyline{Vertices: []entity.Point2{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 0, Y: 0}}}
 	strokes := drawing.TessLwPolyline(e, drawing.IdentityXform())
 	if len(strokes) != 2 {
 		t.Fatalf("闭合折线期望 2 段得到 %d", len(strokes))
@@ -76,7 +76,7 @@ func TestTessLwPolylineClosedByGeometry(t *testing.T) {
 func TestTessLwPolylineBulgeArc(t *testing.T) {
 	// bulge=1 → 半圆弧（圆心角 180°），弦 (0,0)-(10,0)
 	e := &entity.EntLwPolyline{
-		Vertices: []entity.Point2{{0, 0}, {10, 0}},
+		Vertices: []entity.Point2{{X: 0, Y: 0}, {X: 10, Y: 0}},
 		Bulges:   []float64{1},
 	}
 	strokes := drawing.TessLwPolyline(e, drawing.IdentityXform())
@@ -130,9 +130,9 @@ func TestFilterRadiatingStrokes(t *testing.T) {
 	// 同锚点 20 条放射线（阈值 12）应被剔除；普通线保留
 	var prims []drawing.Primitive
 	for i := 0; i < 20; i++ {
-		prims = append(prims, drawing.Primitive{Kind: 0, Strokes: []drawing.Stroke{{0, 0, float64(i + 1), 100}}})
+		prims = append(prims, drawing.Primitive{Kind: 0, Strokes: []drawing.Stroke{{X1: 0, Y1: 0, X2: float64(i + 1), Y2: 100}}})
 	}
-	prims = append(prims, drawing.Primitive{Kind: 0, Strokes: []drawing.Stroke{{50, 50, 60, 60}}})
+	prims = append(prims, drawing.Primitive{Kind: 0, Strokes: []drawing.Stroke{{X1: 50, Y1: 50, X2: 60, Y2: 60}}})
 	out := filterRadiatingStrokes(prims)
 	if len(out) != 1 {
 		t.Fatalf("放射过滤后期望 1 个图元得到 %d", len(out))
@@ -140,12 +140,12 @@ func TestFilterRadiatingStrokes(t *testing.T) {
 }
 
 func TestDropOriginAnchored(t *testing.T) {
-	bbox := drawing.Box2{0, 0, 100, 100}
+	bbox := drawing.Box2{MinX: 0, MinY: 0, MaxX: 100, MaxY: 100}
 	prims := []drawing.Primitive{
 		// 视口中心 (50,50) 锚定、远端超出 1.5 倍视口 → 剔除
-		{Kind: 0, Strokes: []drawing.Stroke{{50, 50, 5000, 5000}}},
-		{Kind: 0, Strokes: []drawing.Stroke{{10, 10, 50, 50}}}, // 视口内 → 保留
-		{Kind: 1, Lb: drawing.Label{X: 30, Y: 30, W: 5, H: 2}}, // 文字 → 保留
+		{Kind: 0, Strokes: []drawing.Stroke{{X1: 50, Y1: 50, X2: 5000, Y2: 5000}}},
+		{Kind: 0, Strokes: []drawing.Stroke{{X1: 10, Y1: 10, X2: 50, Y2: 50}}}, // 视口内 → 保留
+		{Kind: 1, Lb: drawing.Label{X: 30, Y: 30, W: 5, H: 2}},                 // 文字 → 保留
 	}
 	out := dropOriginAnchored(prims, bbox)
 	if len(out) != 2 {
@@ -158,9 +158,9 @@ func TestRobustBounds(t *testing.T) {
 	var prims []drawing.Primitive
 	for i := 0; i < 100; i++ {
 		prims = append(prims, drawing.Primitive{Kind: 0, Strokes: []drawing.Stroke{
-			{float64(i), float64(i), float64(i) + 1, float64(i) + 1}}})
+			{X1: float64(i), Y1: float64(i), X2: float64(i) + 1, Y2: float64(i) + 1}}})
 	}
-	prims = append(prims, drawing.Primitive{Kind: 0, Strokes: []drawing.Stroke{{1e6, 1e6, 1e6, 1e6}}})
+	prims = append(prims, drawing.Primitive{Kind: 0, Strokes: []drawing.Stroke{{X1: 1e6, Y1: 1e6, X2: 1e6, Y2: 1e6}}})
 	b := drawing.RobustBounds(prims)
 	// 离群点 (1e6,1e6) 不得撑爆视口：范围应保持在正常数据量级（0~99）附近
 	if b.MaxX > 1000 || b.MinX < -1000 {
@@ -181,7 +181,7 @@ func TestMedianAndQuantile(t *testing.T) {
 }
 
 func TestEntityColorPriority(t *testing.T) {
-	doc := &Document{LayerColors: map[uint64]drawing.LayerColor{
+	doc := &drawing.Document{LayerColors: map[uint64]drawing.LayerColor{
 		10: {Index: 5, HasTrue: false},
 	}}
 	// true color 优先
@@ -212,7 +212,7 @@ func TestEntityColorPriority(t *testing.T) {
 
 func TestPrimitivesBounds(t *testing.T) {
 	prims := []drawing.Primitive{
-		{Kind: 0, Strokes: []drawing.Stroke{{0, 0, 10, 10}}},
+		{Kind: 0, Strokes: []drawing.Stroke{{X1: 0, Y1: 0, X2: 10, Y2: 10}}},
 		{Kind: 1, Lb: drawing.Label{X: -5, Y: -5, W: 2, H: 1}},
 	}
 	b := drawing.PrimitivesBounds(prims)
@@ -241,7 +241,7 @@ func TestInsertXformAndCompose(t *testing.T) {
 }
 
 func TestTextLabelWidth(t *testing.T) {
-	ts := drawing.NewTessellator(&Document{})
+	ts := drawing.NewTessellator(&drawing.Document{})
 	e := &entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "ABCD", Insertion: entity.Point3{X: 0, Y: 0, Z: 0}, Height: 2}
 	prim := ts.TextLabel(0, 0, 2, 0, 4, drawing.IdentityXform(), e, "TEXT", e.Text, 0)
 	if prim.Kind != 1 {

@@ -8,6 +8,8 @@ import (
 	"io"
 
 	"github.com/unitedrhino/go-cad/internal/drawing"
+	"github.com/unitedrhino/go-cad/internal/render"
+	"github.com/unitedrhino/go-cad/internal/writer"
 )
 
 // Document 解析完成的 DWG 文档模型（实现见 internal/drawing）。
@@ -24,6 +26,58 @@ type DumpEntityRow = drawing.DumpEntityRow
 type Entity interface {
 	bounds() drawing.Box2
 }
+
+// RenderOptions 渲染选项（尺寸/背景等）。
+type RenderOptions = render.RenderOptions
+
+// Sheet 图纸分幅定义。
+type Sheet = render.Sheet
+
+// SheetResult 单图纸渲染产出。
+type SheetResult = render.SheetResult
+
+// RenderPNG 将文档渲染为 PNG 字节流。
+func RenderPNG(doc *Document, opts RenderOptions) ([]byte, error) {
+	return render.RenderPNG(doc, opts)
+}
+
+// RenderSVG 将文档渲染为 SVG 字节流。
+func RenderSVG(doc *Document, opts RenderOptions) ([]byte, error) {
+	return render.RenderSVG(doc, opts)
+}
+
+// RenderSheetPNG 渲染单张图纸为 PNG。
+func RenderSheetPNG(doc *Document, sheet Sheet, opts RenderOptions) ([]byte, error) {
+	return render.RenderSheetPNG(doc, sheet, opts)
+}
+
+// RenderSheetSVG 渲染单张图纸为 SVG。
+func RenderSheetSVG(doc *Document, sheet Sheet, opts RenderOptions) ([]byte, error) {
+	return render.RenderSheetSVG(doc, sheet, opts)
+}
+
+// RenderAllSheets 渲染全部图纸（format 为 "png"/"svg"）。
+func RenderAllSheets(doc *Document, opts RenderOptions, format string) ([]SheetResult, error) {
+	return render.RenderAllSheets(doc, opts, format)
+}
+
+// DetectSheets 检测图纸分幅（图框识别）。
+func DetectSheets(doc *Document) []Sheet { return render.DetectSheets(doc) }
+
+// SanitizeSheetName 规范化图纸名（文件名安全口径）。
+func SanitizeSheetName(name string) string { return render.SanitizeSheetName(name) }
+
+// WriteDwg 按文档携带的容器素材写出 DWG（R2000/R2004/R2007 家族自适应）。
+func WriteDwg(doc *Document, w io.Writer) error { return writer.WriteDwg(doc, w) }
+
+// WriteDwgR2000 写出 R2000（AC1015）家族 DWG（含同容器 R13/R14）。
+func WriteDwgR2000(doc *Document, w io.Writer) error { return writer.WriteDwgR2000(doc, w) }
+
+// WriteDwgR2004 写出 R2004（AC1018）家族 DWG。
+func WriteDwgR2004(doc *Document, w io.Writer) error { return writer.WriteDwgR2004(doc, w) }
+
+// WriteDwgR2007 写出 R2007（AC1021）DWG。
+func WriteDwgR2007(doc *Document, w io.Writer) error { return writer.WriteDwgR2007(doc, w) }
 
 // Parse 解析 DWG 字节流（R13~R2018 主流容器 + R9/R10/R11 pre-R13）。
 func Parse(data []byte) (*Document, error) { return drawing.Parse(data) }

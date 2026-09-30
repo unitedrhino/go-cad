@@ -21,7 +21,7 @@
 //   - RenderSVG：入口，管线复用与视口计算
 //   - svgEmitter：path 合并、颜色×图层分组、文本元素序列化、图纸摘要
 //   - 辅助：坐标量化、XML 转义、颜色十六进制
-package cad
+package render
 
 import (
 	"bytes"
@@ -44,7 +44,7 @@ const svgExpandBudget = 2000000
 // RenderSVG 将文档模型空间渲染为 SVG 矢量字节流。
 // opts.Width 决定固有像素宽度与线宽基准（viewBox 保持世界坐标，缩放无损）；
 // 高度按包围盒比例确定；背景色填充 rect（默认白色，与 RenderPNG 一致）。
-func RenderSVG(doc *Document, opts RenderOptions) ([]byte, error) {
+func RenderSVG(doc *drawing.Document, opts RenderOptions) ([]byte, error) {
 	// nil 文档防御：与 RenderPNG 等导出 API 的错误返回口径一致，不 panic
 	if doc == nil {
 		return nil, fmt.Errorf("cad: 文档为空，无法渲染")
@@ -66,7 +66,7 @@ func RenderSVG(doc *Document, opts RenderOptions) ([]byte, error) {
 	prims = filterRadiatingStrokes(prims)
 	bbox := drawing.RobustBounds(prims)
 	if bbox.Invalid() {
-		bbox = drawing.Box2{0, 0, 1, 1}
+		bbox = drawing.Box2{MinX: 0, MinY: 0, MaxX: 1, MaxY: 1}
 	}
 	prims = dropOriginAnchored(prims, bbox)
 
@@ -119,7 +119,7 @@ type svgStrokeGroup struct {
 }
 
 // rgbKey 颜色分组键（可哈希数组，免每图元格式化十六进制字符串的分配）。
-type rgbKey struct{ r, g, b uint8 }
+type rgbKey struct{ r, G, b uint8 }
 
 // svgGroupKey 线段分组键：颜色 × 图层 id（同名图层自动合并）。
 type svgGroupKey struct {
@@ -174,7 +174,7 @@ func (em *svgEmitter) xy(x, y float64) (int64, int64) {
 
 // layerID 图层句柄 → 分组 id 片段：有名图层用真名（doc.layerColors 解析
 // 产物），无名/无图层信息用 handle-<hex>；按句柄缓存免逐图元格式化。
-func (em *svgEmitter) layerID(doc *Document, h uint64) string {
+func (em *svgEmitter) layerID(doc *drawing.Document, h uint64) string {
 	if id, ok := em.layerIDs[h]; ok {
 		return id
 	}
@@ -191,7 +191,7 @@ func (em *svgEmitter) layerID(doc *Document, h uint64) string {
 // groupFor 取线段分组组（键 = 颜色×图层，首次出现顺序保序）；分组数触顶
 // 后退化：新图元（含新图层）一律并入同色纯颜色组，已有图层组保持不变。
 // 出现过的图层 id 记入 layersSeen（metadata 图层清单按实际出图统计）。
-func (em *svgEmitter) groupFor(doc *Document, layer uint64, k rgbKey) *svgStrokeGroup {
+func (em *svgEmitter) groupFor(doc *drawing.Document, layer uint64, k rgbKey) *svgStrokeGroup {
 	id := em.layerID(doc, layer)
 	em.layersSeen[id] = struct{}{}
 	if !em.degraded {
@@ -227,7 +227,7 @@ func hexFromRGB(k rgbKey) string {
 	var b [7]byte
 	b[0] = '#'
 	b[1], b[2] = digits[k.r>>4], digits[k.r&0xf]
-	b[3], b[4] = digits[k.g>>4], digits[k.g&0xf]
+	b[3], b[4] = digits[k.G>>4], digits[k.G&0xf]
 	b[5], b[6] = digits[k.b>>4], digits[k.b&0xf]
 	return string(b[:])
 }
@@ -266,7 +266,7 @@ func absI64(v int64) int64 {
 //   - 数字去尾零与小数点前导零（0.087 → .087），负号隐式分隔坐标对；
 //   - 大数值降小数位（千单位级线段上 0.01 的绝对误差不可见）；
 //   - 同向共线连续段累加合并为一段（折线共线顶点、密集插值段）。
-func (em *svgEmitter) emit(doc *Document, p *drawing.Primitive, bgWhite bool) {
+func (em *svgEmitter) emit(doc *drawing.Document, p *drawing.Primitive, bgWhite bool) {
 	switch p.Kind {
 	case 0:
 		if len(p.Strokes) == 0 {
@@ -417,7 +417,7 @@ func svgAutoDigits(v int64) int {
 
 // appendLabelBox 输出文字占位框：基线左端为原点、向上半高，随 rot 旋转
 // （几何口径与 canvas.drawLabel 一致），d 数据并入同色×图层组。
-func (em *svgEmitter) appendLabelBox(doc *Document, p *drawing.Primitive, k rgbKey) {
+func (em *svgEmitter) appendLabelBox(doc *drawing.Document, p *drawing.Primitive, k rgbKey) {
 	g := em.groupFor(doc, p.Layer, k)
 	lb := &p.Lb
 	cos, sin := math.Cos(lb.Rot), math.Sin(lb.Rot)

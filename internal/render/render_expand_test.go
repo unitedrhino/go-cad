@@ -1,7 +1,7 @@
 // render_expand_test.go INSERT 展开防爆机制回归测试：
 // 覆盖环检测（自引用/互引用块短路）与全局展开预算量级（真实大图
 // 完整展开不截断），以及负缩放（镜像）INSERT 的展开坐标正确性。
-package cad
+package render
 
 import (
 	"github.com/unitedrhino/go-cad/internal/drawing"
@@ -14,7 +14,7 @@ import (
 
 // buildLineBlockDoc 构造测试文档：块定义 h 含 n 条水平 LINE（局部 x 0..9），
 // modelSpace 放 nIns 个 INSERT 引用该块（缩放 1、位置 (i*100, 0)）。
-func buildLineBlockDoc(blockHandle uint64, nLines, nIns int) *Document {
+func buildLineBlockDoc(blockHandle uint64, nLines, nIns int) *drawing.Document {
 	inner := make([]any, 0, nLines)
 	for i := 0; i < nLines; i++ {
 		inner = append(inner, &entity.EntLine{
@@ -23,7 +23,7 @@ func buildLineBlockDoc(blockHandle uint64, nLines, nIns int) *Document {
 			End:        entity.Point3{X: float64(i), Y: 9, Z: 0},
 		})
 	}
-	doc := &Document{Blocks: map[uint64][]any{blockHandle: inner}}
+	doc := &drawing.Document{Blocks: map[uint64][]any{blockHandle: inner}}
 	for i := 0; i < nIns; i++ {
 		doc.ModelSpace = append(doc.ModelSpace, &entity.EntInsert{
 			Position:    entity.Point3{X: float64(i * 100), Y: 0, Z: 0},
@@ -42,7 +42,7 @@ func TestExpandAllCycleGuard(t *testing.T) {
 	}
 	// 自引用：块 A = LINE + 引用 A 的 INSERT
 	selfIns := &entity.EntInsert{Scale: entity.Point3{X: 1, Y: 1, Z: 1}, BlockHeader: 0xA}
-	docA := &Document{
+	docA := &drawing.Document{
 		ModelSpace: []any{&entity.EntInsert{Scale: entity.Point3{X: 1, Y: 1, Z: 1}, BlockHeader: 0xA}},
 		Blocks:     map[uint64][]any{0xA: {line(0, 5), selfIns}},
 	}
@@ -51,7 +51,7 @@ func TestExpandAllCycleGuard(t *testing.T) {
 		t.Fatalf("自引用环应短路且保留非环 LINE，实际 %d 图元", len(prims))
 	}
 	// 互引用：块 A 引用 B，块 B 引用 A；模型空间引用 A
-	docB := &Document{
+	docB := &drawing.Document{
 		ModelSpace: []any{&entity.EntInsert{Scale: entity.Point3{X: 1, Y: 1, Z: 1}, BlockHeader: 0xA}},
 		Blocks: map[uint64][]any{
 			0xA: {line(0, 5), &entity.EntInsert{Scale: entity.Point3{X: 1, Y: 1, Z: 1}, BlockHeader: 0xB}},
@@ -63,7 +63,7 @@ func TestExpandAllCycleGuard(t *testing.T) {
 		t.Fatalf("互引用环应短路且保留两侧 LINE，实际 %d 图元", len(prims))
 	}
 	// 非环的同一块多次引用（DAG 分支）：块 B 被 A 引用 3 次，每次展开完整
-	docC := &Document{
+	docC := &drawing.Document{
 		ModelSpace: []any{
 			&entity.EntInsert{Scale: entity.Point3{X: 1, Y: 1, Z: 1}, BlockHeader: 0xA},
 		},
@@ -97,7 +97,7 @@ func TestExpandAllBudgetCoversLargeDAG(t *testing.T) {
 // TestInsertMirrorExpand 负 X 缩放（镜像）INSERT 展开：块内 LINE 沿局部
 // +X，镜像后世界坐标 X 反向（RD-29 框 62 个 -0.7499 镜像块的特征路径）。
 func TestInsertMirrorExpand(t *testing.T) {
-	doc := &Document{
+	doc := &drawing.Document{
 		ModelSpace: []any{&entity.EntInsert{
 			Position:    entity.Point3{X: 100, Y: 0, Z: 0},
 			Scale:       entity.Point3{X: -1, Y: 1, Z: 1},
@@ -129,7 +129,7 @@ func TestSheetsRD29Usercase(t *testing.T) {
 	if err != nil {
 		t.Skipf("用户案例缺失（%s）: %v", path, err)
 	}
-	doc, err := Parse(data)
+	doc, err := drawing.Parse(data)
 	if err != nil {
 		t.Fatalf("解析 %s: %v", path, err)
 	}

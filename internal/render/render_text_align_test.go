@@ -6,7 +6,7 @@
 //  2. MTEXT 行距 = linespace_factor×字高（DXF 44，gold extents_height 实证；
 //     旧 1.66 常数使设计说明 11 行块底压进审定/审核签名栏）。factor 未存
 //     （pre-R2000/JSON·DXF 未带）回退 1.66 历史口径。
-package cad
+package render
 
 import (
 	"github.com/unitedrhino/go-cad/internal/drawing"
@@ -43,15 +43,15 @@ func inkBand(img *image.RGBA) (minY, maxY int, ok bool) {
 // （修复前基线被抬到锚点上方 0.35h 再向上出墨，整体偏高 ~0.7 字高）。
 func TestTextMiddleAlignExtentCenter(t *testing.T) {
 	requireRenderFont(t)
-	const w, h, em = 320, 160, 48.0
+	const W, h, em = 320, 160, 48.0
 	draw := func(vAlign uint16) *image.RGBA {
-		img := image.NewRGBA(image.Rect(0, 0, w, h))
+		img := image.NewRGBA(image.Rect(0, 0, W, h))
 		drawRect(img, img.Rect, color.RGBA{255, 255, 255, 255})
-		cv := &canvas{img: img, width: w, height: h, lineWidth: 0.75}
+		cv := &canvas{img: img, width: W, height: h, lineWidth: 0.75}
 		tr := newTextRenderer(cv)
 		// 1 世界单位 = em 像素（hWorld=1，基向量承载像素比例，与真实
 		// 管线 textLayoutOf 的 px/世界单位口径一致）
-		l := textLayout{px: w / 2, py: h / 2, upx: em, vpy: -em, emPx: em, hWorld: 1, widthFactor: 1, hAlign: 1, vAlign: vAlign}
+		l := textLayout{px: W / 2, py: h / 2, upx: em, vpy: -em, emPx: em, hWorld: 1, widthFactor: 1, hAlign: 1, vAlign: vAlign}
 		tr.drawSingleLine(l, "中庚工程", 0, 0, color.RGBA{0, 0, 0, 255})
 		return img
 	}
@@ -83,12 +83,12 @@ func TestTextMiddleAlignExtentCenter(t *testing.T) {
 // （vAlign=0 实测墨带整体悬于基线上方 ~0.96em，红色注释错位实证）。
 func TestTextBaselineAnchoring(t *testing.T) {
 	requireRenderFont(t)
-	const w, h, em = 320, 240, 48.0
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	const W, h, em = 320, 240, 48.0
+	img := image.NewRGBA(image.Rect(0, 0, W, h))
 	drawRect(img, img.Rect, color.RGBA{255, 255, 255, 255})
-	cv := &canvas{img: img, width: w, height: h, lineWidth: 0.75}
+	cv := &canvas{img: img, width: W, height: h, lineWidth: 0.75}
 	tr := newTextRenderer(cv)
-	l := textLayout{px: w / 2, py: h / 2, upx: em, vpy: -em, emPx: em, hWorld: 1, widthFactor: 1, hAlign: 1, vAlign: 0}
+	l := textLayout{px: W / 2, py: h / 2, upx: em, vpy: -em, emPx: em, hWorld: 1, widthFactor: 1, hAlign: 1, vAlign: 0}
 	tr.drawSingleLine(l, "中庚工程", 0, 0, color.RGBA{0, 0, 0, 255})
 	b0, b1, ok := inkBand(img)
 	if !ok {

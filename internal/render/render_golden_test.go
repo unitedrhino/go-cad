@@ -56,10 +56,11 @@
 //     （2048x911/2048x903），差异率 18.0%/21.0% 全部来自文字像素整体
 //     下移（渲染口径有意变更），参照图按修复后渲染重新固化（二次渲染
 //     逐位一致）。
-package cad
+package render
 
 import (
 	"bytes"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"image/png"
 	"os"
 	"testing"
@@ -131,4 +132,19 @@ func TestRenderGoldenMatch(t *testing.T) {
 // channelDelta 判断单通道 16 位值是否不同（量化到 8 位后比较，消除 PNG 位深表达差异）。
 func channelDelta(a, b uint32) bool {
 	return a>>8 != b>>8
+}
+
+// parseIntegration 读取渲染门禁样本并解析（render 包本地副本；路径相对
+// internal/render 测试工作目录，样本经 ../../testdata 取用）。
+func parseIntegration(t *testing.T, name string) *drawing.Document {
+	t.Helper()
+	data, err := os.ReadFile("../../testdata/" + name)
+	if err != nil {
+		t.Skipf("样本缺失（%s）: %v", name, err)
+	}
+	doc, err := drawing.Parse(data)
+	if err != nil {
+		t.Fatalf("解析 %s 失败: %v", name, err)
+	}
+	return doc
 }

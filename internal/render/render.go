@@ -2,7 +2,7 @@
 // INSERT 递归展开（仿射变换）→ 包围盒自适应视口 → 图元离散为线段 → 厚线段绘制。
 // 文本经 textLabel 估算占位几何并携带 textInfo 版式，由 render_text.go 以
 // 系统字体真实字形绘制（旋转/镜像/对齐/换行），无可用字体时回退基线占位条。
-package cad
+package render
 
 import (
 	"bytes"
@@ -23,7 +23,7 @@ type RenderOptions struct {
 }
 
 // RenderPNG 将文档模型空间渲染为 PNG 字节流。
-func RenderPNG(doc *Document, opts RenderOptions) ([]byte, error) {
+func RenderPNG(doc *drawing.Document, opts RenderOptions) ([]byte, error) {
 	// nil 文档防御：与其他导出 API 的错误返回口径一致，不 panic
 	if doc == nil {
 		return nil, fmt.Errorf("cad: 文档为空，无法渲染")
@@ -43,7 +43,7 @@ func RenderPNG(doc *Document, opts RenderOptions) ([]byte, error) {
 	// 2. 鲁棒包围盒（中位数±分位数，抗错位垃圾坐标干扰）
 	bbox := drawing.RobustBounds(prims)
 	if bbox.Invalid() {
-		bbox = drawing.Box2{0, 0, 1, 1}
+		bbox = drawing.Box2{MinX: 0, MinY: 0, MaxX: 1, MaxY: 1}
 	}
 	// 剔除「原点锚定的超长线」：错位解码的 LINE 常一端落在原点附近、
 	// 另一端指向真实图形位置，形成放射状噪声
@@ -118,7 +118,7 @@ func (c *canvas) toPixel(p entity.Point2) (float64, float64) {
 }
 
 // entityColor 解析实体最终颜色（true color > 实体 ACI > 图层 > 默认黑）。
-func entityColor(doc *Document, e *drawing.Primitive, bgWhite bool) color.RGBA {
+func entityColor(doc *drawing.Document, e *drawing.Primitive, bgWhite bool) color.RGBA {
 	if e.Color.HasTrue {
 		r, g, b := drawing.SplitTrueColor(e.Color.TrueColor)
 		return color.RGBA{r, g, b, 255}
@@ -129,7 +129,7 @@ func entityColor(doc *Document, e *drawing.Primitive, bgWhite bool) color.RGBA {
 		}
 	}
 	if lc, ok := doc.LayerColors[e.Layer]; ok {
-		if c, ok := layerRenderColor(lc, bgWhite); ok {
+		if c, ok := LayerRenderColor(lc, bgWhite); ok {
 			return c
 		}
 	}
@@ -147,7 +147,7 @@ func entityColor(doc *Document, e *drawing.Primitive, bgWhite bool) color.RGBA {
 // 真彩形（0xC2/0xC0，如 0xC2FFFFFF 白）。索引形不做真彩取色，否则
 // ACI 1~8 的彩色图层（红/黄/绿/青/品红等）被画成 RGB(0,0,n) 深蓝近黑，
 // 消防线型图例表等 ByLayer 彩色内容整体失色。无有效色返回 false。
-func layerRenderColor(lc drawing.LayerColor, bgWhite bool) (color.RGBA, bool) {
+func LayerRenderColor(lc drawing.LayerColor, bgWhite bool) (color.RGBA, bool) {
 	if lc.HasTrue {
 		if low := lc.TrueColor & 0x00FFFFFF; low <= 0xFF {
 			if r, g, b, ok := drawing.AciColor(uint16(low), bgWhite); ok {
@@ -167,7 +167,7 @@ func layerRenderColor(lc drawing.LayerColor, bgWhite bool) (color.RGBA, bool) {
 }
 
 // drawPrimitive 绘制一个展开后的图元。
-func (c *canvas) drawPrimitive(p drawing.Primitive, doc *Document, bgWhite bool) {
+func (c *canvas) drawPrimitive(p drawing.Primitive, doc *drawing.Document, bgWhite bool) {
 	col := entityColor(doc, &p, bgWhite)
 	switch p.Kind {
 	case 0:
@@ -311,7 +311,7 @@ func drawRect(img *image.RGBA, r image.Rectangle, col color.RGBA) {
 
 // dropOversizeStrokes 剔除长度超过视口对角线 1.5 倍的线段图元。
 // 错位解码的 LINE 常表现为「一端在原点/锚点、另一端在远处」的超长线。
-func dropOversizeStrokes(prims []drawing.Primitive, bbox drawing.Box2) []drawing.Primitive {
+func DropOversizeStrokes(prims []drawing.Primitive, bbox drawing.Box2) []drawing.Primitive {
 	diag := math.Hypot(bbox.MaxX-bbox.MinX, bbox.MaxY-bbox.MinY)
 	limit := diag * 1.5
 	out := make([]drawing.Primitive, 0, len(prims))
@@ -376,7 +376,7 @@ func dropOriginAnchored(prims []drawing.Primitive, bbox drawing.Box2) []drawing.
 // 分布，相邻段端点仅各重合 2 次，粗粒度量化（如 4 单位）会把它们压进同一
 // 格子误判为放射线，导致 DONUT 等小尺寸图纸整图被清空（批次 T 语料实证）。
 func filterRadiatingStrokes(prims []drawing.Primitive) []drawing.Primitive {
-	type key struct{ x, y int64 }
+	type key struct{ X, y int64 }
 	const q = 1e-6
 	const radiatingThreshold = 12
 	// 重合计数 map 按端点数上界预分配：数十万端点下逐次扩容 rehash
