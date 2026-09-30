@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
@@ -102,7 +103,7 @@ func TestEntityAuditDump(t *testing.T) {
 					continue
 				}
 				total++
-				got := entityField(ent, k)
+				got := entity.EntityField(ent, k)
 				if got == nil {
 					miss++
 					m := agg[c]
@@ -201,12 +202,12 @@ func TestEntityScanDebug(t *testing.T) {
 			h.TypeCode, h.DataStartBit, rec.Size, len(rec.Body)*8, rec.DataEndBit(), doc.codepage)
 		r := rec.BodyBitStream()
 		r.SetBitPos(h.DataStartBit)
-		head, err := parseCommonEntityHeadR14(r, rec.DataEndBit())
+		head, err := entity.ParseCommonEntityHeadR14(r, rec.DataEndBit())
 		if err != nil {
 			t.Fatalf("head: %v", err)
 		}
 		fmt.Printf("head ok: handle=%d objSizeBit=%d entmode=%d color=%d scale=%g bitsEnd=%d\n",
-			head.handle, head.objSizeBit, head.entityMode, head.color.index, head.ltypeScale, r.TellBits())
+			head.Handle, head.ObjSizeBit, head.EntityMode, head.Color.Index, head.LtypeScale, r.TellBits())
 		// 手动逐字段读 MTEXT 主体
 		rd := func(name string, v float64, e error) {
 			if e != nil {

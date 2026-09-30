@@ -11,6 +11,7 @@ package cad
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"os"
 	"testing"
 )
@@ -64,18 +65,18 @@ func goldRGB(s string) (uint32, bool) {
 
 // buildEntityColorIndex 全文档实体句柄 → 颜色索引（模型空间 + 块内递归；
 // gold 实体不分归属统一按句柄对照）。
-func buildEntityColorIndex(doc *Document) map[uint64]*entColor {
-	out := make(map[uint64]*entColor)
+func buildEntityColorIndex(doc *Document) map[uint64]*entity.EntColor {
+	out := make(map[uint64]*entity.EntColor)
 	var walk func(list []any)
 	walk = func(list []any) {
 		for _, e := range list {
-			b := entBase(e)
+			b := entity.EntityBase(e)
 			if b == nil {
 				continue
 			}
-			if _, dup := out[b.handle]; !dup {
-				c := b.color
-				out[b.handle] = &c
+			if _, dup := out[b.Handle]; !dup {
+				c := b.Color
+				out[b.Handle] = &c
 			}
 		}
 	}
@@ -89,20 +90,20 @@ func buildEntityColorIndex(doc *Document) map[uint64]*entColor {
 
 // entityColorMatches 实体颜色对照：真彩（rgb 高字节非 0）比真彩取色，
 // 显式索引（1~255）比索引值，BYLAYER/缺键跳过（图层侧另行覆盖）。
-func entityColorMatches(got *entColor, g *goldColor) (bool, bool) {
+func entityColorMatches(got *entity.EntColor, g *goldColor) (bool, bool) {
 	if g.RGB != nil && *g.RGB != "000000" {
 		rgb, ok := goldRGB(*g.RGB)
 		if !ok {
 			return true, false // 不可解析跳过
 		}
-		if !got.hasTrue {
+		if !got.HasTrue {
 			return false, true
 		}
 		// 实体真彩保留完整 32 位，取色 uint8 截断天然剥方法字节
-		return got.trueColor&0x00FFFFFF == rgb&0x00FFFFFF, true
+		return got.TrueColor&0x00FFFFFF == rgb&0x00FFFFFF, true
 	}
 	if g.Index != nil && *g.Index >= 1 && *g.Index <= 255 {
-		return got.hasIndex && !got.hasTrue && got.index == uint16(*g.Index), true
+		return got.HasIndex && !got.HasTrue && got.Index == uint16(*g.Index), true
 	}
 	return true, false // BYLAYER/0/缺键：不对照
 }
@@ -218,7 +219,7 @@ func TestColorAlignGold(t *testing.T) {
 				entBad++
 				if entFails == "" || entBad <= 5 {
 					entFails += fmt.Sprintf("\n  h=%d %s gold={idx:%v rgb:%v} got=(idx=%d hasIdx=%v tc=%#x hasTrue=%v)",
-						h, o.Entity, *o.Color.Index, *o.Color.RGB, c.index, c.hasIndex, c.trueColor, c.hasTrue)
+						h, o.Entity, *o.Color.Index, *o.Color.RGB, c.Index, c.HasIndex, c.TrueColor, c.HasTrue)
 				}
 			}
 		}

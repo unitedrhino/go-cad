@@ -5,6 +5,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
@@ -13,54 +14,54 @@ import (
 
 // TestDecodeVertexPfaceFromBits VERTEX_PFACE：RC flag + 3BD point。
 func TestDecodeVertexPfaceFromBits(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x0D)
-	writeCommonHead(w, 1253, 0)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x0D)
+	testsupport.WriteCommonHead(w, 1253, 0)
 	w.RC(0xc0)                // flag：MESH|PFACE_MESH 位
 	w.B3BD(10.5, -2.25, 0.75) // point
 	r := bitstream.NewBitStream(w.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
+	head, err := entity.ParseEntityHead(r, 0, entity.FeatMaterialFlags|entity.FeatVisualStyles|entity.FeatDSBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeVertexPface(r, &head)
+	ent, err := entity.DecodeVertexPface(r, &head)
 	if err != nil {
 		t.Fatal(err)
 	}
-	v := ent.(*entVertexPface)
-	if v.flag != 0xc0 {
-		t.Fatalf("flag: %#x", v.flag)
+	v := ent.(*entity.EntVertexPface)
+	if v.Flag != 0xc0 {
+		t.Fatalf("flag: %#x", v.Flag)
 	}
-	if v.position.x != 10.5 || v.position.y != -2.25 || v.position.z != 0.75 {
-		t.Fatalf("point: %v", v.position)
+	if v.Position.X != 10.5 || v.Position.Y != -2.25 || v.Position.Z != 0.75 {
+		t.Fatalf("point: %v", v.Position)
 	}
 }
 
 // TestDecodeVertexPfaceFaceFromBits VERTEX_PFACE_FACE：4×BSd vertind，
 // flag 恒 128 不从流读取。
 func TestDecodeVertexPfaceFaceFromBits(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x0E)
-	writeCommonHead(w, 1259, 0)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x0E)
+	testsupport.WriteCommonHead(w, 1259, 0)
 	w.BS(2).BS(0).BS(0).BS(0) // vertind[0..3]
 	r := bitstream.NewBitStream(w.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
+	head, err := entity.ParseEntityHead(r, 0, entity.FeatMaterialFlags|entity.FeatVisualStyles|entity.FeatDSBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeVertexPfaceFace(r, &head)
+	ent, err := entity.DecodeVertexPfaceFace(r, &head)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := ent.(*entVertexPfaceFace)
-	if f.flag != 128 {
-		t.Fatalf("flag: %d", f.flag)
+	f := ent.(*entity.EntVertexPfaceFace)
+	if f.Flag != 128 {
+		t.Fatalf("flag: %d", f.Flag)
 	}
 	want := [4]int32{2, 0, 0, 0}
-	if f.vertind != want {
-		t.Fatalf("vertind: %v", f.vertind)
+	if f.Vertind != want {
+		t.Fatalf("vertind: %v", f.Vertind)
 	}
 }
 
@@ -76,22 +77,22 @@ func TestVertexPfaceGoldR13(t *testing.T) {
 		t.Fatal(err)
 	}
 	// VERTEX_PFACE h=1253：flag=192 point=(7589.907…, 3459.338…, 0)
-	v, ok := doc.EntityByHandle(1253).(*entVertexPface)
+	v, ok := doc.EntityByHandle(1253).(*entity.EntVertexPface)
 	if !ok {
 		t.Fatalf("handle 1253 不是 VERTEX_PFACE: %T", doc.EntityByHandle(1253))
 	}
-	if v.flag != 192 {
-		t.Fatalf("flag: %d", v.flag)
+	if v.Flag != 192 {
+		t.Fatalf("flag: %d", v.Flag)
 	}
-	if math.Abs(v.position.x-7589.907311657487) > 1e-6 || math.Abs(v.position.y-3459.3382354664864) > 1e-6 {
-		t.Fatalf("point: %v", v.position)
+	if math.Abs(v.Position.X-7589.907311657487) > 1e-6 || math.Abs(v.Position.Y-3459.3382354664864) > 1e-6 {
+		t.Fatalf("point: %v", v.Position)
 	}
 	// VERTEX_PFACE_FACE h=1261：vertind={1,5,4,3}
-	f, ok := doc.EntityByHandle(1261).(*entVertexPfaceFace)
+	f, ok := doc.EntityByHandle(1261).(*entity.EntVertexPfaceFace)
 	if !ok {
 		t.Fatalf("handle 1261 不是 VERTEX_PFACE_FACE: %T", doc.EntityByHandle(1261))
 	}
-	if f.vertind != [4]int32{1, 5, 4, 3} {
-		t.Fatalf("vertind: %v", f.vertind)
+	if f.Vertind != [4]int32{1, 5, 4, 3} {
+		t.Fatalf("vertind: %v", f.Vertind)
 	}
 }

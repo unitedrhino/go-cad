@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"image/png"
 	"os"
@@ -290,15 +291,15 @@ func errMsgOrEmpty(err error) string {
 // 无曲面细分渲染）与 UNKNOWN_ENT 兜底（无解码几何）。
 func corpusHasDrawableEntity(doc *Document) bool {
 	for _, ent := range doc.modelSpace {
-		base := entBase(ent)
+		base := entity.EntityBase(ent)
 		if base == nil {
 			continue
 		}
-		switch base.typeName {
+		switch base.TypeName {
 		case "BLOCK", "ENDBLK", "SEQEND", "3DSOLID", "REGION", "BODY":
 			continue
 		}
-		if _, ok := ent.(*entUnknownEnt); ok {
+		if _, ok := ent.(*entity.EntUnknownEnt); ok {
 			continue
 		}
 		return true

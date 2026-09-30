@@ -7,6 +7,7 @@ package cad
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"strings"
 	"testing"
 )
@@ -147,18 +148,18 @@ func TestParseSplineMode(t *testing.T) {
 	w.WriteBD(2.0) // 权重
 	w3bd(w, 2, 0, 0)
 	w.WriteBD(0.5) // 权重
-	sp := &entSpline{}
-	if err := parseSplineMode(bitstream.NewBitStream(w.Bytes()), sp, false); err != nil {
+	sp := &entity.EntSpline{}
+	if err := entity.ParseSplineMode(bitstream.NewBitStream(w.Bytes()), sp, false); err != nil {
 		t.Fatalf("control 模式解析失败: %v", err)
 	}
-	if !sp.rational || !sp.closed || sp.periodic {
+	if !sp.Rational || !sp.Closed || sp.Periodic {
 		t.Errorf("标志不符: %+v", sp)
 	}
-	if len(sp.knots) != 3 || len(sp.controlPoints) != 2 || len(sp.weights) != 2 {
-		t.Fatalf("数组长度不符: knots=%d ctrl=%d weights=%d", len(sp.knots), len(sp.controlPoints), len(sp.weights))
+	if len(sp.Knots) != 3 || len(sp.ControlPoints) != 2 || len(sp.Weights) != 2 {
+		t.Fatalf("数组长度不符: knots=%d ctrl=%d weights=%d", len(sp.Knots), len(sp.ControlPoints), len(sp.Weights))
 	}
-	if sp.knots[1] != 0.5 || sp.controlPoints[1].x != 2 || sp.weights[0] != 2.0 {
-		t.Errorf("字段值不符: knots=%v ctrl1.x=%v w0=%v", sp.knots, sp.controlPoints[1].x, sp.weights[0])
+	if sp.Knots[1] != 0.5 || sp.ControlPoints[1].X != 2 || sp.Weights[0] != 2.0 {
+		t.Errorf("字段值不符: knots=%v ctrl1.x=%v w0=%v", sp.Knots, sp.ControlPoints[1].X, sp.Weights[0])
 	}
 
 	// fit 模式：容差 + 起末切线 + 拟合点
@@ -169,12 +170,12 @@ func TestParseSplineMode(t *testing.T) {
 	w2.WriteBL(2)
 	w3bd(w2, 0, 0, 0)
 	w3bd(w2, 5, 5, 0)
-	sp2 := &entSpline{}
-	if err := parseSplineMode(bitstream.NewBitStream(w2.Bytes()), sp2, true); err != nil {
+	sp2 := &entity.EntSpline{}
+	if err := entity.ParseSplineMode(bitstream.NewBitStream(w2.Bytes()), sp2, true); err != nil {
 		t.Fatalf("fit 模式解析失败: %v", err)
 	}
-	if sp2.fitTolerance != 0.001 || len(sp2.fitPoints) != 2 || sp2.fitPoints[1].x != 5 {
-		t.Errorf("fit 字段不符: tol=%v n=%d", sp2.fitTolerance, len(sp2.fitPoints))
+	if sp2.FitTolerance != 0.001 || len(sp2.FitPoints) != 2 || sp2.FitPoints[1].X != 5 {
+		t.Errorf("fit 字段不符: tol=%v n=%d", sp2.FitTolerance, len(sp2.FitPoints))
 	}
 }
 
@@ -211,15 +212,15 @@ func TestParseCommonEntityHeadR2013(t *testing.T) {
 	w := bitstream.NewEncWriter()
 	writeCommonHeadR2013(w, false)
 	r := bitstream.NewBitStream(w.Bytes())
-	head, err := parseCommonEntityHeadR2013(r, uint64(len(w.Bytes()))*8)
+	head, err := entity.ParseCommonEntityHeadR2013(r, uint64(len(w.Bytes()))*8)
 	if err != nil {
 		t.Fatalf("变体 A 解析失败: %v", err)
 	}
-	if head.handle != 0x2A || head.entityMode != 2 || head.numReactors != 0 {
-		t.Errorf("头字段不符: handle=%X mode=%d reactors=%d", head.handle, head.entityMode, head.numReactors)
+	if head.Handle != 0x2A || head.EntityMode != 2 || head.NumReactors != 0 {
+		t.Errorf("头字段不符: handle=%X mode=%d reactors=%d", head.Handle, head.EntityMode, head.NumReactors)
 	}
-	if !head.color.hasIndex || head.color.index != 256 {
-		t.Errorf("颜色应为 ByLayer(256): %+v", head.color)
+	if !head.Color.HasIndex || head.Color.Index != 256 {
+		t.Errorf("颜色应为 ByLayer(256): %+v", head.Color)
 	}
 }
 
@@ -228,17 +229,17 @@ func TestParseCommonEntityHeadR2013B(t *testing.T) {
 	w := bitstream.NewEncWriter()
 	writeCommonHeadR2013(w, true)
 	r := bitstream.NewBitStream(w.Bytes())
-	head, err := parseCommonEntityHeadR2013B(r, uint64(len(w.Bytes()))*8)
+	head, err := entity.ParseCommonEntityHeadR2013B(r, uint64(len(w.Bytes()))*8)
 	if err != nil {
 		t.Fatalf("变体 B 解析失败: %v", err)
 	}
-	if head.handle != 0x2A || head.entityMode != 2 {
-		t.Errorf("头字段不符: handle=%X mode=%d", head.handle, head.entityMode)
+	if head.Handle != 0x2A || head.EntityMode != 2 {
+		t.Errorf("头字段不符: handle=%X mode=%d", head.Handle, head.EntityMode)
 	}
 	// 变体 A 布局按变体 A 读必须成功（错位对照的基准）
 	w2 := bitstream.NewEncWriter()
 	writeCommonHeadR2013(w2, false)
-	if _, err := parseCommonEntityHeadR2013B(bitstream.NewBitStream(w2.Bytes()), uint64(len(w2.Bytes()))*8); err == nil {
+	if _, err := entity.ParseCommonEntityHeadR2013B(bitstream.NewBitStream(w2.Bytes()), uint64(len(w2.Bytes()))*8); err == nil {
 		// 多出的 shadow 字节使尾部错位，但 B 变体不读尾部 RC 之外的
 		// 长度校验，允许成功；只要求不 panic
 		t.Log("变体 A 位流经变体 B 解析未报错（尾部字节冗余容错）")
@@ -247,12 +248,12 @@ func TestParseCommonEntityHeadR2013B(t *testing.T) {
 
 // TestBaseEntityMode2 mode2 判定。
 func TestBaseEntityMode2(t *testing.T) {
-	b := baseEntity{mode: 2}
-	if !b.mode2() {
+	b := entity.BaseEntity{Mode: 2}
+	if !b.Mode2() {
 		t.Error("mode=2 应判为模型空间")
 	}
-	b.mode = 0
-	if b.mode2() {
+	b.Mode = 0
+	if b.Mode2() {
 		t.Error("mode=0 不应判为模型空间")
 	}
 }
@@ -271,26 +272,26 @@ func TestDecodeTolerance(t *testing.T) {
 	w3bd(w, 0, 0, 1)
 	w.WriteTV("0.05 A")
 	r := bitstream.NewBitStream(w.Bytes())
-	head := commonEntityHead{handle: 7, objSizeBit: uint64(w.TellBits()) + 8, r13r14: true}
-	ent, err := decodeTolerance(r, &head)
+	head := entity.CommonEntityHead{Handle: 7, ObjSizeBit: uint64(w.TellBits()) + 8, R13r14: true}
+	ent, err := entity.DecodeTolerance(r, &head)
 	if err != nil {
 		t.Fatalf("R14 TOLERANCE 解析失败: %v", err)
 	}
-	tol := ent.(*entTolerance)
-	if tol.unknownShort != 3 || tol.height != 2.0 || tol.dimgap != 0.1 || tol.text != "0.05 A" {
-		t.Errorf("字段不符: us=%d h=%v gap=%v text=%q", tol.unknownShort, tol.height, tol.dimgap, tol.text)
+	tol := ent.(*entity.EntTolerance)
+	if tol.UnknownShort != 3 || tol.Height != 2.0 || tol.Dimgap != 0.1 || tol.Text != "0.05 A" {
+		t.Errorf("字段不符: us=%d h=%v gap=%v text=%q", tol.UnknownShort, tol.Height, tol.Dimgap, tol.Text)
 	}
 	// R2013 路径（r13r14=false）：无前缀字段，R2007+ 文本走字符串区（此处零占位）
 	w2 := bitstream.NewEncWriter()
 	w3bd(w2, 0, 0, 0)
 	w3bd(w2, 1, 0, 0)
 	w3bd(w2, 0, 0, 1)
-	head2 := commonEntityHead{handle: 8, objSizeBit: uint64(w2.TellBits()) + 8}
-	ent2, err := decodeTolerance(bitstream.NewBitStream(w2.Bytes()), &head2)
+	head2 := entity.CommonEntityHead{Handle: 8, ObjSizeBit: uint64(w2.TellBits()) + 8}
+	ent2, err := entity.DecodeTolerance(bitstream.NewBitStream(w2.Bytes()), &head2)
 	if err != nil {
 		t.Fatalf("R2013 TOLERANCE 解析失败: %v", err)
 	}
-	if ent2.(*entTolerance).handle != 8 {
+	if ent2.(*entity.EntTolerance).Handle != 8 {
 		t.Error("R2013 路径句柄不符")
 	}
 }
@@ -302,14 +303,14 @@ func TestDecodeViewport(t *testing.T) {
 	w3bd(w, 4, 3, 0)
 	w.WriteBD(100)
 	w.WriteBD(80)
-	head := commonEntityHead{handle: 9, objSizeBit: uint64(w.TellBits()) + 8, r13r14: true}
-	ent, err := decodeViewport(bitstream.NewBitStream(w.Bytes()), &head)
+	head := entity.CommonEntityHead{Handle: 9, ObjSizeBit: uint64(w.TellBits()) + 8, R13r14: true}
+	ent, err := entity.DecodeViewport(bitstream.NewBitStream(w.Bytes()), &head)
 	if err != nil {
 		t.Fatalf("R14 VIEWPORT 解析失败: %v", err)
 	}
-	vp := ent.(*entViewport)
-	if vp.width != 100 || vp.height != 80 || vp.center.x != 4 {
-		t.Errorf("R14 字段不符: w=%v h=%v cx=%v", vp.width, vp.height, vp.center.x)
+	vp := ent.(*entity.EntViewport)
+	if vp.Width != 100 || vp.Height != 80 || vp.Center.X != 4 {
+		t.Errorf("R14 字段不符: w=%v h=%v cx=%v", vp.Width, vp.Height, vp.Center.X)
 	}
 
 	// R2004：全字段序
@@ -346,14 +347,14 @@ func TestDecodeViewport(t *testing.T) {
 	w2.WriteBD(0)      // ucsElevation
 	w2.WriteBS(0)      // ucsOrthoView
 	w2.WriteBS(0)      // shadeplotMode（R2004+）
-	head2 := commonEntityHead{handle: 10, objSizeBit: uint64(w2.TellBits()) + 8}
-	ent2, err := decodeViewportVer(bitstream.NewBitStream(w2.Bytes()), &head2, container.VerR2004)
+	head2 := entity.CommonEntityHead{Handle: 10, ObjSizeBit: uint64(w2.TellBits()) + 8}
+	ent2, err := entity.DecodeViewportVer(bitstream.NewBitStream(w2.Bytes()), &head2, container.VerR2004)
 	if err != nil {
 		t.Fatalf("R2004 VIEWPORT 解析失败: %v", err)
 	}
-	vp2 := ent2.(*entViewport)
-	if vp2.width != 200 || vp2.viewSize != 500 || vp2.lensLength != 50 {
-		t.Errorf("R2004 字段不符: w=%v viewSize=%v lens=%v", vp2.width, vp2.viewSize, vp2.lensLength)
+	vp2 := ent2.(*entity.EntViewport)
+	if vp2.Width != 200 || vp2.ViewSize != 500 || vp2.LensLength != 50 {
+		t.Errorf("R2004 字段不符: w=%v viewSize=%v lens=%v", vp2.Width, vp2.ViewSize, vp2.LensLength)
 	}
 }
 
@@ -375,23 +376,23 @@ func TestDecodeSolidTolerant(t *testing.T) {
 	}
 	w := bitstream.NewEncWriter()
 	writeSolid(w, 0)
-	head := commonEntityHead{handle: 3, objSizeBit: uint64(w.TellBits()) + 8}
-	ent, err := decodeSolidTolerant(bitstream.NewBitStream(w.Bytes()), &head, false)
+	head := entity.CommonEntityHead{Handle: 3, ObjSizeBit: uint64(w.TellBits()) + 8}
+	ent, err := entity.DecodeSolidTolerant(bitstream.NewBitStream(w.Bytes()), &head, false)
 	if err != nil {
 		t.Fatalf("正常 SOLID 解析失败: %v", err)
 	}
-	if s := ent.(*entSolid); s.p2.x != 10 || s.p4.x != 0 {
-		t.Errorf("角点不符: p2=%v p4=%v", s.p2, s.p4)
+	if s := ent.(*entity.EntSolid); s.P2.X != 10 || s.P4.X != 0 {
+		t.Errorf("角点不符: p2=%v p4=%v", s.P2, s.P4)
 	}
 	// denormal 坐标触发首过不 sane → 回退 1 位重试；两遍均不 sane 时
 	// 返回首遍结果，只要求不 panic 且类型正确
 	w2 := bitstream.NewEncWriter()
 	writeSolid(w2, 1e-310)
-	head2 := commonEntityHead{handle: 4, objSizeBit: uint64(w2.TellBits()) + 8}
-	ent2, err := decodeSolidTolerant(bitstream.NewBitStream(w2.Bytes()), &head2, false)
+	head2 := entity.CommonEntityHead{Handle: 4, ObjSizeBit: uint64(w2.TellBits()) + 8}
+	ent2, err := entity.DecodeSolidTolerant(bitstream.NewBitStream(w2.Bytes()), &head2, false)
 	if err != nil {
 		t.Logf("回退路径两遍均失败（返回首遍错误）: %v", err)
-	} else if _, ok := ent2.(*entSolid); !ok {
+	} else if _, ok := ent2.(*entity.EntSolid); !ok {
 		t.Errorf("回退路径类型不符: %T", ent2)
 	}
 }
@@ -401,21 +402,21 @@ func TestDecodeSolidTolerant(t *testing.T) {
 // VERTEX 按 owner 聚合到宿主 POLYLINE 的 ownedHandles。
 func TestAssemblePolylineChildren(t *testing.T) {
 	d := &Document{blocks: map[uint64][]any{}}
-	pl2 := &entPolyline2d{}
-	pl2.handle = 100
-	pl3 := &entPolyline3d{}
-	pl3.handle = 200
-	v := &entVertex2d{}
-	v.handle = 101
-	v.owner = 100
+	pl2 := &entity.EntPolyline2d{}
+	pl2.Handle = 100
+	pl3 := &entity.EntPolyline3d{}
+	pl3.Handle = 200
+	v := &entity.EntVertex2d{}
+	v.Handle = 101
+	v.Owner = 100
 	d.modelSpace = []any{pl2, pl3, v}
 	d.blocks[900] = []any{}
 	d.assemblePolylineChildren()
-	if len(pl2.ownedHandles) != 1 || pl2.ownedHandles[0] != 101 {
-		t.Errorf("VERTEX 应按 owner 聚合到宿主 POLYLINE: %v", pl2.ownedHandles)
+	if len(pl2.OwnedHandles) != 1 || pl2.OwnedHandles[0] != 101 {
+		t.Errorf("VERTEX 应按 owner 聚合到宿主 POLYLINE: %v", pl2.OwnedHandles)
 	}
-	if len(pl3.ownedHandles) != 0 {
-		t.Errorf("无顶点宿主不应被聚合: %v", pl3.ownedHandles)
+	if len(pl3.OwnedHandles) != 0 {
+		t.Errorf("无顶点宿主不应被聚合: %v", pl3.OwnedHandles)
 	}
 }
 
@@ -447,20 +448,20 @@ func TestDecodeDimR2000Variants(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		w.WriteRC(0)
 	}
-	head := commonEntityHead{handle: 0x55, objSizeBit: uint64(w.TellBits()) - 32}
-	ent, err := scanDimShapes(bitstream.NewBitStream(w.Bytes()), &head, dimLayoutLinear, r2000DimShapes, decodeDimR2000Variant)
+	head := entity.CommonEntityHead{Handle: 0x55, ObjSizeBit: uint64(w.TellBits()) - 32}
+	ent, err := entity.ScanDimShapes(bitstream.NewBitStream(w.Bytes()), &head, entity.DimLayoutLinear, entity.R2000DimShapes, entity.DecodeDimR2000Variant)
 	if err != nil {
 		t.Fatalf("R2000 DIMENSION 变体全部失败: %v", err)
 	}
-	dim := ent.(*entDimension)
-	if dim.elevation != 2.0 || dim.textMidpoint.x != 5.0 {
-		t.Errorf("公共字段不符: elevation=%v mid.x=%v", dim.elevation, dim.textMidpoint.x)
+	dim := ent.(*entity.EntDimension)
+	if dim.Elevation != 2.0 || dim.TextMidpoint.X != 5.0 {
+		t.Errorf("公共字段不符: elevation=%v mid.x=%v", dim.Elevation, dim.TextMidpoint.X)
 	}
-	if !dim.hasInsertPoint || dim.insertPoint.x != 7.0 {
-		t.Errorf("insertPoint 不符: has=%v x=%v", dim.hasInsertPoint, dim.insertPoint.x)
+	if !dim.HasInsertPoint || dim.InsertPoint.X != 7.0 {
+		t.Errorf("insertPoint 不符: has=%v x=%v", dim.HasInsertPoint, dim.InsertPoint.X)
 	}
-	if dim.point14.x != 10 || dim.point10.y != 5 {
-		t.Errorf("类型专属字段不符: p10=(%v,%v) p14=(%v,%v)", dim.point10.x, dim.point10.y, dim.point14.x, dim.point14.y)
+	if dim.Point14.X != 10 || dim.Point10.Y != 5 {
+		t.Errorf("类型专属字段不符: p10=(%v,%v) p14=(%v,%v)", dim.Point10.X, dim.Point10.Y, dim.Point14.X, dim.Point14.Y)
 	}
 }
 
@@ -478,22 +479,22 @@ func TestDecodeAttrib(t *testing.T) {
 	w.WriteTU("TAG1")
 	w.WriteRC(0) // handle 流兜底区
 	w.WriteRC(0)
-	head := commonEntityHead{handle: 0x66, objSizeBit: uint64(w.TellBits()) - 16}
-	ent, err := decodeAttrib(bitstream.NewBitStream(w.Bytes()), &head, 0)
+	head := entity.CommonEntityHead{Handle: 0x66, ObjSizeBit: uint64(w.TellBits()) - 16}
+	ent, err := entity.DecodeAttrib(bitstream.NewBitStream(w.Bytes()), &head, 0)
 	if err != nil {
 		t.Fatalf("decodeAttrib 失败: %v", err)
 	}
-	a := ent.(*entAttrib)
+	a := ent.(*entity.EntAttrib)
 	// 非对齐 TU 流经 R21 文本尾候选机制按 TV 读取，\0 填充位被剥离后
 	// 文本可能截断（既有容错口径）；此处断言 ATTRIB 结构组装正确即可
-	if !strings.HasPrefix(a.text, "ROOM") {
-		t.Errorf("文本 = %q, 期望 ROOM 前缀", a.text)
+	if !strings.HasPrefix(a.Text, "ROOM") {
+		t.Errorf("文本 = %q, 期望 ROOM 前缀", a.Text)
 	}
-	if a.handle != 0x66 {
-		t.Errorf("句柄 = %d", a.handle)
+	if a.Handle != 0x66 {
+		t.Errorf("句柄 = %d", a.Handle)
 	}
-	if a.height != 2.5 {
-		t.Errorf("高度 = %v, 期望 2.5", a.height)
+	if a.Height != 2.5 {
+		t.Errorf("高度 = %v, 期望 2.5", a.Height)
 	}
 }
 
@@ -512,18 +513,18 @@ func TestParseCommonEntityHeadR14(t *testing.T) {
 	w.WriteBS(3)    // color index
 	w.WriteBD(1.0)  // ltypeScale
 	w.WriteBS(0)    // invisibility
-	head, err := parseCommonEntityHeadR14(bitstream.NewBitStream(w.Bytes()), 0)
+	head, err := entity.ParseCommonEntityHeadR14(bitstream.NewBitStream(w.Bytes()), 0)
 	if err != nil {
 		t.Fatalf("R14 头解析失败: %v", err)
 	}
-	if head.handle != 0x33 || !head.r13r14 || head.objSizeBit != 400 {
-		t.Errorf("头字段不符: handle=%X r13r14=%v objSizeBit=%d", head.handle, head.r13r14, head.objSizeBit)
+	if head.Handle != 0x33 || !head.R13r14 || head.ObjSizeBit != 400 {
+		t.Errorf("头字段不符: handle=%X r13r14=%v objSizeBit=%d", head.Handle, head.R13r14, head.ObjSizeBit)
 	}
-	if !head.isByLayerLtype || head.ltypeFlags != 0 {
-		t.Errorf("ltype 分支不符: byLayer=%v flags=%d", head.isByLayerLtype, head.ltypeFlags)
+	if !head.IsByLayerLtype || head.LtypeFlags != 0 {
+		t.Errorf("ltype 分支不符: byLayer=%v flags=%d", head.IsByLayerLtype, head.LtypeFlags)
 	}
-	if !head.color.hasIndex || head.color.index != 3 {
-		t.Errorf("颜色索引不符: %+v", head.color)
+	if !head.Color.HasIndex || head.Color.Index != 3 {
+		t.Errorf("颜色索引不符: %+v", head.Color)
 	}
 
 	// bylayer_ltype=0 → ltypeFlags=3
@@ -539,12 +540,12 @@ func TestParseCommonEntityHeadR14(t *testing.T) {
 	w2.WriteBS(1)
 	w2.WriteBD(1.0)
 	w2.WriteBS(0)
-	head2, err := parseCommonEntityHeadR14(bitstream.NewBitStream(w2.Bytes()), 0)
+	head2, err := entity.ParseCommonEntityHeadR14(bitstream.NewBitStream(w2.Bytes()), 0)
 	if err != nil {
 		t.Fatalf("R14 头解析失败: %v", err)
 	}
-	if head2.ltypeFlags != 3 {
-		t.Errorf("bylayer_ltype=0 应得 ltypeFlags=3，得到 %d", head2.ltypeFlags)
+	if head2.LtypeFlags != 3 {
+		t.Errorf("bylayer_ltype=0 应得 ltypeFlags=3，得到 %d", head2.LtypeFlags)
 	}
 }
 
@@ -555,12 +556,12 @@ func TestParseEntityColorHead(t *testing.T) {
 	w.WriteB(false) // noLinks
 	w.WriteB(true)  // mode=1
 	w.WriteRC(5)    // index
-	var h1 commonEntityHead
-	if err := parseEntityColorHead(bitstream.NewBitStream(w.Bytes()), &h1, false); err != nil {
+	var h1 entity.CommonEntityHead
+	if err := entity.ParseEntityColorHead(bitstream.NewBitStream(w.Bytes()), &h1, false); err != nil {
 		t.Fatalf("单字节索引解析失败: %v", err)
 	}
-	if h1.color.index != 5 {
-		t.Errorf("index = %d", h1.color.index)
+	if h1.Color.Index != 5 {
+		t.Errorf("index = %d", h1.Color.Index)
 	}
 
 	// noLinks=0、mode=0 → RS 完整 flags：rgb 位与 alpha 位
@@ -569,12 +570,12 @@ func TestParseEntityColorHead(t *testing.T) {
 	w2.WriteB(false)       // mode=0
 	w2.WriteRS(0x8123)     // flags：0x8000 rgb + index 0x123
 	w2.WriteBL(0xFF112233) // rgb 完整 32 位
-	var h2 commonEntityHead
-	if err := parseEntityColorHead(bitstream.NewBitStream(w2.Bytes()), &h2, false); err != nil {
+	var h2 entity.CommonEntityHead
+	if err := entity.ParseEntityColorHead(bitstream.NewBitStream(w2.Bytes()), &h2, false); err != nil {
 		t.Fatalf("rgb 解析失败: %v", err)
 	}
-	if !h2.color.hasTrue || h2.color.trueColor != 0xFF112233 {
-		t.Errorf("trueColor = %#v", h2.color)
+	if !h2.Color.HasTrue || h2.Color.TrueColor != 0xFF112233 {
+		t.Errorf("trueColor = %#v", h2.Color)
 	}
 
 	// flags 0x2000 → alpha 字段
@@ -583,12 +584,12 @@ func TestParseEntityColorHead(t *testing.T) {
 	w3.WriteB(false)
 	w3.WriteRS(0x2000)
 	w3.WriteBL(0x7F000050)
-	var h3 commonEntityHead
-	if err := parseEntityColorHead(bitstream.NewBitStream(w3.Bytes()), &h3, false); err != nil {
+	var h3 entity.CommonEntityHead
+	if err := entity.ParseEntityColorHead(bitstream.NewBitStream(w3.Bytes()), &h3, false); err != nil {
 		t.Fatalf("alpha 解析失败: %v", err)
 	}
-	if !h3.color.hasAlpha {
-		t.Errorf("alpha 未解析: %+v", h3.color)
+	if !h3.Color.HasAlpha {
+		t.Errorf("alpha 未解析: %+v", h3.Color)
 	}
 }
 
@@ -596,88 +597,88 @@ func TestParseEntityColorHead(t *testing.T) {
 
 // TestEntityAuditFieldHelpers 审计键导出全键覆盖。
 func TestEntityAuditFieldHelpers(t *testing.T) {
-	ole := &entOleFrame{flag: 3, mode: 1, data: []byte{0xAB, 0xCD}}
-	if oleFrameAuditField(ole, "flag") != int64(3) ||
-		oleFrameAuditField(ole, "mode") != int64(1) ||
-		oleFrameAuditField(ole, "data") != "ABCD" ||
-		oleFrameAuditField(ole, "missing") != nil {
+	ole := &entity.EntOleFrame{Flag: 3, Mode: 1, Data: []byte{0xAB, 0xCD}}
+	if entity.OleFrameAuditField(ole, "flag") != int64(3) ||
+		entity.OleFrameAuditField(ole, "mode") != int64(1) ||
+		entity.OleFrameAuditField(ole, "data") != "ABCD" ||
+		entity.OleFrameAuditField(ole, "missing") != nil {
 		t.Error("oleFrameAuditField 键值不符")
 	}
 
-	px := &entProxyEntity{proxyID: 1, version: 2, maintVersion: 3, dwgVersionNum: 4,
-		fromDxf: true, dataNumBits: 6, numObjids: 7, proxyDataSize: 8}
+	px := &entity.EntProxyEntity{ProxyID: 1, Version: 2, MaintVersion: 3, DwgVersionNum: 4,
+		FromDxf: true, DataNumBits: 6, NumObjids: 7, ProxyDataSize: 8}
 	for key, want := range map[string]any{
 		"proxy_id": int64(1), "version": int64(2), "maint_version": int64(3),
 		"dwg_version": int64(4), "from_dxf": int64(1), "data_numbits": int64(6),
 		"num_objids": int64(7), "proxy_data_size": int64(8),
 	} {
-		if got := proxyEntityAuditField(px, key); got != want {
+		if got := entity.ProxyEntityAuditField(px, key); got != want {
 			t.Errorf("proxyEntityAuditField(%s) = %v, 期望 %v", key, got, want)
 		}
 	}
-	if proxyEntityAuditField(px, "nope") != nil {
+	if entity.ProxyEntityAuditField(px, "nope") != nil {
 		t.Error("未知键应返回 nil")
 	}
 
-	mp := &entMpolygon{style: 1, styleTail: 2, xDir: point2{3, 4},
-		hatch: &entHatch{paths: []hatchPath{{flag: 5}}}}
-	if mpolygonAuditField(mp, "style") != int64(1) ||
-		mpolygonAuditField(mp, "style_tail") != int64(2) ||
-		mpolygonAuditField(mp, "x_dir").([]float64)[0] != 3 {
+	mp := &entity.EntMpolygon{Style: 1, StyleTail: 2, XDir: entity.Point2{3, 4},
+		Hatch: &entity.EntHatch{Paths: []entity.HatchPath{{Flag: 5}}}}
+	if entity.MpolygonAuditField(mp, "style") != int64(1) ||
+		entity.MpolygonAuditField(mp, "style_tail") != int64(2) ||
+		entity.MpolygonAuditField(mp, "x_dir").([]float64)[0] != 3 {
 		t.Error("mpolygonAuditField 主体键不符")
 	}
-	if got := mpolygonAuditField(mp, "paths[0].flag"); got != int64(5) {
+	if got := entity.MpolygonAuditField(mp, "paths[0].flag"); got != int64(5) {
 		t.Errorf("mpolygon 路径展平键 = %v", got)
 	}
-	if got := mpolygonAuditField(mp, "paths[9].flag"); got != nil {
+	if got := entity.MpolygonAuditField(mp, "paths[9].flag"); got != nil {
 		t.Error("越界路径下标应返回 nil")
 	}
 
-	hp := &hatchPath{flag: 7, isPolyline: true, bulgesPresent: true, closed: true,
-		numSegsOrPaths: 2, polyVerts: []hatchPolyVert{{bulge: 0.5}}}
-	if hatchPathAuditField(hp, "flag") != int64(7) ||
-		hatchPathAuditField(hp, "bulges_present") != int64(1) ||
-		hatchPathAuditField(hp, "closed") != int64(1) ||
-		hatchPathAuditField(hp, "num_segs_or_paths") != int64(2) ||
-		hatchPathAuditField(hp, "segs") != nil {
+	hp := &entity.HatchPath{Flag: 7, IsPolyline: true, BulgesPresent: true, Closed: true,
+		NumSegsOrPaths: 2, PolyVerts: []entity.HatchPolyVert{{Bulge: 0.5}}}
+	if entity.HatchPathAuditField(hp, "flag") != int64(7) ||
+		entity.HatchPathAuditField(hp, "bulges_present") != int64(1) ||
+		entity.HatchPathAuditField(hp, "closed") != int64(1) ||
+		entity.HatchPathAuditField(hp, "num_segs_or_paths") != int64(2) ||
+		entity.HatchPathAuditField(hp, "segs") != nil {
 		t.Error("hatchPathAuditField 键值不符")
 	}
-	if got := hatchPathAuditField(hp, "polyline_paths[0].bulge"); got != 0.5 {
+	if got := entity.HatchPathAuditField(hp, "polyline_paths[0].bulge"); got != 0.5 {
 		t.Errorf("polyline_paths bulge = %v", got)
 	}
-	np := &hatchPath{flag: 1}
-	if hatchPathAuditField(np, "bulges_present") != nil {
+	np := &entity.HatchPath{Flag: 1}
+	if entity.HatchPathAuditField(np, "bulges_present") != nil {
 		t.Error("非 polyline 的 bulges_present 应为 nil")
 	}
 
-	hs := &hatchSeg{curveType: 2, radius: 3.5, ratio: 0.4, startAng: 0.1, endAng: 1.1,
-		ccw: true, degree: 3, rational: true, periodic: false,
-		knots: []float64{0, 1}, ctrl: []point2{{}}, fitPts: []point2{{}}}
+	hs := &entity.HatchSeg{CurveType: 2, Radius: 3.5, Ratio: 0.4, StartAng: 0.1, EndAng: 1.1,
+		Ccw: true, Degree: 3, Rational: true, Periodic: false,
+		Knots: []float64{0, 1}, Ctrl: []entity.Point2{{}}, FitPts: []entity.Point2{{}}}
 	for key, want := range map[string]any{
 		"curve_type": int64(2), "radius": 3.5, "minor_major_ratio": 0.4,
 		"start_angle": 0.1, "end_angle": 1.1, "is_ccw": int64(1),
 		"degree": int64(3), "is_rational": int64(1), "is_periodic": int64(0),
 		"num_knots": int64(2), "num_control_points": int64(1), "num_fitpts": int64(1),
 	} {
-		if got := hatchSegAuditField(hs, key); got != want {
+		if got := entity.HatchSegAuditField(hs, key); got != want {
 			t.Errorf("hatchSegAuditField(%s) = %v, 期望 %v", key, got, want)
 		}
 	}
 	// 批次 B：center 等几何数组键已导出（hatchSegAuditField 返回坐标数组）
-	if got := hatchSegAuditField(hs, "center"); got.([]float64)[0] != 0 {
+	if got := entity.HatchSegAuditField(hs, "center"); got.([]float64)[0] != 0 {
 		t.Error("center 应导出坐标数组")
 	}
 
-	if got := vec3Arr(point3{1, 2, 3}); got[0] != 1 || got[2] != 3 {
+	if got := entity.Vec3Arr(entity.Point3{1, 2, 3}); got[0] != 1 || got[2] != 3 {
 		t.Errorf("vec3Arr = %v", got)
 	}
-	if got := pt2Arr([]point2{{1, 2}, {3, 4}}); len(got) != 4 || got[3] != 4 {
+	if got := entity.Pt2Arr([]entity.Point2{{1, 2}, {3, 4}}); len(got) != 4 || got[3] != 4 {
 		t.Errorf("pt2Arr = %v", got)
 	}
-	if got := f64Arr([]float64{9, 8}); len(got) != 2 || got[0] != 9 {
+	if got := entity.F64Arr([]float64{9, 8}); len(got) != 2 || got[0] != 9 {
 		t.Errorf("f64Arr = %v", got)
 	}
-	if got := point2Arr(point2{5, 6}); got[1] != 6 {
+	if got := entity.Point2Arr(entity.Point2{5, 6}); got[1] != 6 {
 		t.Errorf("point2Arr = %v", got)
 	}
 }

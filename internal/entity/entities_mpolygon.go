@@ -4,7 +4,7 @@
 // 专属字段。位级布局对照 LibreDWG dwg.spec DWG_ENTITY (MPOLYGON)
 // （DEBUG_CLASSES 分支；上游正常解码器不编译该类，语料中亦无实例，
 // 位流经合成流测试验证）。
-package cad
+package entity
 
 import (
 	"fmt"
@@ -13,12 +13,12 @@ import (
 )
 
 // entMpolygon 多边形填充实体。
-type entMpolygon struct {
-	baseEntity
-	style     uint16    // style（BS 75，主体首）：0=normal 1=outer 2=whole
-	hatch     *entHatch // HATCH 同构主体（渐变/高程/挤出/名称/填充标志/路径/图案段）
-	styleTail uint16    // 路径数组后的重复 style 字段（spec 原文双 FIELD_BS(style,75)）
-	xDir      point2    // x_dir（2RD 11）
+type EntMpolygon struct {
+	BaseEntity
+	Style     uint16    // style（BS 75，主体首）：0=normal 1=outer 2=whole
+	Hatch     *EntHatch // HATCH 同构主体（渐变/高程/挤出/名称/填充标志/路径/图案段）
+	StyleTail uint16    // 路径数组后的重复 style 字段（spec 原文双 FIELD_BS(style,75)）
+	XDir      Point2    // x_dir（2RD 11）
 }
 
 // decodeMpolygonVer MPOLYGON：style BS + [渐变段（R2004+，复用 HATCH
@@ -28,13 +28,13 @@ type entMpolygon struct {
 // 读取后丢弃）+ x_dir 2RD + 总边界句柄数 BL。与 HATCH 的差异：无
 // pixel_size/种子点段，且 style 在主体首与路径后各出现一次（spec 字面）。
 // MPOLYGON 随 AutoCAD 2004 引入，颜色字段按 R2004+ CMC 布局解析。
-func decodeMpolygonVer(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion, codepage uint16) (any, error) {
-	m := &entMpolygon{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
-	h := &entHatch{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
-	m.hatch = h
+func decodeMpolygonVer(r *bitstream.BitStream, Head *CommonEntityHead, ver container.DwgVersion, codepage uint16) (any, error) {
+	m := &EntMpolygon{BaseEntity: BaseEntity{Handle: Head.Handle, Color: Head.Color, Mode: Head.EntityMode}}
+	h := &EntHatch{BaseEntity: BaseEntity{Handle: Head.Handle, Color: Head.Color, Mode: Head.EntityMode}}
+	m.Hatch = h
 	streamName := ver >= container.VerR2007 // R2007+ 图案名/渐变名存于对象字符串区（同 HATCH 口径）
 	var err error
-	if m.style, err = r.ReadBS(); err != nil {
+	if m.Style, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
 	if ver >= container.VerR2004 {
@@ -42,14 +42,14 @@ func decodeMpolygonVer(r *bitstream.BitStream, head *commonEntityHead, ver conta
 			return nil, err
 		}
 	}
-	if h.elevation, err = r.ReadBD(); err != nil {
+	if h.Elevation, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if h.extrusion, err = read3pt(r); err != nil {
+	if h.Extrusion, err = read3pt(r); err != nil {
 		return nil, err
 	}
 	if !streamName {
-		if h.name, err = readHatchString(r, hatchStrInlineTv, codepage); err != nil {
+		if h.Name, err = ReadHatchString(r, HatchStrInlineTv, codepage); err != nil {
 			return nil, err
 		}
 	}
@@ -57,32 +57,32 @@ func decodeMpolygonVer(r *bitstream.BitStream, head *commonEntityHead, ver conta
 	if v, err = r.ReadB(); err != nil {
 		return nil, err
 	}
-	h.solidFill = v != 0
+	h.SolidFill = v != 0
 	if v, err = r.ReadB(); err != nil {
 		return nil, err
 	}
-	h.associative = v != 0
-	if h.paths, h.hasDerived, err = decodeHatchPaths(r, ver >= container.VerR2010); err != nil {
+	h.Associative = v != 0
+	if h.Paths, h.HasDerived, err = decodeHatchPaths(r, ver >= container.VerR2010); err != nil {
 		return nil, err
 	}
 	// 路径后的重复 style（spec 原文双 FIELD_BS(style,75)，字面保留）
-	if m.styleTail, err = r.ReadBS(); err != nil {
+	if m.StyleTail, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if h.patternType, err = r.ReadBS(); err != nil {
+	if h.PatternType, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if !h.solidFill {
-		if h.angle, err = r.ReadBD(); err != nil {
+	if !h.SolidFill {
+		if h.Angle, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
-		if h.scaleSpacing, err = r.ReadBD(); err != nil {
+		if h.ScaleSpacing, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
 		if v, err = r.ReadB(); err != nil {
 			return nil, err
 		}
-		h.doubleFlag = v != 0
+		h.DoubleFlag = v != 0
 		numDefLines, err := r.ReadBS()
 		if err != nil {
 			return nil, err
@@ -91,20 +91,20 @@ func decodeMpolygonVer(r *bitstream.BitStream, head *commonEntityHead, ver conta
 			return nil, fmt.Errorf("cad: MPOLYGON 定义线数异常 %d", numDefLines)
 		}
 		for i := uint32(0); i < uint32(numDefLines); i++ {
-			var dl hatchDefLine
-			if dl.angle, err = r.ReadBD(); err != nil {
+			var dl HatchDefLine
+			if dl.Angle, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
-			if dl.pt0.x, err = r.ReadBD(); err != nil {
+			if dl.Pt0.X, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
-			if dl.pt0.y, err = r.ReadBD(); err != nil {
+			if dl.Pt0.Y, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
-			if dl.offset.x, err = r.ReadBD(); err != nil {
+			if dl.Offset.X, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
-			if dl.offset.y, err = r.ReadBD(); err != nil {
+			if dl.Offset.Y, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
 			numDashes, err := r.ReadBS()
@@ -119,29 +119,29 @@ func decodeMpolygonVer(r *bitstream.BitStream, head *commonEntityHead, ver conta
 				if e != nil {
 					return nil, e
 				}
-				dl.dashes = append(dl.dashes, d)
+				dl.Dashes = append(dl.Dashes, d)
 			}
-			h.deflines = append(h.deflines, dl)
+			h.Deflines = append(h.Deflines, dl)
 		}
 	}
 	// hatch_color CMC（R2004+ 布局）：当前审计口径不保留颜色值，读取占位推进位流
 	if ver != container.VerR13 && ver != container.VerR14 {
-		if err = skipColorCMCR2004(r); err != nil {
+		if err = SkipColorCMCR2004(r); err != nil {
 			return nil, err
 		}
 	}
-	if m.xDir.x, err = r.ReadRD(); err != nil {
+	if m.XDir.X, err = r.ReadRD(); err != nil {
 		return nil, err
 	}
-	if m.xDir.y, err = r.ReadRD(); err != nil {
+	if m.XDir.Y, err = r.ReadRD(); err != nil {
 		return nil, err
 	}
 	if _, err = r.ReadBL(); err != nil { // 总边界对象句柄数（本体在 handle 流）
 		return nil, err
 	}
-	r.SetBitPos(head.objSizeBit)
-	if _, layer, e := parseCommonEntityHandles(r, head); e == nil {
-		m.layer = layer
+	r.SetBitPos(Head.ObjSizeBit)
+	if _, Layer, e := ParseCommonEntityHandles(r, Head); e == nil {
+		m.Layer = Layer
 	}
 	return m, nil
 }

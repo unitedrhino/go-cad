@@ -1,6 +1,6 @@
 // acis_test.go ACIS 类实体（REGION/3DSOLID/BODY）单元测试：
 // 验证 acis_empty 标志、SAT 加密文本块提取与解混淆（≤32 保留/其余 159-字节）。
-package cad
+package entity
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
@@ -12,8 +12,8 @@ import (
 
 // TestDecodeAcisEmpty 空的 3DSOLID（290=1）：仅公共头 + handle 流。
 func TestDecodeAcisEmpty(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x20)
-	writeCommonHead(w, 300, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x20)
+	testsupport.WriteCommonHead(w, 300, 2)
 	w.B(1) // acis_empty=1
 	w.B(0) // wireframe_data_present=0（COMMON_3DSOLID 无条件读）
 	w.B(0) // acis_empty_bit
@@ -30,20 +30,20 @@ func TestDecodeAcisEmpty(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
+	Head, err := ParseEntityHead(r, 0, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeAcis(r, &head, "3DSOLID", container.VerR2018)
+	ent, err := decodeAcis(r, &Head, "3DSOLID", container.VerR2018)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := ent.(*entAcis)
-	if !a.acisEmpty {
+	a := ent.(*EntAcis)
+	if !a.AcisEmpty {
 		t.Fatal("应为空 ACIS")
 	}
-	if len(a.blocks) != 0 || len(a.acisData) != 0 {
-		t.Fatalf("空 ACIS 不应有块: %d", len(a.blocks))
+	if len(a.Blocks) != 0 || len(a.AcisData) != 0 {
+		t.Fatalf("空 ACIS 不应有块: %d", len(a.Blocks))
 	}
 }
 
@@ -58,8 +58,8 @@ func TestDecodeAcisSATBlocks(t *testing.T) {
 		}
 		return 159 - b
 	}
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x1F)
-	writeCommonHead(w, 301, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x1F)
+	testsupport.WriteCommonHead(w, 301, 2)
 	w.B(0) // acis_empty=0
 	w.B(0) // unknown
 	w.BS(1)
@@ -84,25 +84,25 @@ func TestDecodeAcisSATBlocks(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
+	Head, err := ParseEntityHead(r, 0, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeAcis(r, &head, "REGION", container.VerR2018)
+	ent, err := decodeAcis(r, &Head, "REGION", container.VerR2018)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := ent.(*entAcis)
-	if a.acisEmpty || a.version != 1 {
-		t.Fatalf("标志: empty=%v version=%d", a.acisEmpty, a.version)
+	a := ent.(*EntAcis)
+	if a.AcisEmpty || a.Version != 1 {
+		t.Fatalf("标志: empty=%v version=%d", a.AcisEmpty, a.Version)
 	}
-	if len(a.blocks) != 1 {
-		t.Fatalf("块数: %d", len(a.blocks))
+	if len(a.Blocks) != 1 {
+		t.Fatalf("块数: %d", len(a.Blocks))
 	}
-	if string(a.acisData) != satText {
-		t.Fatalf("SAT 文本解混淆失败: %q", string(a.acisData))
+	if string(a.AcisData) != satText {
+		t.Fatalf("SAT 文本解混淆失败: %q", string(a.AcisData))
 	}
-	if !strings.HasPrefix(string(a.acisData), "ACIS") {
-		t.Fatalf("SAT 前缀: %q", string(a.acisData))
+	if !strings.HasPrefix(string(a.AcisData), "ACIS") {
+		t.Fatalf("SAT 前缀: %q", string(a.AcisData))
 	}
 }

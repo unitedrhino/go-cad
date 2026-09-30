@@ -6,6 +6,7 @@ package cad
 
 import (
 	"bufio"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"math"
 	"os"
 	"path/filepath"
@@ -181,8 +182,8 @@ func TestLibreDWGDXFCross(t *testing.T) {
 		}
 		byHandle := map[uint64]any{}
 		for _, e := range doc.modelSpace {
-			if b := entBase(e); b != nil {
-				byHandle[b.handle] = e
+			if b := entity.EntityBase(e); b != nil {
+				byHandle[b.Handle] = e
 			}
 		}
 		totalSamples++
@@ -232,8 +233,8 @@ func dxfCompareEntity(t *testing.T, sample string, de *dxfEntity, ge any) bool {
 		z, _ := e.first(c + 20)
 		return x, y, z
 	}
-	eq3 := func(x, y, z float64, p point3) bool {
-		return ok(x, p.x) && ok(y, p.y) && ok(z, p.z)
+	eq3 := func(x, y, z float64, p entity.Point3) bool {
+		return ok(x, p.X) && ok(y, p.Y) && ok(z, p.Z)
 	}
 	fail := func(what string) bool {
 		t.Errorf("%s h=%d %s %s 不匹配", sample, de.handle, de.typ, what)
@@ -241,111 +242,111 @@ func dxfCompareEntity(t *testing.T, sample string, de *dxfEntity, ge any) bool {
 	}
 	switch de.typ {
 	case "LINE":
-		e := ge.(*entLine)
+		e := ge.(*entity.EntLine)
 		x1, y1, z1 := f3(de, 10)
 		x2, y2, z2 := f3(de, 11)
-		if !eq3(x1, y1, z1, e.start) {
+		if !eq3(x1, y1, z1, e.Start) {
 			return fail("start")
 		}
-		if !eq3(x2, y2, z2, e.end) {
+		if !eq3(x2, y2, z2, e.End) {
 			return fail("end")
 		}
 	case "XLINE", "RAY":
-		e := ge.(*entRay)
+		e := ge.(*entity.EntRay)
 		x1, y1, z1 := f3(de, 10)
 		x2, y2, z2 := f3(de, 11)
-		if !eq3(x1, y1, z1, e.start) {
+		if !eq3(x1, y1, z1, e.Start) {
 			return fail("start")
 		}
-		if !eq3(x2, y2, z2, e.unitVector) {
+		if !eq3(x2, y2, z2, e.UnitVector) {
 			return fail("vector")
 		}
 	case "CIRCLE":
-		e := ge.(*entCircle)
+		e := ge.(*entity.EntCircle)
 		cx, cy, cz := f3(de, 10)
 		r, _ := de.first(40)
-		if !eq3(cx, cy, cz, e.center) || !ok(r, e.radius) {
+		if !eq3(cx, cy, cz, e.Center) || !ok(r, e.Radius) {
 			return fail("center/radius")
 		}
 	case "ARC":
-		e := ge.(*entArc)
+		e := ge.(*entity.EntArc)
 		cx, cy, cz := f3(de, 10)
 		r, _ := de.first(40)
 		a0, _ := de.first(50)
 		a1, _ := de.first(51)
-		if !eq3(cx, cy, cz, e.center) || !ok(r, e.radius) ||
-			!ok(a0, e.angleStart*180/math.Pi) || !ok(a1, e.angleEnd*180/math.Pi) {
+		if !eq3(cx, cy, cz, e.Center) || !ok(r, e.Radius) ||
+			!ok(a0, e.AngleStart*180/math.Pi) || !ok(a1, e.AngleEnd*180/math.Pi) {
 			return fail("geometry/angles")
 		}
 	case "POINT":
-		e := ge.(*entPoint)
+		e := ge.(*entity.EntPoint)
 		x, y, z := f3(de, 10)
 		rot, _ := de.first(50)
-		if !eq3(x, y, z, e.location) || !ok(rot, e.rotation*180/math.Pi) {
+		if !eq3(x, y, z, e.Location) || !ok(rot, e.Rotation*180/math.Pi) {
 			return fail("location/rotation")
 		}
 	case "ELLIPSE":
-		e := ge.(*entEllipse)
+		e := ge.(*entity.EntEllipse)
 		cx, cy, cz := f3(de, 10)
 		mx, my, mz := f3(de, 11)
 		ratio, _ := de.first(40)
 		a0, _ := de.first(41)
 		a1, _ := de.first(42)
-		if !eq3(cx, cy, cz, e.center) || !eq3(mx, my, mz, e.majorAxis) ||
-			!ok(ratio, e.ratio) || !ok(a0, e.startAng) || !ok(a1, e.endAng) {
+		if !eq3(cx, cy, cz, e.Center) || !eq3(mx, my, mz, e.MajorAxis) ||
+			!ok(ratio, e.Ratio) || !ok(a0, e.StartAng) || !ok(a1, e.EndAng) {
 			return fail("geometry")
 		}
 	case "LWPOLYLINE":
-		e := ge.(*entLwPolyline)
+		e := ge.(*entity.EntLwPolyline)
 		n, _ := de.first(90)
-		if int(n) != len(e.vertices) {
+		if int(n) != len(e.Vertices) {
 			return fail("顶点数")
 		}
 		pts := de.pt2s()
 		for i, p := range pts {
-			if i >= len(e.vertices) {
+			if i >= len(e.Vertices) {
 				break
 			}
-			if !ok(p[0], e.vertices[i].x) || !ok(p[1], e.vertices[i].y) {
+			if !ok(p[0], e.Vertices[i].X) || !ok(p[1], e.Vertices[i].Y) {
 				return fail("顶点")
 			}
 		}
 	case "TEXT":
-		e := ge.(*entText)
+		e := ge.(*entity.EntText)
 		s, _ := de.str(1)
 		h, _ := de.first(40)
 		x, y, z := f3(de, 10)
-		if s != e.text || !ok(h, e.height) || !eq3(x, y, z, e.insertion) {
+		if s != e.Text || !ok(h, e.Height) || !eq3(x, y, z, e.Insertion) {
 			return fail("text/height/insertion")
 		}
 	case "ATTRIB":
-		e := ge.(*entAttrib)
+		e := ge.(*entity.EntAttrib)
 		s, _ := de.rawStr(1)
 		h, _ := de.first(40)
 		x, y, z := f3(de, 10)
 		if s == "" {
 			// LibreDWG 对部分 annotative ATTRIB 的文字读取为空（其自身局限），
 			// 此时仅比对几何字段
-			return eq3(x, y, z, e.insertion) && ok(h, e.height)
+			return eq3(x, y, z, e.Insertion) && ok(h, e.Height)
 		}
 		// 尾随空白视为等价（DWG 中 tag/文字常带填充空格）
-		if strings.TrimRight(s, " \t") != strings.TrimRight(e.text, " \t") ||
-			!ok(h, e.height) || !eq3(x, y, z, e.insertion) {
+		if strings.TrimRight(s, " \t") != strings.TrimRight(e.Text, " \t") ||
+			!ok(h, e.Height) || !eq3(x, y, z, e.Insertion) {
 			return fail("text/height/insertion")
 		}
 	case "ATTDEF":
 		// 极限批次 A：属性定义（1 默认值/3 提示/2 标签/40 字高/10 插入点）
-		e := ge.(*entAttrib)
+		e := ge.(*entity.EntAttrib)
 		s, _ := de.rawStr(1)
 		tag, _ := de.rawStr(2)
 		h, _ := de.first(40)
 		x, y, z := f3(de, 10)
-		if s != strings.TrimRight(e.text, " \t") || tag != strings.TrimRight(e.tag, " \t") ||
-			!ok(h, e.height) || !eq3(x, y, z, e.insertion) {
+		if s != strings.TrimRight(e.Text, " \t") || tag != strings.TrimRight(e.Tag, " \t") ||
+			!ok(h, e.Height) || !eq3(x, y, z, e.Insertion) {
 			return fail("text/tag/height/insertion")
 		}
 	case "MTEXT":
-		e := ge.(*entMText)
+		e := ge.(*entity.EntMText)
 		s, _ := de.str(1)
 		if v3, ok3 := de.str(3); ok3 {
 			s = v3 + s
@@ -353,29 +354,29 @@ func dxfCompareEntity(t *testing.T, sample string, de *dxfEntity, ge any) bool {
 		h, _ := de.first(40)
 		x, y, z := f3(de, 10)
 		// DXF 3/1 拼接为原始富文本，与 Go 解析原文（未剥离格式）对比
-		if s != e.text || !ok(h, e.textHeight) || !eq3(x, y, z, e.insertion) {
+		if s != e.Text || !ok(h, e.TextHeight) || !eq3(x, y, z, e.Insertion) {
 			return fail("text/height/insertion")
 		}
 	case "SOLID", "TRACE":
-		e := ge.(*entSolid)
+		e := ge.(*entity.EntSolid)
 		x1, y1, _ := f3(de, 10)
 		x2, y2, _ := f3(de, 11)
 		x3, y3, _ := f3(de, 12)
 		x4, y4, _ := f3(de, 13)
-		if !ok(x1, e.p1.x) || !ok(y1, e.p1.y) || !ok(x2, e.p2.x) || !ok(y2, e.p2.y) ||
-			!ok(x3, e.p3.x) || !ok(y3, e.p3.y) || !ok(x4, e.p4.x) || !ok(y4, e.p4.y) {
+		if !ok(x1, e.P1.X) || !ok(y1, e.P1.Y) || !ok(x2, e.P2.X) || !ok(y2, e.P2.Y) ||
+			!ok(x3, e.P3.X) || !ok(y3, e.P3.Y) || !ok(x4, e.P4.X) || !ok(y4, e.P4.Y) {
 			return fail("corners")
 		}
 	case "3DFACE":
-		e := ge.(*entFace3d)
-		for i, p := range [4]point3{e.p1, e.p2, e.p3, e.p4} {
+		e := ge.(*entity.EntFace3d)
+		for i, p := range [4]entity.Point3{e.P1, e.P2, e.P3, e.P4} {
 			x, y, z := f3(de, 10+i)
 			if !eq3(x, y, z, p) {
 				return fail("顶点")
 			}
 		}
 	case "INSERT":
-		e := ge.(*entInsert)
+		e := ge.(*entity.EntInsert)
 		x, y, z := f3(de, 10)
 		// 缺省组码：41/42/43=1.0、50=0
 		sx := 1.0
@@ -391,24 +392,24 @@ func dxfCompareEntity(t *testing.T, sample string, de *dxfEntity, ge any) bool {
 			sz = v
 		}
 		rot, _ := de.first(50)
-		if !eq3(x, y, z, e.position) || !ok(sx, e.scale.x) || !ok(sy, e.scale.y) ||
-			!ok(sz, e.scale.z) || !ok(rot, e.rotation*180/math.Pi) {
+		if !eq3(x, y, z, e.Position) || !ok(sx, e.Scale.X) || !ok(sy, e.Scale.Y) ||
+			!ok(sz, e.Scale.Z) || !ok(rot, e.Rotation*180/math.Pi) {
 			return fail("insertion/scale/rotation")
 		}
 	case "SPLINE":
-		e := ge.(*entSpline)
+		e := ge.(*entity.EntSpline)
 		nk, _ := de.first(72)
 		nc, _ := de.first(73)
 		nf, _ := de.first(74)
-		if int(nk) != len(e.knots) || int(nc) != len(e.controlPoints) || int(nf) != len(e.fitPoints) {
+		if int(nk) != len(e.Knots) || int(nc) != len(e.ControlPoints) || int(nf) != len(e.FitPoints) {
 			return fail("节点/控制点/拟合点数")
 		}
 		ki := 0
 		for i, c := range de.code {
-			if c == 40 && ki < len(e.knots) {
+			if c == 40 && ki < len(e.Knots) {
 				v, err := strconv.ParseFloat(strings.TrimSpace(de.val[i]), 64)
 				if err == nil {
-					if math.Abs(v-e.knots[ki]) > 1e-6 {
+					if math.Abs(v-e.Knots[ki]) > 1e-6 {
 						return fail("节点值")
 					}
 					ki++
@@ -417,7 +418,7 @@ func dxfCompareEntity(t *testing.T, sample string, de *dxfEntity, ge any) bool {
 		}
 		ci := 0
 		for i, c := range de.code {
-			if c == 10 && ci < len(e.controlPoints) {
+			if c == 10 && ci < len(e.ControlPoints) {
 				x, _ := strconv.ParseFloat(strings.TrimSpace(de.val[i]), 64)
 				var y, z float64
 				for j := i + 1; j < len(de.code); j++ {
@@ -429,23 +430,23 @@ func dxfCompareEntity(t *testing.T, sample string, de *dxfEntity, ge any) bool {
 						break
 					}
 				}
-				cp := e.controlPoints[ci]
-				if !ok(x, cp.x) || !ok(y, cp.y) || !ok(z, cp.z) {
+				cp := e.ControlPoints[ci]
+				if !ok(x, cp.X) || !ok(y, cp.Y) || !ok(z, cp.Z) {
 					return fail("控制点")
 				}
 				ci++
 			}
 		}
 	case "DIMENSION":
-		e, isDim := ge.(*entDimension)
+		e, isDim := ge.(*entity.EntDimension)
 		if !isDim {
 			return fail("类型")
 		}
 		t1x, t1y, t1z := f3(de, 11)
 		d3, d4, d5 := f3(de, 13)
 		d6, d7, d8 := f3(de, 14)
-		if !eq3(t1x, t1y, t1z, e.textMidpoint) ||
-			!eq3(d3, d4, d5, e.point13) || !eq3(d6, d7, d8, e.point14) {
+		if !eq3(t1x, t1y, t1z, e.TextMidpoint) ||
+			!eq3(d3, d4, d5, e.Point13) || !eq3(d6, d7, d8, e.Point14) {
 			return fail("标注点")
 		}
 		// ANG2LN 布局：参照实现与 LibreDWG 的流内 2RD def_pt 即 DXF 10，
@@ -462,46 +463,46 @@ func dxfCompareEntity(t *testing.T, sample string, de *dxfEntity, ge any) bool {
 		if sub == "AcDb2LineAngularDimension" {
 			// ANG2LN：流内 2RD def_pt=DXF10 ↔ 我们读入 point16x/p16y；
 			// 流内末尾 3BD xline2end=DXF16 ↔ 我们的 point10
-			if !ok(x0, e.point16x) || !ok(y0, e.p16y) {
+			if !ok(x0, e.Point16x) || !ok(y0, e.P16y) {
 				return fail("角度定义点")
 			}
-			if !ok(x16, e.point10.x) || !ok(y16, e.point10.y) {
+			if !ok(x16, e.Point10.X) || !ok(y16, e.Point10.Y) {
 				return fail("弧线点")
 			}
-		} else if !eq3(x0, y0, func() float64 { z, _ := de.first(30); return z }(), e.point10) {
+		} else if !eq3(x0, y0, func() float64 { z, _ := de.first(30); return z }(), e.Point10) {
 			return fail("定义点")
 		}
 		if m, hasM := de.first(42); hasM && m != 0 {
-			if !ok(m, e.actualMeasurement) {
+			if !ok(m, e.ActualMeasurement) {
 				return fail("测量值")
 			}
 		}
 	case "HATCH":
-		e := ge.(*entHatch)
+		e := ge.(*entity.EntHatch)
 		solid, _ := de.first(70)
-		if (solid != 0) != e.solidFill {
+		if (solid != 0) != e.SolidFill {
 			return fail("solid 标志")
 		}
 		// 渐变段（极限批次 A）：450 标志/453 色数/470 渐变名/460 角度（度）
 		grad, hasGrad := de.first(450)
 		if hasGrad {
-			if uint32(grad) != e.isGradientFill {
+			if uint32(grad) != e.IsGradientFill {
 				return fail("is_gradient_fill")
 			}
 			nc, _ := de.first(453)
-			if int(nc) != len(e.colors) {
+			if int(nc) != len(e.Colors) {
 				return fail("num_colors")
 			}
 			name, hasName := de.str(470)
-			if hasName && name != e.gradientName {
+			if hasName && name != e.GradientName {
 				return fail("gradient_name")
 			}
 			// 460 角度不对照：DXF 规范为度（我们写出侧 radDeg 转度），
 			// LibreDWG out_dxf 输出弧度原值（实测 0.089011...，未做
 			// rad2deg，与自身 in_dxf 的 deg2rad 不对称），值级不可比
-			if len(e.colors) > 0 {
+			if len(e.Colors) > 0 {
 				shift, hasShift := de.first(463)
-				if hasShift && !ok(shift, e.colors[0].shiftValue) {
+				if hasShift && !ok(shift, e.Colors[0].ShiftValue) {
 					return fail("colors[0].shift")
 				}
 			}
@@ -509,50 +510,50 @@ func dxfCompareEntity(t *testing.T, sample string, de *dxfEntity, ge any) bool {
 	case "IMAGE", "WIPEOUT":
 		// 极限批次 A：栅格图像（90 版本/10 位置/11-12 双轴/13 尺寸/340
 		// IMAGEDEF/70 显示属性/71 边界类型）
-		var im *entImage
-		var wp *entWipeout
-		if v, ok2 := ge.(*entImage); ok2 {
+		var im *entity.EntImage
+		var wp *entity.EntWipeout
+		if v, ok2 := ge.(*entity.EntImage); ok2 {
 			im = v
-		} else if v, ok3 := ge.(*entWipeout); ok3 {
+		} else if v, ok3 := ge.(*entity.EntWipeout); ok3 {
 			wp = v
 		} else {
 			return fail("类型")
 		}
 		gcv := func() uint32 {
 			if im != nil {
-				return im.classVersion
+				return im.ClassVersion
 			}
-			return wp.classVersion
+			return wp.ClassVersion
 		}
-		gpt := func() point3 {
+		gpt := func() entity.Point3 {
 			if im != nil {
-				return im.pt0
+				return im.Pt0
 			}
-			return wp.pt0
+			return wp.Pt0
 		}
-		gsize := func() point2 {
+		gsize := func() entity.Point2 {
 			if im != nil {
-				return im.imageSize
+				return im.ImageSize
 			}
-			return wp.imageSize
+			return wp.ImageSize
 		}
 		gdef := func() uint64 {
 			if im != nil {
-				return im.imageDef
+				return im.ImageDef
 			}
-			return wp.imageDef
+			return wp.ImageDef
 		}
 		gprops := func() uint16 {
 			if im != nil {
-				return im.displayProps
+				return im.DisplayProps
 			}
-			return wp.displayProps
+			return wp.DisplayProps
 		}
 		gclip := func() uint16 {
 			if im != nil {
-				return im.clipBoundaryType
+				return im.ClipBoundaryType
 			}
-			return wp.clipBoundaryType
+			return wp.ClipBoundaryType
 		}
 		cv, _ := de.first(90)
 		if uint32(cv) != gcv() {
@@ -563,7 +564,7 @@ func dxfCompareEntity(t *testing.T, sample string, de *dxfEntity, ge any) bool {
 			return fail("位置")
 		}
 		sx, sy, _ := f3(de, 13)
-		if !ok(sx, gsize().x) || !ok(sy, gsize().y) {
+		if !ok(sx, gsize().X) || !ok(sy, gsize().Y) {
 			return fail("image_size")
 		}
 		if hd, hasH := de.first(340); hasH && uint64(hd) != gdef() && gdef() != 0 {
@@ -577,58 +578,58 @@ func dxfCompareEntity(t *testing.T, sample string, de *dxfEntity, ge any) bool {
 		}
 	case "VIEWPORT":
 		// 极限批次 A：视口（10 中心/40-41 宽高/68-69 开关与 id/72 圆缩放）
-		e := ge.(*entViewport)
+		e := ge.(*entity.EntViewport)
 		x0, y0, z0 := f3(de, 10)
-		if !eq3(x0, y0, z0, e.center) {
+		if !eq3(x0, y0, z0, e.Center) {
 			return fail("中心")
 		}
 		w, _ := de.first(40)
 		h, _ := de.first(41)
-		if !ok(w, e.width) || !ok(h, e.height) {
+		if !ok(w, e.Width) || !ok(h, e.Height) {
 			return fail("宽高")
 		}
 		if onOff, hasO := de.first(68); hasO {
 			expect := int64(0)
-			if e.owner != 0 {
+			if e.Owner != 0 {
 				expect = 1
 			}
 			if int64(onOff) != expect {
 				return fail("on_off")
 			}
 		}
-		if cz, hasC := de.first(72); hasC && uint16(cz) != e.circleZoom {
+		if cz, hasC := de.first(72); hasC && uint16(cz) != e.CircleZoom {
 			return fail("circle_zoom")
 		}
 	case "REGION", "3DSOLID", "BODY":
 		// 极限批次 A：ACIS 系（290 acis_empty/70 version；SAT 数据行为
 		// 加密态，明文值级由单元用例覆盖，此处比对骨架标量）
-		e, isAcis := ge.(*entAcis)
+		e, isAcis := ge.(*entity.EntAcis)
 		if !isAcis {
 			return fail("类型")
 		}
-		if empty, hasE := de.first(290); hasE && (empty != 0) != e.acisEmpty {
+		if empty, hasE := de.first(290); hasE && (empty != 0) != e.AcisEmpty {
 			return fail("acis_empty")
 		}
-		if ver, hasV := de.first(70); hasV && e.version == 1 && uint16(ver) != e.version {
+		if ver, hasV := de.first(70); hasV && e.Version == 1 && uint16(ver) != e.Version {
 			return fail("version")
 		}
 	case "POLYLINE_PFACE", "POLYLINE_MESH":
 		// 极限批次 A：面网格/多面网格（70 标志 64/16 + 71/72 计数）
-		if _, isPface := ge.(*entPolylinePface); isPface {
+		if _, isPface := ge.(*entity.EntPolylinePface); isPface {
 			flag, _ := de.first(70)
 			if int(flag)&64 == 0 {
 				return fail("pface 标志")
 			}
 			nv, hasN := de.first(71)
-			if hasN && int(nv) != ge.(*entPolylinePface).numVertices {
+			if hasN && int(nv) != ge.(*entity.EntPolylinePface).NumVertices {
 				return fail("numverts")
 			}
-		} else if m, isMesh := ge.(*entPolylineMesh); isMesh {
+		} else if m, isMesh := ge.(*entity.EntPolylineMesh); isMesh {
 			flag, _ := de.first(70)
 			if int(flag)&16 == 0 {
 				return fail("mesh 标志")
 			}
-			if mv, hasM := de.first(71); hasM && uint16(mv) != m.mVertexCount {
+			if mv, hasM := de.first(71); hasM && uint16(mv) != m.MVertexCount {
 				return fail("m_verts")
 			}
 		} else {
@@ -636,41 +637,41 @@ func dxfCompareEntity(t *testing.T, sample string, de *dxfEntity, ge any) bool {
 		}
 	case "PROXY_ENTITY":
 		// 极限批次 A：代理实体（90 proxy_id 恒 499/95 版本）
-		e, isProxy := ge.(*entProxyEntity)
+		e, isProxy := ge.(*entity.EntProxyEntity)
 		if !isProxy {
 			return fail("类型")
 		}
-		if pid, hasP := de.first(90); hasP && uint32(pid) != e.proxyID {
+		if pid, hasP := de.first(90); hasP && uint32(pid) != e.ProxyID {
 			return fail("proxy_id")
 		}
 	case "OLE2FRAME":
 		// 极限批次 A：OLE 框架（71 类型/90 数据大小）
-		e, isOle := ge.(*entOle2Frame)
+		e, isOle := ge.(*entity.EntOle2Frame)
 		if !isOle {
 			return fail("类型")
 		}
-		if t, hasT := de.first(71); hasT && uint16(t) != e.oleType {
+		if t, hasT := de.first(71); hasT && uint16(t) != e.OleType {
 			return fail("ole_type")
 		}
-		if sz, hasS := de.first(90); hasS && uint32(sz) != e.dataSize {
+		if sz, hasS := de.first(90); hasS && uint32(sz) != e.DataSize {
 			return fail("data_size")
 		}
 	case "MULTILEADER":
 		// 极限批次 A：ctx 块内容分支（296 开关 + 341 块表句柄，hex）
-		e, isM := ge.(*entMLeader)
+		e, isM := ge.(*entity.EntMLeader)
 		if !isM {
 			return fail("类型")
 		}
 		blk, has296 := de.first(296)
-		if has296 && (blk != 0) != e.ctx.hasContentBlk {
+		if has296 && (blk != 0) != e.Ctx.HasContentBlk {
 			return fail("has_content_blk")
 		}
-		if has296 && e.ctx.hasContentBlk {
+		if has296 && e.Ctx.HasContentBlk {
 			for i, c := range de.code {
 				if c != 341 {
 					continue
 				}
-				if h, err := strconv.ParseUint(strings.TrimSpace(de.val[i]), 16, 64); err == nil && h != e.ctx.blk.blockTable {
+				if h, err := strconv.ParseUint(strings.TrimSpace(de.val[i]), 16, 64); err == nil && h != e.Ctx.Blk.BlockTable {
 					return fail("block_table")
 				}
 				break

@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"math"
 	"os"
 	"path/filepath"
@@ -209,52 +210,52 @@ func TestParseDXFCrossSameSourceDWG(t *testing.T) {
 // 与 SOLID/TRACE 共用 Go 类型，分布层面合并，逐实体对照仍按句柄一一匹配）。
 func dxfKindOf(ent any) string {
 	switch e := ent.(type) {
-	case *entLine:
+	case *entity.EntLine:
 		return "LINE"
-	case *entCircle:
+	case *entity.EntCircle:
 		return "CIRCLE"
-	case *entArc:
+	case *entity.EntArc:
 		return "ARC"
-	case *entPoint:
+	case *entity.EntPoint:
 		return "POINT"
-	case *entEllipse:
+	case *entity.EntEllipse:
 		return "ELLIPSE"
-	case *entText:
+	case *entity.EntText:
 		return "TEXT"
-	case *entMText:
+	case *entity.EntMText:
 		return "MTEXT"
-	case *entLwPolyline:
+	case *entity.EntLwPolyline:
 		return "LWPOLYLINE"
-	case *entPolyline2d, *entPolyline3d:
+	case *entity.EntPolyline2d, *entity.EntPolyline3d:
 		return "POLYLINE"
-	case *entPolylinePface:
+	case *entity.EntPolylinePface:
 		return "POLYLINE_PFACE"
-	case *entInsert:
+	case *entity.EntInsert:
 		return "INSERT"
-	case *entSolid:
-		if e.trace {
+	case *entity.EntSolid:
+		if e.Trace {
 			return "TRACE"
 		}
 		return "SOLID"
-	case *entFace3d:
+	case *entity.EntFace3d:
 		return "3DFACE"
-	case *entRay:
+	case *entity.EntRay:
 		return "RAY"
-	case *entSpline:
+	case *entity.EntSpline:
 		return "SPLINE"
-	case *entDimension:
+	case *entity.EntDimension:
 		return "DIMENSION"
-	case *entHatch:
+	case *entity.EntHatch:
 		return "HATCH"
-	case *entLeader:
+	case *entity.EntLeader:
 		return "LEADER"
-	case *entMLeader:
+	case *entity.EntMLeader:
 		return "MULTILEADER"
-	case *entMLine:
+	case *entity.EntMLine:
 		return "MLINE"
-	case *entTolerance:
+	case *entity.EntTolerance:
 		return "TOLERANCE"
-	case *entViewport:
+	case *entity.EntViewport:
 		return "VIEWPORT"
 	}
 	return ""
@@ -290,8 +291,8 @@ func dxfNear(a, b float64) bool {
 }
 
 // dxfNearP3 3D 点对照。
-func dxfNearP3(a, b point3) bool {
-	return dxfNear(a.x, b.x) && dxfNear(a.y, b.y) && dxfNear(a.z, b.z)
+func dxfNearP3(a, b entity.Point3) bool {
+	return dxfNear(a.X, b.X) && dxfNear(a.Y, b.Y) && dxfNear(a.Z, b.Z)
 }
 
 // dxfCrossCompare 单实体几何对照：按句柄在 DWG 侧找同类型实体并逐字段
@@ -299,297 +300,297 @@ func dxfNearP3(a, b point3) bool {
 // 句柄在其 LAYER 解析结果中（DWG 侧未解出的图层不误报）。
 func dxfCrossCompare(t *testing.T, sample string, dwgDoc, dxfDoc *Document, ent any, gaps map[uint64]string, waiveAll bool) (int, int) {
 	t.Helper()
-	base := entBase(ent)
+	base := entity.EntityBase(ent)
 	if base == nil {
 		return 0, 0
 	}
-	if _, known := gaps[base.handle]; known || waiveAll {
+	if _, known := gaps[base.Handle]; known || waiveAll {
 		// 已知 DWG 侧缺口句柄：任何字段差异均豁免（LibreDWG 参考输出
 		// 已仲裁 DXF 侧读取正确）
-		t.Logf("%s h=%X %s: 已知 DWG 侧缺口，豁免", sample, base.handle, dxfKindOf(ent))
+		t.Logf("%s h=%X %s: 已知 DWG 侧缺口，豁免", sample, base.Handle, dxfKindOf(ent))
 		return 0, 1
 	}
-	ge := dwgDoc.EntityByHandle(base.handle)
+	ge := dwgDoc.EntityByHandle(base.Handle)
 	if ge == nil {
-		t.Errorf("%s h=%X %s: DWG 侧无同句柄实体", sample, base.handle, dxfKindOf(ent))
+		t.Errorf("%s h=%X %s: DWG 侧无同句柄实体", sample, base.Handle, dxfKindOf(ent))
 		return 0, 0
 	}
 	kind := dxfKindOf(ge)
 	if kind != dxfKindOf(ent) {
-		t.Errorf("%s h=%X: 类型不一致 DXF=%s DWG=%s", sample, base.handle, dxfKindOf(ent), kind)
+		t.Errorf("%s h=%X: 类型不一致 DXF=%s DWG=%s", sample, base.Handle, dxfKindOf(ent), kind)
 		return 0, 0
 	}
 	// 图层归属一致（同源句柄；DWG 侧图层未解出/无效时不误报）
-	dwgBase := entBase(ge)
-	_, dwgLayerKnown := dwgDoc.layerColors[dwgBase.layer]
-	_, dxfLayerKnown := dxfDoc.layerColors[base.layer]
-	if dwgBase.layer != base.layer && dwgLayerKnown && dxfLayerKnown && !dxfLayerNameWaive[sample][base.handle] {
-		t.Errorf("%s h=%X %s: 图层不一致 DXF=%X DWG=%X", sample, base.handle, kind, base.layer, dwgBase.layer)
+	dwgBase := entity.EntityBase(ge)
+	_, dwgLayerKnown := dwgDoc.layerColors[dwgBase.Layer]
+	_, dxfLayerKnown := dxfDoc.layerColors[base.Layer]
+	if dwgBase.Layer != base.Layer && dwgLayerKnown && dxfLayerKnown && !dxfLayerNameWaive[sample][base.Handle] {
+		t.Errorf("%s h=%X %s: 图层不一致 DXF=%X DWG=%X", sample, base.Handle, kind, base.Layer, dwgBase.Layer)
 	}
 	ok := true
 	switch e := ent.(type) {
-	case *entLine:
-		g := ge.(*entLine)
-		ok = dxfNearP3(e.start, g.start) && dxfNearP3(e.end, g.end)
-	case *entCircle:
-		g := ge.(*entCircle)
-		ok = dxfNearP3(e.center, g.center) && dxfNear(e.radius, g.radius)
-	case *entArc:
-		g := ge.(*entArc)
-		ok = dxfNearP3(e.center, g.center) && dxfNear(e.radius, g.radius) &&
-			dxfNear(e.angleStart, g.angleStart) && dxfNear(e.angleEnd, g.angleEnd)
-	case *entPoint:
-		g := ge.(*entPoint)
-		ok = dxfNearP3(e.location, g.location)
-	case *entEllipse:
-		g := ge.(*entEllipse)
-		ok = dxfNearP3(e.center, g.center) && dxfNearP3(e.majorAxis, g.majorAxis) &&
-			dxfNear(e.ratio, g.ratio) && dxfNear(e.startAng, g.startAng) && dxfNear(e.endAng, g.endAng)
-	case *entText:
-		g := ge.(*entText)
-		if e.text != g.text {
-			t.Errorf("%s h=%X TEXT 文本不一致: DXF=%q DWG=%q", sample, base.handle, e.text, g.text)
+	case *entity.EntLine:
+		g := ge.(*entity.EntLine)
+		ok = dxfNearP3(e.Start, g.Start) && dxfNearP3(e.End, g.End)
+	case *entity.EntCircle:
+		g := ge.(*entity.EntCircle)
+		ok = dxfNearP3(e.Center, g.Center) && dxfNear(e.Radius, g.Radius)
+	case *entity.EntArc:
+		g := ge.(*entity.EntArc)
+		ok = dxfNearP3(e.Center, g.Center) && dxfNear(e.Radius, g.Radius) &&
+			dxfNear(e.AngleStart, g.AngleStart) && dxfNear(e.AngleEnd, g.AngleEnd)
+	case *entity.EntPoint:
+		g := ge.(*entity.EntPoint)
+		ok = dxfNearP3(e.Location, g.Location)
+	case *entity.EntEllipse:
+		g := ge.(*entity.EntEllipse)
+		ok = dxfNearP3(e.Center, g.Center) && dxfNearP3(e.MajorAxis, g.MajorAxis) &&
+			dxfNear(e.Ratio, g.Ratio) && dxfNear(e.StartAng, g.StartAng) && dxfNear(e.EndAng, g.EndAng)
+	case *entity.EntText:
+		g := ge.(*entity.EntText)
+		if e.Text != g.Text {
+			t.Errorf("%s h=%X TEXT 文本不一致: DXF=%q DWG=%q", sample, base.Handle, e.Text, g.Text)
 			return 1, 0
 		}
-		ok = dxfNear(e.height, g.height) && dxfNearP3(e.insertion, g.insertion)
-	case *entMText:
-		g := ge.(*entMText)
-		if e.text != g.text {
-			t.Errorf("%s h=%X MTEXT 文本不一致: DXF=%q DWG=%q", sample, base.handle, e.text, g.text)
+		ok = dxfNear(e.Height, g.Height) && dxfNearP3(e.Insertion, g.Insertion)
+	case *entity.EntMText:
+		g := ge.(*entity.EntMText)
+		if e.Text != g.Text {
+			t.Errorf("%s h=%X MTEXT 文本不一致: DXF=%q DWG=%q", sample, base.Handle, e.Text, g.Text)
 			return 1, 0
 		}
-		ok = dxfNear(e.textHeight, g.textHeight) && dxfNearP3(e.insertion, g.insertion)
-	case *entLwPolyline:
-		g := ge.(*entLwPolyline)
-		if len(e.vertices) != len(g.vertices) {
-			t.Errorf("%s h=%X LWPOLYLINE 顶点数不一致: DXF=%d DWG=%d", sample, base.handle, len(e.vertices), len(g.vertices))
+		ok = dxfNear(e.TextHeight, g.TextHeight) && dxfNearP3(e.Insertion, g.Insertion)
+	case *entity.EntLwPolyline:
+		g := ge.(*entity.EntLwPolyline)
+		if len(e.Vertices) != len(g.Vertices) {
+			t.Errorf("%s h=%X LWPOLYLINE 顶点数不一致: DXF=%d DWG=%d", sample, base.Handle, len(e.Vertices), len(g.Vertices))
 			return 1, 0
 		}
 		ok = true
-		for i := range e.vertices {
-			if !dxfNear(e.vertices[i].x, g.vertices[i].x) || !dxfNear(e.vertices[i].y, g.vertices[i].y) {
+		for i := range e.Vertices {
+			if !dxfNear(e.Vertices[i].X, g.Vertices[i].X) || !dxfNear(e.Vertices[i].Y, g.Vertices[i].Y) {
 				ok = false
 				break
 			}
 		}
-	case *entInsert:
-		g := ge.(*entInsert)
-		if e.blockHeader != g.blockHeader {
+	case *entity.EntInsert:
+		g := ge.(*entity.EntInsert)
+		if e.BlockHeader != g.BlockHeader {
 			// DWG 位流的 block header 句柄引用为既有解析缺口（LibreDWG
 			// dwgread 参考输出仲裁：DXF 侧按块名查 BLOCKS 段的结果正确），
 			// 降级为日志，其余字段仍强断言
-			t.Logf("%s h=%X INSERT 块句柄不一致: DXF=%X DWG=%X（DWG 侧缺口，降级）", sample, base.handle, e.blockHeader, g.blockHeader)
+			t.Logf("%s h=%X INSERT 块句柄不一致: DXF=%X DWG=%X（DWG 侧缺口，降级）", sample, base.Handle, e.BlockHeader, g.BlockHeader)
 		}
-		ok = dxfNearP3(e.position, g.position) &&
-			dxfNear(e.scale.x, g.scale.x) && dxfNear(e.scale.y, g.scale.y) && dxfNear(e.scale.z, g.scale.z) &&
-			dxfNear(e.rotation, g.rotation)
-	case *entSolid:
-		g := ge.(*entSolid)
-		ok = dxfNear(e.p1.x, g.p1.x) && dxfNear(e.p1.y, g.p1.y) &&
-			dxfNear(e.p2.x, g.p2.x) && dxfNear(e.p2.y, g.p2.y) &&
-			dxfNear(e.p3.x, g.p3.x) && dxfNear(e.p3.y, g.p3.y) &&
-			dxfNear(e.p4.x, g.p4.x) && dxfNear(e.p4.y, g.p4.y)
-	case *entFace3d:
-		g := ge.(*entFace3d)
-		for _, pp := range [][2]point3{{e.p1, g.p1}, {e.p2, g.p2}, {e.p3, g.p3}, {e.p4, g.p4}} {
+		ok = dxfNearP3(e.Position, g.Position) &&
+			dxfNear(e.Scale.X, g.Scale.X) && dxfNear(e.Scale.Y, g.Scale.Y) && dxfNear(e.Scale.Z, g.Scale.Z) &&
+			dxfNear(e.Rotation, g.Rotation)
+	case *entity.EntSolid:
+		g := ge.(*entity.EntSolid)
+		ok = dxfNear(e.P1.X, g.P1.X) && dxfNear(e.P1.Y, g.P1.Y) &&
+			dxfNear(e.P2.X, g.P2.X) && dxfNear(e.P2.Y, g.P2.Y) &&
+			dxfNear(e.P3.X, g.P3.X) && dxfNear(e.P3.Y, g.P3.Y) &&
+			dxfNear(e.P4.X, g.P4.X) && dxfNear(e.P4.Y, g.P4.Y)
+	case *entity.EntFace3d:
+		g := ge.(*entity.EntFace3d)
+		for _, pp := range [][2]entity.Point3{{e.P1, g.P1}, {e.P2, g.P2}, {e.P3, g.P3}, {e.P4, g.P4}} {
 			if !dxfNearP3(pp[0], pp[1]) {
 				ok = false
 				break
 			}
 		}
-	case *entRay:
-		g := ge.(*entRay)
-		ok = dxfNearP3(e.start, g.start) && dxfNearP3(e.unitVector, g.unitVector)
-	case *entSpline:
-		g := ge.(*entSpline)
+	case *entity.EntRay:
+		g := ge.(*entity.EntRay)
+		ok = dxfNearP3(e.Start, g.Start) && dxfNearP3(e.UnitVector, g.UnitVector)
+	case *entity.EntSpline:
+		g := ge.(*entity.EntSpline)
 		// DWG 位流对拟合点模式 SPLINE 不存节点/控制点（LibreDWG 读 DWG
 		// 同样为 0/0/N，与 DXF 导出含完整节点/控制点是存储形态差异），
 		// DWG 侧为空时仅对拟合点强断言
-		if len(g.knots) > 0 || len(g.controlPoints) > 0 {
-			if len(e.knots) != len(g.knots) || len(e.controlPoints) != len(g.controlPoints) {
+		if len(g.Knots) > 0 || len(g.ControlPoints) > 0 {
+			if len(e.Knots) != len(g.Knots) || len(e.ControlPoints) != len(g.ControlPoints) {
 				t.Errorf("%s h=%X SPLINE 节点/控制点数不一致: DXF=%d/%d DWG=%d/%d",
-					sample, base.handle, len(e.knots), len(e.controlPoints), len(g.knots), len(g.controlPoints))
+					sample, base.Handle, len(e.Knots), len(e.ControlPoints), len(g.Knots), len(g.ControlPoints))
 				return 1, 0
 			}
 		}
-		if len(e.fitPoints) != len(g.fitPoints) {
+		if len(e.FitPoints) != len(g.FitPoints) {
 			t.Errorf("%s h=%X SPLINE 拟合点数不一致: DXF=%d DWG=%d",
-				sample, base.handle, len(e.fitPoints), len(g.fitPoints))
+				sample, base.Handle, len(e.FitPoints), len(g.FitPoints))
 			return 1, 0
 		}
 		ok = true
-		n := len(e.knots)
-		if len(g.knots) < n {
-			n = len(g.knots)
+		n := len(e.Knots)
+		if len(g.Knots) < n {
+			n = len(g.Knots)
 		}
 		for i := 0; i < n; i++ {
-			if !dxfNear(e.knots[i], g.knots[i]) {
+			if !dxfNear(e.Knots[i], g.Knots[i]) {
 				ok = false
 				break
 			}
 		}
-		m := len(e.controlPoints)
-		if len(g.controlPoints) < m {
-			m = len(g.controlPoints)
+		m := len(e.ControlPoints)
+		if len(g.ControlPoints) < m {
+			m = len(g.ControlPoints)
 		}
 		for i := 0; i < m; i++ {
-			if !dxfNearP3(e.controlPoints[i], g.controlPoints[i]) {
+			if !dxfNearP3(e.ControlPoints[i], g.ControlPoints[i]) {
 				ok = false
 				break
 			}
 		}
-		for i := range e.fitPoints {
-			if i < len(g.fitPoints) && !dxfNearP3(e.fitPoints[i], g.fitPoints[i]) {
+		for i := range e.FitPoints {
+			if i < len(g.FitPoints) && !dxfNearP3(e.FitPoints[i], g.FitPoints[i]) {
 				ok = false
 				break
 			}
 		}
-	case *entPolyline2d:
-		g := ge.(*entPolyline2d)
+	case *entity.EntPolyline2d:
+		g := ge.(*entity.EntPolyline2d)
 		// 批次 T 起 DWG 侧 ownedHandles 由 owner 聚合回填（此前恒空）。
 		// dxfCrossPairs 均为 LibreDWG 官方对：DWG/DXF 由生成器分别写出，
 		// 顶点子实体句柄不保证两侧一致（INSERT 块句柄同样存在 ±1 漂移），
 		// 顶点表只对照数量；逐句柄值对照由合成用例（同句柄空间）覆盖。
-		if len(g.ownedHandles) != len(e.ownedHandles) {
-			t.Errorf("%s h=%X POLYLINE 顶点句柄数不一致: DXF=%d DWG=%d", sample, base.handle, len(e.ownedHandles), len(g.ownedHandles))
+		if len(g.OwnedHandles) != len(e.OwnedHandles) {
+			t.Errorf("%s h=%X POLYLINE 顶点句柄数不一致: DXF=%d DWG=%d", sample, base.Handle, len(e.OwnedHandles), len(g.OwnedHandles))
 			return 1, 0
 		}
 		return 1, 0
-	case *entDimension:
-		g := ge.(*entDimension)
+	case *entity.EntDimension:
+		g := ge.(*entity.EntDimension)
 		// 标志位与几何点：DXF 组码侧 flag 即 dimFlag；点位按类型对应
 		// （ANG2LN 的 10 组码承载 point16）
 		// flag 对照掩码：ORDINATE 的 bit6（DXF 的 X 轴标志）与 bit7（DWG 的
 		// flag2 覆盖位）两侧编码口径不同（gold=0xA6 vs dwgread DXF=0x66），
 		// 比较低 5 位；其余类型忽略 bit7。
 		flagMask := uint8(0x7F)
-		if e.dimFlag&0x7 == 6 {
+		if e.DimFlag&0x7 == 6 {
 			flagMask = 0x1F
 		}
-		if e.dimFlag&flagMask != g.dimFlag&flagMask {
-			t.Errorf("%s h=%X DIMENSION flag 不一致: DXF=%d DWG=%d", sample, base.handle, e.dimFlag, g.dimFlag)
+		if e.DimFlag&flagMask != g.DimFlag&flagMask {
+			t.Errorf("%s h=%X DIMENSION flag 不一致: DXF=%d DWG=%d", sample, base.Handle, e.DimFlag, g.DimFlag)
 		}
-		if !dxfNearP3(e.point13, g.point13) || !dxfNearP3(e.point14, g.point14) {
+		if !dxfNearP3(e.Point13, g.Point13) || !dxfNearP3(e.Point14, g.Point14) {
 			t.Errorf("%s h=%X DIMENSION xline 点不一致: DXF=(%.4f,%.4f)/(%.4f,%.4f) DWG=(%.4f,%.4f)/(%.4f,%.4f)",
-				sample, base.handle, e.point13.x, e.point13.y, e.point14.x, e.point14.y,
-				g.point13.x, g.point13.y, g.point14.x, g.point14.y)
+				sample, base.Handle, e.Point13.X, e.Point13.Y, e.Point14.X, e.Point14.Y,
+				g.Point13.X, g.Point13.Y, g.Point14.X, g.Point14.Y)
 		}
-		if e.hasPoint15 != g.hasPoint15 || (e.hasPoint15 && !dxfNearP3(e.point15, g.point15)) {
-			t.Errorf("%s h=%X DIMENSION point15 不一致: DXF=%v DWG=%v", sample, base.handle, e.hasPoint15, g.hasPoint15)
+		if e.HasPoint15 != g.HasPoint15 || (e.HasPoint15 && !dxfNearP3(e.Point15, g.Point15)) {
+			t.Errorf("%s h=%X DIMENSION point15 不一致: DXF=%v DWG=%v", sample, base.Handle, e.HasPoint15, g.HasPoint15)
 		}
-		sub := e.dimFlag & 0x7
+		sub := e.DimFlag & 0x7
 		switch {
 		case sub == 2: // ANG2LN：16 组码（p16 载体）与 10 组码（def 点）
-			if dxfNear(e.point16x, g.point16x) && dxfNear(e.p16y, g.p16y) && dxfNearP3(e.point10, g.point10) {
+			if dxfNear(e.Point16x, g.Point16x) && dxfNear(e.P16y, g.P16y) && dxfNearP3(e.Point10, g.Point10) {
 				ok = true
 			} else {
 				t.Errorf("%s h=%X ANG2LN point16/def 不一致: DXF=(%.4f,%.4f)/(%.4f,%.4f) DWG=(%.4f,%.4f)/(%.4f,%.4f)",
-					sample, base.handle, e.point16x, e.p16y, e.point10.x, e.point10.y,
-					g.point16x, g.p16y, g.point10.x, g.point10.y)
+					sample, base.Handle, e.Point16x, e.P16y, e.Point10.X, e.Point10.Y,
+					g.Point16x, g.P16y, g.Point10.X, g.Point10.Y)
 			}
 		case sub == 6: // ORDINATE：13/14 即 feature/leader 点，def 点为坐标系原点
 			ok = true
 		default:
-			ok = dxfNearP3(e.point10, g.point10)
+			ok = dxfNearP3(e.Point10, g.Point10)
 			if !ok {
 				t.Errorf("%s h=%X DIMENSION def 点不一致: DXF=(%.4f,%.4f) DWG=(%.4f,%.4f)",
-					sample, base.handle, e.point10.x, e.point10.y, g.point10.x, g.point10.y)
+					sample, base.Handle, e.Point10.X, e.Point10.Y, g.Point10.X, g.Point10.Y)
 			}
 		}
 		if ok {
-			if !dxfNearP3(e.textMidpoint, g.textMidpoint) {
+			if !dxfNearP3(e.TextMidpoint, g.TextMidpoint) {
 				t.Errorf("%s h=%X DIMENSION 文本中点不一致: DXF=(%.4f,%.4f) DWG=(%.4f,%.4f)",
-					sample, base.handle, e.textMidpoint.x, e.textMidpoint.y, g.textMidpoint.x, g.textMidpoint.y)
+					sample, base.Handle, e.TextMidpoint.X, e.TextMidpoint.Y, g.TextMidpoint.X, g.TextMidpoint.Y)
 			}
-			if !dxfNear(e.actualMeasurement, g.actualMeasurement) || e.attachmentPoint != g.attachmentPoint ||
-				!dxfNear(e.textRotation, g.textRotation) || !dxfNear(e.horizontalDir, g.horizontalDir) {
+			if !dxfNear(e.ActualMeasurement, g.ActualMeasurement) || e.AttachmentPoint != g.AttachmentPoint ||
+				!dxfNear(e.TextRotation, g.TextRotation) || !dxfNear(e.HorizontalDir, g.HorizontalDir) {
 				ok = false
 				t.Errorf("%s h=%X DIMENSION 公共字段不一致: meas DXF=%.4f DWG=%.4f attach=%d/%d",
-					sample, base.handle, e.actualMeasurement, g.actualMeasurement, e.attachmentPoint, g.attachmentPoint)
+					sample, base.Handle, e.ActualMeasurement, g.ActualMeasurement, e.AttachmentPoint, g.AttachmentPoint)
 			}
 		}
 		return 1, 0
-	case *entHatch:
-		g := ge.(*entHatch)
-		if e.name != g.name || e.solidFill != g.solidFill {
-			t.Errorf("%s h=%X HATCH 图案不一致: DXF=%q/%v DWG=%q/%v", sample, base.handle, e.name, e.solidFill, g.name, g.solidFill)
+	case *entity.EntHatch:
+		g := ge.(*entity.EntHatch)
+		if e.Name != g.Name || e.SolidFill != g.SolidFill {
+			t.Errorf("%s h=%X HATCH 图案不一致: DXF=%q/%v DWG=%q/%v", sample, base.Handle, e.Name, e.SolidFill, g.Name, g.SolidFill)
 		}
-		if len(e.paths) != len(g.paths) {
-			t.Errorf("%s h=%X HATCH 路径数不一致: DXF=%d DWG=%d", sample, base.handle, len(e.paths), len(g.paths))
+		if len(e.Paths) != len(g.Paths) {
+			t.Errorf("%s h=%X HATCH 路径数不一致: DXF=%d DWG=%d", sample, base.Handle, len(e.Paths), len(g.Paths))
 			return 1, 0
 		}
-		for i := range e.paths {
+		for i := range e.Paths {
 			// 边界形状对照：路径类型 + 原始顶点/段数（细分点列算法两侧一致）
-			ep, gp := e.paths[i], g.paths[i]
-			if ep.isPolyline != gp.isPolyline {
-				t.Errorf("%s h=%X HATCH 路径 %d 类型不一致", sample, base.handle, i)
+			ep, gp := e.Paths[i], g.Paths[i]
+			if ep.IsPolyline != gp.IsPolyline {
+				t.Errorf("%s h=%X HATCH 路径 %d 类型不一致", sample, base.Handle, i)
 				continue
 			}
-			if ep.isPolyline {
-				if len(ep.polyVerts) != len(gp.polyVerts) {
-					t.Errorf("%s h=%X HATCH 路径 %d 顶点数不一致: DXF=%d DWG=%d", sample, base.handle, i, len(ep.polyVerts), len(gp.polyVerts))
+			if ep.IsPolyline {
+				if len(ep.PolyVerts) != len(gp.PolyVerts) {
+					t.Errorf("%s h=%X HATCH 路径 %d 顶点数不一致: DXF=%d DWG=%d", sample, base.Handle, i, len(ep.PolyVerts), len(gp.PolyVerts))
 				}
-			} else if len(ep.segs) != len(gp.segs) {
-				t.Errorf("%s h=%X HATCH 路径 %d 段数不一致: DXF=%d DWG=%d", sample, base.handle, i, len(ep.segs), len(gp.segs))
+			} else if len(ep.Segs) != len(gp.Segs) {
+				t.Errorf("%s h=%X HATCH 路径 %d 段数不一致: DXF=%d DWG=%d", sample, base.Handle, i, len(ep.Segs), len(gp.Segs))
 			}
 		}
 		return 1, 0
-	case *entLeader:
-		g := ge.(*entLeader)
-		if e.annotationType != g.annotationType || e.pathType != g.pathType {
-			t.Errorf("%s h=%X LEADER 类型不一致: DXF=%d/%d DWG=%d/%d", sample, base.handle, e.annotationType, e.pathType, g.annotationType, g.pathType)
+	case *entity.EntLeader:
+		g := ge.(*entity.EntLeader)
+		if e.AnnotationType != g.AnnotationType || e.PathType != g.PathType {
+			t.Errorf("%s h=%X LEADER 类型不一致: DXF=%d/%d DWG=%d/%d", sample, base.Handle, e.AnnotationType, e.PathType, g.AnnotationType, g.PathType)
 		}
-		if len(e.points) != len(g.points) {
-			t.Errorf("%s h=%X LEADER 顶点数不一致: DXF=%d DWG=%d", sample, base.handle, len(e.points), len(g.points))
+		if len(e.Points) != len(g.Points) {
+			t.Errorf("%s h=%X LEADER 顶点数不一致: DXF=%d DWG=%d", sample, base.Handle, len(e.Points), len(g.Points))
 			return 1, 0
 		}
-		for i := range e.points {
-			if !dxfNearP3(e.points[i], g.points[i]) {
-				t.Errorf("%s h=%X LEADER 顶点 %d 不一致", sample, base.handle, i)
+		for i := range e.Points {
+			if !dxfNearP3(e.Points[i], g.Points[i]) {
+				t.Errorf("%s h=%X LEADER 顶点 %d 不一致", sample, base.Handle, i)
 			}
 		}
 		return 1, 0
-	case *entMLeader:
-		g := ge.(*entMLeader)
-		if e.mleaderType != g.mleaderType {
-			t.Errorf("%s h=%X MULTILEADER 类型不一致: DXF=%d DWG=%d", sample, base.handle, e.mleaderType, g.mleaderType)
+	case *entity.EntMLeader:
+		g := ge.(*entity.EntMLeader)
+		if e.MleaderType != g.MleaderType {
+			t.Errorf("%s h=%X MULTILEADER 类型不一致: DXF=%d DWG=%d", sample, base.Handle, e.MleaderType, g.MleaderType)
 		}
-		if len(e.ctx.leaders) != len(g.ctx.leaders) {
-			t.Errorf("%s h=%X MULTILEADER 引线数不一致: DXF=%d DWG=%d", sample, base.handle, len(e.ctx.leaders), len(g.ctx.leaders))
+		if len(e.Ctx.Leaders) != len(g.Ctx.Leaders) {
+			t.Errorf("%s h=%X MULTILEADER 引线数不一致: DXF=%d DWG=%d", sample, base.Handle, len(e.Ctx.Leaders), len(g.Ctx.Leaders))
 			return 1, 0
 		}
-		for i := range e.ctx.leaders {
-			if len(e.ctx.leaders[i].lines) != len(g.ctx.leaders[i].lines) {
-				t.Errorf("%s h=%X MULTILEADER 引线 %d 线数不一致: DXF=%d DWG=%d", sample, base.handle, i, len(e.ctx.leaders[i].lines), len(g.ctx.leaders[i].lines))
+		for i := range e.Ctx.Leaders {
+			if len(e.Ctx.Leaders[i].Lines) != len(g.Ctx.Leaders[i].Lines) {
+				t.Errorf("%s h=%X MULTILEADER 引线 %d 线数不一致: DXF=%d DWG=%d", sample, base.Handle, i, len(e.Ctx.Leaders[i].Lines), len(g.Ctx.Leaders[i].Lines))
 			}
 		}
 		return 1, 0
-	case *entMLine:
-		g := ge.(*entMLine)
-		if !dxfNear(e.scale, g.scale) || e.openClosed != g.openClosed {
-			t.Errorf("%s h=%X MLINE 比例/开闭不一致: DXF=%.2f/%d DWG=%.2f/%d", sample, base.handle, e.scale, e.openClosed, g.scale, g.openClosed)
+	case *entity.EntMLine:
+		g := ge.(*entity.EntMLine)
+		if !dxfNear(e.Scale, g.Scale) || e.OpenClosed != g.OpenClosed {
+			t.Errorf("%s h=%X MLINE 比例/开闭不一致: DXF=%.2f/%d DWG=%.2f/%d", sample, base.Handle, e.Scale, e.OpenClosed, g.Scale, g.OpenClosed)
 		}
-		if len(e.vertices) != len(g.vertices) {
-			t.Errorf("%s h=%X MLINE 顶点数不一致: DXF=%d DWG=%d", sample, base.handle, len(e.vertices), len(g.vertices))
+		if len(e.Vertices) != len(g.Vertices) {
+			t.Errorf("%s h=%X MLINE 顶点数不一致: DXF=%d DWG=%d", sample, base.Handle, len(e.Vertices), len(g.Vertices))
 			return 1, 0
 		}
-		for i := range e.vertices {
-			if !dxfNearP3(e.vertices[i].position, g.vertices[i].position) {
-				t.Errorf("%s h=%X MLINE 顶点 %d 位置不一致", sample, base.handle, i)
+		for i := range e.Vertices {
+			if !dxfNearP3(e.Vertices[i].Position, g.Vertices[i].Position) {
+				t.Errorf("%s h=%X MLINE 顶点 %d 位置不一致", sample, base.Handle, i)
 			}
 		}
 		return 1, 0
-	case *entTolerance:
-		g := ge.(*entTolerance)
-		if strings.TrimRight(e.text, " ") != strings.TrimRight(g.text, " ") {
-			t.Errorf("%s h=%X TOLERANCE 文本不一致: DXF=%q DWG=%q", sample, base.handle, e.text, g.text)
+	case *entity.EntTolerance:
+		g := ge.(*entity.EntTolerance)
+		if strings.TrimRight(e.Text, " ") != strings.TrimRight(g.Text, " ") {
+			t.Errorf("%s h=%X TOLERANCE 文本不一致: DXF=%q DWG=%q", sample, base.Handle, e.Text, g.Text)
 		}
-		if !dxfNearP3(e.insertion, g.insertion) {
-			t.Errorf("%s h=%X TOLERANCE 插入点不一致", sample, base.handle)
+		if !dxfNearP3(e.Insertion, g.Insertion) {
+			t.Errorf("%s h=%X TOLERANCE 插入点不一致", sample, base.Handle)
 		}
 		// x_direction：dwgread 对默认 (1,0,0) 省略 11 组码，DXF 侧非零才可比
-		if (e.xDirection.x != 0 || e.xDirection.y != 0 || e.xDirection.z != 0) && !dxfNearP3(e.xDirection, g.xDirection) {
-			t.Errorf("%s h=%X TOLERANCE 对称轴不一致", sample, base.handle)
+		if (e.XDirection.X != 0 || e.XDirection.Y != 0 || e.XDirection.Z != 0) && !dxfNearP3(e.XDirection, g.XDirection) {
+			t.Errorf("%s h=%X TOLERANCE 对称轴不一致", sample, base.Handle)
 		}
 		return 1, 0
 	default:
@@ -597,37 +598,37 @@ func dxfCrossCompare(t *testing.T, sample string, dwgDoc, dxfDoc *Document, ent 
 		return 1, 0
 	}
 	if !ok {
-		t.Errorf("%s h=%X %s: 几何字段不一致", sample, base.handle, dxfKindOf(ent))
+		t.Errorf("%s h=%X %s: 几何字段不一致", sample, base.Handle, dxfKindOf(ent))
 	}
 	return 1, 0
 }
 
 // dxfCrossAttrib ATTRIB 对照（DXF 侧 blocks 归属实体，不在 modelSpace）；
 // 返回是否豁免。
-func dxfCrossAttrib(t *testing.T, sample string, ge any, a *entAttrib, gaps map[uint64]string, waiveAll bool) bool {
+func dxfCrossAttrib(t *testing.T, sample string, ge any, a *entity.EntAttrib, gaps map[uint64]string, waiveAll bool) bool {
 	t.Helper()
 	if ge == nil {
-		if _, known := gaps[a.handle]; known || waiveAll {
-			t.Logf("%s h=%X ATTRIB: DWG 侧无同句柄实体（已知缺口，豁免）", sample, a.handle)
+		if _, known := gaps[a.Handle]; known || waiveAll {
+			t.Logf("%s h=%X ATTRIB: DWG 侧无同句柄实体（已知缺口，豁免）", sample, a.Handle)
 			return true
 		}
-		t.Errorf("%s h=%X ATTRIB: DWG 侧无同句柄实体", sample, a.handle)
+		t.Errorf("%s h=%X ATTRIB: DWG 侧无同句柄实体", sample, a.Handle)
 		return false
 	}
-	g, ok := ge.(*entAttrib)
+	g, ok := ge.(*entity.EntAttrib)
 	if !ok {
-		if _, known := gaps[a.handle]; known || waiveAll {
-			t.Logf("%s h=%X: DXF ATTRIB 对应 DWG 侧类型 %s（已知缺口，豁免）", sample, a.handle, reflect.TypeOf(ge))
+		if _, known := gaps[a.Handle]; known || waiveAll {
+			t.Logf("%s h=%X: DXF ATTRIB 对应 DWG 侧类型 %s（已知缺口，豁免）", sample, a.Handle, reflect.TypeOf(ge))
 			return true
 		}
-		t.Errorf("%s h=%X: DXF ATTRIB 对应 DWG 侧类型 %s", sample, a.handle, reflect.TypeOf(ge))
+		t.Errorf("%s h=%X: DXF ATTRIB 对应 DWG 侧类型 %s", sample, a.Handle, reflect.TypeOf(ge))
 		return false
 	}
-	if strings.TrimRight(a.text, " ") != strings.TrimRight(g.text, " ") {
-		t.Errorf("%s h=%X ATTRIB 文本不一致: DXF=%q DWG=%q", sample, a.handle, a.text, g.text)
+	if strings.TrimRight(a.Text, " ") != strings.TrimRight(g.Text, " ") {
+		t.Errorf("%s h=%X ATTRIB 文本不一致: DXF=%q DWG=%q", sample, a.Handle, a.Text, g.Text)
 	}
-	if !dxfNear(a.height, g.height) || !dxfNearP3(a.insertion, g.insertion) {
-		t.Errorf("%s h=%X ATTRIB 几何不一致", sample, a.handle)
+	if !dxfNear(a.Height, g.Height) || !dxfNearP3(a.Insertion, g.Insertion) {
+		t.Errorf("%s h=%X ATTRIB 几何不一致", sample, a.Handle)
 	}
 	return false
 }
@@ -676,14 +677,14 @@ func TestParseDXFBinaryMatchesASCII(t *testing.T) {
 			t.Errorf("实体 %d 类型不一致: ASCII=%s 二进制=%s", i, dxfKindOf(ea), dxfKindOf(eb))
 			continue
 		}
-		ba, bb := entBase(ea), entBase(eb)
-		if ba.handle != bb.handle {
-			t.Errorf("实体 %d 句柄不一致: ASCII=%X 二进制=%X", i, ba.handle, bb.handle)
+		ba, bb := entity.EntityBase(ea), entity.EntityBase(eb)
+		if ba.Handle != bb.Handle {
+			t.Errorf("实体 %d 句柄不一致: ASCII=%X 二进制=%X", i, ba.Handle, bb.Handle)
 		}
-		if l, ok := ea.(*entLine); ok {
-			l2 := eb.(*entLine)
-			if !dxfNearP3(l.start, l2.start) || !dxfNearP3(l.end, l2.end) {
-				t.Errorf("LINE %X 几何不一致", l.handle)
+		if l, ok := ea.(*entity.EntLine); ok {
+			l2 := eb.(*entity.EntLine)
+			if !dxfNearP3(l.Start, l2.Start) || !dxfNearP3(l.End, l2.End) {
+				t.Errorf("LINE %X 几何不一致", l.Handle)
 			}
 		}
 	}
@@ -737,8 +738,8 @@ func TestParseDXFBinary2018StaleSample(t *testing.T) {
 func dxfLinesOf(d *Document) map[uint64][6]float64 {
 	out := map[uint64][6]float64{}
 	for _, e := range d.modelSpace {
-		if l, ok := e.(*entLine); ok {
-			out[l.handle] = [6]float64{l.start.x, l.start.y, l.start.z, l.end.x, l.end.y, l.end.z}
+		if l, ok := e.(*entity.EntLine); ok {
+			out[l.Handle] = [6]float64{l.Start.X, l.Start.Y, l.Start.Z, l.End.X, l.End.Y, l.End.Z}
 		}
 	}
 	return out
@@ -1126,84 +1127,84 @@ func TestParseDXFSyntheticMinimal(t *testing.T) {
 	if lines := byKind["LINE"]; len(lines) != 1 {
 		t.Fatalf("LINE 数期望 1 得到 %d", len(lines))
 	} else {
-		l := lines[0].(*entLine)
-		if l.handle != 0x8B {
-			t.Errorf("LINE 句柄期望 8B 得到 %X", l.handle)
+		l := lines[0].(*entity.EntLine)
+		if l.Handle != 0x8B {
+			t.Errorf("LINE 句柄期望 8B 得到 %X", l.Handle)
 		}
-		if l.layer != 0x10 {
-			t.Errorf("LINE 图层期望 10 得到 %X", l.layer)
+		if l.Layer != 0x10 {
+			t.Errorf("LINE 图层期望 10 得到 %X", l.Layer)
 		}
-		if !l.color.hasIndex || l.color.index != 1 {
-			t.Errorf("LINE 颜色期望 ACI 1 得到 %+v", l.color)
+		if !l.Color.HasIndex || l.Color.Index != 1 {
+			t.Errorf("LINE 颜色期望 ACI 1 得到 %+v", l.Color)
 		}
-		if l.start.x != 1 || l.start.y != 2 || l.start.z != 0.5 || l.end.x != 4 || l.end.y != 6 {
-			t.Errorf("LINE 几何不符: %v -> %v", l.start, l.end)
+		if l.Start.X != 1 || l.Start.Y != 2 || l.Start.Z != 0.5 || l.End.X != 4 || l.End.Y != 6 {
+			t.Errorf("LINE 几何不符: %v -> %v", l.Start, l.End)
 		}
 	}
 	// ARC：度 → 弧度
 	if arcs := byKind["ARC"]; len(arcs) == 1 {
-		a := arcs[0].(*entArc)
-		if math.Abs(a.angleStart-math.Pi/6) > 1e-12 || math.Abs(a.angleEnd-120.5*math.Pi/180) > 1e-12 {
-			t.Errorf("ARC 角度不符: %v %v", a.angleStart, a.angleEnd)
+		a := arcs[0].(*entity.EntArc)
+		if math.Abs(a.AngleStart-math.Pi/6) > 1e-12 || math.Abs(a.AngleEnd-120.5*math.Pi/180) > 1e-12 {
+			t.Errorf("ARC 角度不符: %v %v", a.AngleStart, a.AngleEnd)
 		}
 	} else {
 		t.Errorf("ARC 数期望 1 得到 %d", len(arcs))
 	}
 	// TEXT
 	if texts := byKind["TEXT"]; len(texts) == 1 {
-		tt := texts[0].(*entText)
-		if tt.text != "hello dxf" || tt.height != 3 || math.Abs(tt.rotation-math.Pi/12) > 1e-12 {
-			t.Errorf("TEXT 不符: %q h=%v rot=%v", tt.text, tt.height, tt.rotation)
+		tt := texts[0].(*entity.EntText)
+		if tt.Text != "hello dxf" || tt.Height != 3 || math.Abs(tt.Rotation-math.Pi/12) > 1e-12 {
+			t.Errorf("TEXT 不符: %q h=%v rot=%v", tt.Text, tt.Height, tt.Rotation)
 		}
 	} else {
 		t.Errorf("TEXT 数期望 1 得到 %d", len(texts))
 	}
 	// MTEXT：3+1 分段拼接
 	if mts := byKind["MTEXT"]; len(mts) == 1 {
-		m := mts[0].(*entMText)
-		if m.text != "line1line2" {
-			t.Errorf("MTEXT 拼接期望 line1line2 得到 %q", m.text)
+		m := mts[0].(*entity.EntMText)
+		if m.Text != "line1line2" {
+			t.Errorf("MTEXT 拼接期望 line1line2 得到 %q", m.Text)
 		}
-		if m.textHeight != 2 || m.rectWidth != 100 {
-			t.Errorf("MTEXT 尺寸不符: h=%v w=%v", m.textHeight, m.rectWidth)
+		if m.TextHeight != 2 || m.RectWidth != 100 {
+			t.Errorf("MTEXT 尺寸不符: h=%v w=%v", m.TextHeight, m.RectWidth)
 		}
 	} else {
 		t.Errorf("MTEXT 数期望 1 得到 %d", len(mts))
 	}
 	// LWPOLYLINE：3 顶点 + 42 凸度对齐第二顶点 + 43 常量宽 + 70 闭合
 	if lws := byKind["LWPOLYLINE"]; len(lws) == 1 {
-		lw := lws[0].(*entLwPolyline)
-		if len(lw.vertices) != 3 || len(lw.bulges) != 3 {
-			t.Fatalf("LWPOLYLINE 顶点/凸度数不符: %d/%d", len(lw.vertices), len(lw.bulges))
+		lw := lws[0].(*entity.EntLwPolyline)
+		if len(lw.Vertices) != 3 || len(lw.Bulges) != 3 {
+			t.Fatalf("LWPOLYLINE 顶点/凸度数不符: %d/%d", len(lw.Vertices), len(lw.Bulges))
 		}
-		if lw.constWidth != 0.5 || lw.flags&1 == 0 {
-			t.Errorf("LWPOLYLINE 常量宽/闭合标志不符: w=%v flags=%d", lw.constWidth, lw.flags)
+		if lw.ConstWidth != 0.5 || lw.Flags&1 == 0 {
+			t.Errorf("LWPOLYLINE 常量宽/闭合标志不符: w=%v flags=%d", lw.ConstWidth, lw.Flags)
 		}
-		if lw.bulges[1] != 0.25 || lw.bulges[0] != 0 || lw.bulges[2] != 0 {
-			t.Errorf("LWPOLYLINE 凸度对齐不符: %v", lw.bulges)
+		if lw.Bulges[1] != 0.25 || lw.Bulges[0] != 0 || lw.Bulges[2] != 0 {
+			t.Errorf("LWPOLYLINE 凸度对齐不符: %v", lw.Bulges)
 		}
-		if lw.vertices[2].y != 10 {
-			t.Errorf("LWPOLYLINE 末顶点不符: %v", lw.vertices[2])
+		if lw.Vertices[2].Y != 10 {
+			t.Errorf("LWPOLYLINE 末顶点不符: %v", lw.Vertices[2])
 		}
 	} else {
 		t.Errorf("LWPOLYLINE 数期望 1 得到 %d", len(lws))
 	}
 	// INSERT + ATTRIB + 块展开
 	if ins := byKind["INSERT"]; len(ins) == 1 {
-		i := ins[0].(*entInsert)
-		if i.blockHeader != 0x20 {
-			t.Errorf("INSERT 块句柄期望 20 得到 %X", i.blockHeader)
+		i := ins[0].(*entity.EntInsert)
+		if i.BlockHeader != 0x20 {
+			t.Errorf("INSERT 块句柄期望 20 得到 %X", i.BlockHeader)
 		}
-		if i.scale.x != 2 || i.scale.y != 2 || i.scale.z != 2 || math.Abs(i.rotation-math.Pi/2) > 1e-12 {
-			t.Errorf("INSERT 缩放/旋转不符: %+v rot=%v", i.scale, i.rotation)
+		if i.Scale.X != 2 || i.Scale.Y != 2 || i.Scale.Z != 2 || math.Abs(i.Rotation-math.Pi/2) > 1e-12 {
+			t.Errorf("INSERT 缩放/旋转不符: %+v rot=%v", i.Scale, i.Rotation)
 		}
-		if len(i.attribs) != 1 || i.attribs[0] != 0x31 {
-			t.Errorf("INSERT 属性句柄不符: %v", i.attribs)
+		if len(i.Attribs) != 1 || i.Attribs[0] != 0x31 {
+			t.Errorf("INSERT 属性句柄不符: %v", i.Attribs)
 		}
 		if a, ok := doc.attribs[0x31]; !ok {
 			t.Errorf("ATTRIB 0x31 未注册")
-		} else if a.text != "tag-value" || a.tag != "TAG1" {
-			t.Errorf("ATTRIB 内容不符: %q/%q", a.text, a.tag)
+		} else if a.Text != "tag-value" || a.Tag != "TAG1" {
+			t.Errorf("ATTRIB 内容不符: %q/%q", a.Text, a.Tag)
 		}
 		// Texts() 展开 INSERT 属性文本
 		found := false
@@ -1221,15 +1222,15 @@ func TestParseDXFSyntheticMinimal(t *testing.T) {
 	// 块内 CIRCLE
 	if bl := doc.blocks[0x20]; len(bl) != 1 {
 		t.Errorf("块 SYM1 内容数期望 1 得到 %d", len(bl))
-	} else if c, ok := bl[0].(*entCircle); !ok {
+	} else if c, ok := bl[0].(*entity.EntCircle); !ok {
 		t.Errorf("块内容类型不符: %T", bl[0])
-	} else if c.radius != 2.5 || c.center.x != 5 || c.center.y != 5 {
+	} else if c.Radius != 2.5 || c.Center.X != 5 || c.Center.Y != 5 {
 		t.Errorf("块内 CIRCLE 几何不符")
 	}
 	// SOLID 四角
 	if ss := byKind["SOLID"]; len(ss) == 1 {
-		s := ss[0].(*entSolid)
-		if s.p1.x != 0 || s.p2.x != 4 || s.p3.y != 3 || s.p4.x != 4 || s.elevation != 1 {
+		s := ss[0].(*entity.EntSolid)
+		if s.P1.X != 0 || s.P2.X != 4 || s.P3.Y != 3 || s.P4.X != 4 || s.Elevation != 1 {
 			t.Errorf("SOLID 角点不符: %+v", s)
 		}
 	} else {
@@ -1237,8 +1238,8 @@ func TestParseDXFSyntheticMinimal(t *testing.T) {
 	}
 	// 3DFACE / RAY / ELLIPSE
 	if fs := byKind["3DFACE"]; len(fs) == 1 {
-		f := fs[0].(*entFace3d)
-		if f.p3.x != 5 || f.p4.y != 5 {
+		f := fs[0].(*entity.EntFace3d)
+		if f.P3.X != 5 || f.P4.Y != 5 {
 			t.Errorf("3DFACE 角点不符")
 		}
 	} else {
@@ -1248,8 +1249,8 @@ func TestParseDXFSyntheticMinimal(t *testing.T) {
 		t.Errorf("RAY 数期望 1 得到 %d", len(rs))
 	}
 	if es := byKind["ELLIPSE"]; len(es) == 1 {
-		e := es[0].(*entEllipse)
-		if e.ratio != 0.5 || e.majorAxis.x != 3 || math.Abs(e.endAng-2*math.Pi) > 1e-9 {
+		e := es[0].(*entity.EntEllipse)
+		if e.Ratio != 0.5 || e.MajorAxis.X != 3 || math.Abs(e.EndAng-2*math.Pi) > 1e-9 {
 			t.Errorf("ELLIPSE 参数不符: %+v", e)
 		}
 	} else {
@@ -1274,22 +1275,22 @@ func TestParseDXFR12PolylineVertex(t *testing.T) {
 	if len(doc.modelSpace) != 1 {
 		t.Fatalf("模型空间实体数期望 1 得到 %d", len(doc.modelSpace))
 	}
-	p, ok := doc.modelSpace[0].(*entPolyline2d)
+	p, ok := doc.modelSpace[0].(*entity.EntPolyline2d)
 	if !ok {
 		t.Fatalf("类型期望 entPolyline2d 得到 %T", doc.modelSpace[0])
 	}
-	if len(p.ownedHandles) != 3 || p.ownedHandles[0] != 0xA1 || p.ownedHandles[2] != 0xA3 {
-		t.Errorf("顶点句柄表不符: %v", p.ownedHandles)
+	if len(p.OwnedHandles) != 3 || p.OwnedHandles[0] != 0xA1 || p.OwnedHandles[2] != 0xA3 {
+		t.Errorf("顶点句柄表不符: %v", p.OwnedHandles)
 	}
 	// VERTEX 归属宿主（blocks[A0]），不直挂模型空间；SEQEND 终止标记
 	// 同宿主归属（极限批次 A 口径，与 DWG 侧 entBlockLike 一致）
 	if bl := doc.blocks[0xA0]; len(bl) != 4 {
 		t.Fatalf("宿主 blocks 内实体数期望 4 得到 %d", len(bl))
 	}
-	if v, ok := doc.blocks[0xA0][1].(*entVertex2d); !ok || v.bulge != 0.5 {
+	if v, ok := doc.blocks[0xA0][1].(*entity.EntVertex2d); !ok || v.Bulge != 0.5 {
 		t.Errorf("第二顶点凸度/类型不符: %T %+v", doc.blocks[0xA0][1], doc.blocks[0xA0][1])
 	}
-	if sq, ok := doc.blocks[0xA0][3].(*entBlockLike); !ok || sq.owner != 0xA0 {
+	if sq, ok := doc.blocks[0xA0][3].(*entity.EntBlockLike); !ok || sq.Owner != 0xA0 {
 		t.Errorf("SEQEND 未归宿主: %T %+v", doc.blocks[0xA0][3], doc.blocks[0xA0][3])
 	}
 	// 渲染走顶点句柄表展开
@@ -1370,27 +1371,27 @@ func TestParseDXFBinarySynthetic(t *testing.T) {
 		if len(doc.modelSpace) != 1 {
 			t.Fatalf("实体数期望 1 得到 %d", len(doc.modelSpace))
 		}
-		l, ok := doc.modelSpace[0].(*entLine)
+		l, ok := doc.modelSpace[0].(*entity.EntLine)
 		if !ok {
 			t.Fatalf("类型期望 LINE 得到 %T", doc.modelSpace[0])
 		}
-		if l.handle != 0xAA {
-			t.Errorf("句柄期望 AA 得到 %X", l.handle)
+		if l.Handle != 0xAA {
+			t.Errorf("句柄期望 AA 得到 %X", l.Handle)
 		}
-		if l.start.x != 1.5 || l.start.y != 2.5 || l.end.x != 4.5 || l.end.y != 5.5 {
-			t.Errorf("LINE 几何不符: %v -> %v", l.start, l.end)
+		if l.Start.X != 1.5 || l.Start.Y != 2.5 || l.End.X != 4.5 || l.End.Y != 5.5 {
+			t.Errorf("LINE 几何不符: %v -> %v", l.Start, l.End)
 		}
 		// 图层名 → 合成句柄（无 LAYER 表时兜底注册）
-		if l.layer == 0 {
+		if l.Layer == 0 {
 			t.Errorf("LINE 图层句柄为 0")
 		}
-		if _, ok := doc.layerColors[l.layer]; !ok {
+		if _, ok := doc.layerColors[l.Layer]; !ok {
 			t.Errorf("LINE 图层未注册到 layerColors")
 		}
 	}
 	// 两种编码结果必须一致
-	l2, lp := doc2.modelSpace[0].(*entLine), docP.modelSpace[0].(*entLine)
-	if l2.start != lp.start || l2.end != lp.end {
+	l2, lp := doc2.modelSpace[0].(*entity.EntLine), docP.modelSpace[0].(*entity.EntLine)
+	if l2.Start != lp.Start || l2.End != lp.End {
 		t.Errorf("两种二进制编码解析结果不一致")
 	}
 }
@@ -1518,12 +1519,12 @@ AcDbRadialDimension
  35
 0.0
 `)
-	d := dxfSyntheticByName(t, doc, "*cad.entDimension").(*entDimension)
-	if d.dimFlag&0x7 != 4 || !d.hasPoint15 || d.point15.x != 6 || d.point15.y != 7 {
-		t.Errorf("RADIUS 读取不符: flag=%d point15=%+v has15=%v", d.dimFlag, d.point15, d.hasPoint15)
+	d := dxfSyntheticByName(t, doc, "*entity.EntDimension").(*entity.EntDimension)
+	if d.DimFlag&0x7 != 4 || !d.HasPoint15 || d.Point15.X != 6 || d.Point15.Y != 7 {
+		t.Errorf("RADIUS 读取不符: flag=%d point15=%+v has15=%v", d.DimFlag, d.Point15, d.HasPoint15)
 	}
-	if d.point10.x != 1 || d.point10.y != 2 || d.textMidpoint.x != 3 || d.actualMeasurement != 5 {
-		t.Errorf("RADIUS 公共字段不符: p10=%+v mid=%+v meas=%v", d.point10, d.textMidpoint, d.actualMeasurement)
+	if d.Point10.X != 1 || d.Point10.Y != 2 || d.TextMidpoint.X != 3 || d.ActualMeasurement != 5 {
+		t.Errorf("RADIUS 公共字段不符: p10=%+v mid=%+v meas=%v", d.Point10, d.TextMidpoint, d.ActualMeasurement)
 	}
 	// DIAMETER（70=3，子类 AcDbDiametricDimension）
 	doc2 := dxfSyntheticDoc(t, `  0
@@ -1553,9 +1554,9 @@ AcDbDiametricDimension
  35
 0.0
 `)
-	d2 := dxfSyntheticByName(t, doc2, "*cad.entDimension").(*entDimension)
-	if d2.dimFlag&0x7 != 3 || !d2.hasPoint15 || d2.point15.x != 8 || d2.point15.y != 9 {
-		t.Errorf("DIAMETER 读取不符: flag=%d point15=%+v has15=%v", d2.dimFlag, d2.point15, d2.hasPoint15)
+	d2 := dxfSyntheticByName(t, doc2, "*entity.EntDimension").(*entity.EntDimension)
+	if d2.DimFlag&0x7 != 3 || !d2.HasPoint15 || d2.Point15.X != 8 || d2.Point15.Y != 9 {
+		t.Errorf("DIAMETER 读取不符: flag=%d point15=%+v has15=%v", d2.DimFlag, d2.Point15, d2.HasPoint15)
 	}
 }
 
@@ -1605,17 +1606,17 @@ AcDbRotatedDimension
  34
 0.0
 `)
-	d := dxfSyntheticByName(t, doc, "*cad.entDimension").(*entDimension)
+	d := dxfSyntheticByName(t, doc, "*entity.EntDimension").(*entity.EntDimension)
 	chk := func(name string, got, want float64) {
 		if math.Abs(got-want) > 1e-9 {
 			t.Errorf("%s 角度不符: got=%g want=%g", name, got, want)
 		}
 	}
-	chk("textRotation", d.textRotation, math.Pi/4)
-	chk("horizontalDir", d.horizontalDir, math.Pi/2)
-	chk("insertRotation", d.insertRotation, math.Pi/6)
-	chk("dimRotation", d.dimRotation, math.Pi/3)
-	chk("extLineRotation", d.extLineRotation, math.Pi/12)
+	chk("textRotation", d.TextRotation, math.Pi/4)
+	chk("horizontalDir", d.HorizontalDir, math.Pi/2)
+	chk("insertRotation", d.InsertRotation, math.Pi/6)
+	chk("dimRotation", d.DimRotation, math.Pi/3)
+	chk("extLineRotation", d.ExtLineRotation, math.Pi/12)
 }
 
 // TestParseDXFViewportSynthetic 语料的 VIEWPORT 全在图纸空间（读取侧按
@@ -1714,27 +1715,27 @@ Style1
 146
 4.0
 `)
-	vp := dxfSyntheticByName(t, doc, "*cad.entViewport").(*entViewport)
-	if vp.center.x != 10 || vp.width != 100 || vp.height != 50 {
-		t.Errorf("VIEWPORT 中心/宽高不符: %+v w=%v h=%v", vp.center, vp.width, vp.height)
+	vp := dxfSyntheticByName(t, doc, "*entity.EntViewport").(*entity.EntViewport)
+	if vp.Center.X != 10 || vp.Width != 100 || vp.Height != 50 {
+		t.Errorf("VIEWPORT 中心/宽高不符: %+v w=%v h=%v", vp.Center, vp.Width, vp.Height)
 	}
-	if vp.viewCtr.x != 11 || vp.snapBase.x != 13 || vp.snapUnit.y != 16 || vp.gridUnit.y != 18 {
-		t.Errorf("VIEWPORT 2D 点不符: ctr=%+v base=%+v unit=%+v grid=%+v", vp.viewCtr, vp.snapBase, vp.snapUnit, vp.gridUnit)
+	if vp.ViewCtr.X != 11 || vp.SnapBase.X != 13 || vp.SnapUnit.Y != 16 || vp.GridUnit.Y != 18 {
+		t.Errorf("VIEWPORT 2D 点不符: ctr=%+v base=%+v unit=%+v grid=%+v", vp.ViewCtr, vp.SnapBase, vp.SnapUnit, vp.GridUnit)
 	}
-	if vp.viewDir.x != 1 || vp.viewTarget.x != 2 || vp.lensLength != 500 ||
-		vp.frontZ != 1 || vp.backZ != 2 || vp.viewSize != 400 {
+	if vp.ViewDir.X != 1 || vp.ViewTarget.X != 2 || vp.LensLength != 500 ||
+		vp.FrontZ != 1 || vp.BackZ != 2 || vp.ViewSize != 400 {
 		t.Errorf("VIEWPORT 视图参数不符: dir=%+v target=%+v lens=%v front=%v back=%v size=%v",
-			vp.viewDir, vp.viewTarget, vp.lensLength, vp.frontZ, vp.backZ, vp.viewSize)
+			vp.ViewDir, vp.ViewTarget, vp.LensLength, vp.FrontZ, vp.BackZ, vp.ViewSize)
 	}
-	if math.Abs(vp.snapAng-math.Pi/6) > 1e-9 || math.Abs(vp.viewTwist-math.Pi/9) > 1e-9 {
-		t.Errorf("VIEWPORT 角度不符: snap=%v twist=%v", vp.snapAng, vp.viewTwist)
+	if math.Abs(vp.SnapAng-math.Pi/6) > 1e-9 || math.Abs(vp.ViewTwist-math.Pi/9) > 1e-9 {
+		t.Errorf("VIEWPORT 角度不符: snap=%v twist=%v", vp.SnapAng, vp.ViewTwist)
 	}
-	if vp.circleZoom != 77 || vp.statusFlag != 8 || vp.styleSheet != "Style1" || vp.renderMode != 5 {
-		t.Errorf("VIEWPORT 标量不符: zoom=%d status=%d sheet=%q mode=%d", vp.circleZoom, vp.statusFlag, vp.styleSheet, vp.renderMode)
+	if vp.CircleZoom != 77 || vp.StatusFlag != 8 || vp.StyleSheet != "Style1" || vp.RenderMode != 5 {
+		t.Errorf("VIEWPORT 标量不符: zoom=%d status=%d sheet=%q mode=%d", vp.CircleZoom, vp.StatusFlag, vp.StyleSheet, vp.RenderMode)
 	}
-	if !vp.ucsVP || vp.ucsorg.x != 1 || vp.ucsxdir.y != 1 || vp.ucsydir.x != 1 || vp.ucsOrthoView != 2 || vp.ucsElevation != 4 {
+	if !vp.UcsVP || vp.Ucsorg.X != 1 || vp.Ucsxdir.Y != 1 || vp.Ucsydir.X != 1 || vp.UcsOrthoView != 2 || vp.UcsElevation != 4 {
 		t.Errorf("VIEWPORT UCS 不符: ucsVP=%v org=%+v xdir=%+v ydir=%+v ortho=%d elev=%v",
-			vp.ucsVP, vp.ucsorg, vp.ucsxdir, vp.ucsydir, vp.ucsOrthoView, vp.ucsElevation)
+			vp.UcsVP, vp.Ucsorg, vp.Ucsxdir, vp.Ucsydir, vp.UcsOrthoView, vp.UcsElevation)
 	}
 }
 
@@ -1794,20 +1795,20 @@ SOLID
  97
         0
 `)
-	h := dxfSyntheticByName(t, doc, "*cad.entHatch").(*entHatch)
-	if !h.solidFill || len(h.paths) != 1 {
-		t.Fatalf("HATCH 基本字段不符: solid=%v paths=%d", h.solidFill, len(h.paths))
+	h := dxfSyntheticByName(t, doc, "*entity.EntHatch").(*entity.EntHatch)
+	if !h.SolidFill || len(h.Paths) != 1 {
+		t.Fatalf("HATCH 基本字段不符: solid=%v paths=%d", h.SolidFill, len(h.Paths))
 	}
-	p := h.paths[0]
-	if !p.isPolyline || !p.closed || len(p.polyVerts) != 3 {
-		t.Fatalf("HATCH 多段线路径不符: poly=%v closed=%v verts=%d", p.isPolyline, p.closed, len(p.polyVerts))
+	p := h.Paths[0]
+	if !p.IsPolyline || !p.Closed || len(p.PolyVerts) != 3 {
+		t.Fatalf("HATCH 多段线路径不符: poly=%v closed=%v verts=%d", p.IsPolyline, p.Closed, len(p.PolyVerts))
 	}
-	if p.polyVerts[1].bulge != 1 {
-		t.Errorf("HATCH 顶点凸度不符: %+v", p.polyVerts[1])
+	if p.PolyVerts[1].Bulge != 1 {
+		t.Errorf("HATCH 顶点凸度不符: %+v", p.PolyVerts[1])
 	}
 	// 凸度细分（bulgesPresent）产出渲染点列（>3 点，闭合）
-	if len(p.points) <= 3 {
-		t.Errorf("HATCH 细分点列未生成: %d 点", len(p.points))
+	if len(p.Points) <= 3 {
+		t.Errorf("HATCH 细分点列未生成: %d 点", len(p.Points))
 	}
 }
 
@@ -1897,24 +1898,24 @@ GRADIENT
 470
 LINEAR
 `)
-	h := dxfSyntheticByName(t, doc, "*cad.entHatch").(*entHatch)
-	if h.isGradientFill != 1 || h.singleColorGradient != 1 || h.gradientName != "LINEAR" {
-		t.Fatalf("渐变标志不符: grad=%d single=%d name=%q", h.isGradientFill, h.singleColorGradient, h.gradientName)
+	h := dxfSyntheticByName(t, doc, "*entity.EntHatch").(*entity.EntHatch)
+	if h.IsGradientFill != 1 || h.SingleColorGradient != 1 || h.GradientName != "LINEAR" {
+		t.Fatalf("渐变标志不符: grad=%d single=%d name=%q", h.IsGradientFill, h.SingleColorGradient, h.GradientName)
 	}
-	if math.Abs(h.gradientAngle-math.Pi/6) > 1e-9 || h.gradientShift != 0.1 || h.gradientTint != 0.8 {
-		t.Errorf("渐变标量不符: angle=%v shift=%v tint=%v", h.gradientAngle, h.gradientShift, h.gradientTint)
+	if math.Abs(h.GradientAngle-math.Pi/6) > 1e-9 || h.GradientShift != 0.1 || h.GradientTint != 0.8 {
+		t.Errorf("渐变标量不符: angle=%v shift=%v tint=%v", h.GradientAngle, h.GradientShift, h.GradientTint)
 	}
-	if len(h.colors) != 2 {
-		t.Fatalf("渐变色数期望 2 得到 %d", len(h.colors))
+	if len(h.Colors) != 2 {
+		t.Fatalf("渐变色数期望 2 得到 %d", len(h.Colors))
 	}
-	if h.colors[0].shiftValue != 0 || h.colors[0].colorIndex != 5 || h.colors[0].colorRGB != "000000ff" {
-		t.Errorf("色 0 不符: %+v", h.colors[0])
+	if h.Colors[0].ShiftValue != 0 || h.Colors[0].ColorIndex != 5 || h.Colors[0].ColorRGB != "000000ff" {
+		t.Errorf("色 0 不符: %+v", h.Colors[0])
 	}
-	if h.colors[1].shiftValue != 1 || h.colors[1].colorIndex != 2 || h.colors[1].colorRGB != "0000ff00" {
-		t.Errorf("色 1 不符: %+v", h.colors[1])
+	if h.Colors[1].ShiftValue != 1 || h.Colors[1].ColorIndex != 2 || h.Colors[1].ColorRGB != "0000ff00" {
+		t.Errorf("色 1 不符: %+v", h.Colors[1])
 	}
-	if len(h.seeds) != 2 || h.seeds[0].x != 1 || h.seeds[0].y != 2 || h.seeds[1].x != 3 || h.seeds[1].y != 4 {
-		t.Errorf("种子点不符: %+v", h.seeds)
+	if len(h.Seeds) != 2 || h.Seeds[0].X != 1 || h.Seeds[0].Y != 2 || h.Seeds[1].X != 3 || h.Seeds[1].Y != 4 {
+		t.Errorf("种子点不符: %+v", h.Seeds)
 	}
 }
 
@@ -1982,18 +1983,18 @@ AcDbLeader
 233
 0.0
 `)
-	l := dxfSyntheticByName(t, doc, "*cad.entLeader").(*entLeader)
-	if !l.arrowheadOn || l.pathType != 1 || l.annotationType != 2 || !l.hooklineDir {
-		t.Errorf("LEADER 标志不符: arrow=%v path=%d annot=%d hook=%v", l.arrowheadOn, l.pathType, l.annotationType, l.hooklineDir)
+	l := dxfSyntheticByName(t, doc, "*entity.EntLeader").(*entity.EntLeader)
+	if !l.ArrowheadOn || l.PathType != 1 || l.AnnotationType != 2 || !l.HooklineDir {
+		t.Errorf("LEADER 标志不符: arrow=%v path=%d annot=%d hook=%v", l.ArrowheadOn, l.PathType, l.AnnotationType, l.HooklineDir)
 	}
-	if l.boxHeight != 0.5 || l.boxWidth != 0.25 {
-		t.Errorf("LEADER 框尺寸不符: %v/%v", l.boxHeight, l.boxWidth)
+	if l.BoxHeight != 0.5 || l.BoxWidth != 0.25 {
+		t.Errorf("LEADER 框尺寸不符: %v/%v", l.BoxHeight, l.BoxWidth)
 	}
-	if len(l.points) != 2 || l.points[1].x != 4 || l.points[1].z != 6 {
-		t.Errorf("LEADER 顶点不符: %+v", l.points)
+	if len(l.Points) != 2 || l.Points[1].X != 4 || l.Points[1].Z != 6 {
+		t.Errorf("LEADER 顶点不符: %+v", l.Points)
 	}
-	if l.extrusion.z != 1 || l.xDirection.x != 1 || l.insptOffset.x != 7 || l.endptproj.x != 9 {
-		t.Errorf("LEADER 向量组不符: ext=%+v xdir=%+v off=%+v proj=%+v", l.extrusion, l.xDirection, l.insptOffset, l.endptproj)
+	if l.Extrusion.Z != 1 || l.XDirection.X != 1 || l.InsptOffset.X != 7 || l.Endptproj.X != 9 {
+		t.Errorf("LEADER 向量组不符: ext=%+v xdir=%+v off=%+v proj=%+v", l.Extrusion, l.XDirection, l.InsptOffset, l.Endptproj)
 	}
 }
 
@@ -2093,25 +2094,25 @@ AB
  42
 3.5
 `)
-	m := dxfSyntheticByName(t, doc, "*cad.entMLine").(*entMLine)
-	if m.scale != 7.5 || m.justification != 1 || m.openClosed != 3 || m.linesInStyle != 2 {
-		t.Errorf("MLINE 标量不符: scale=%v just=%d open=%d lines=%d", m.scale, m.justification, m.openClosed, m.linesInStyle)
+	m := dxfSyntheticByName(t, doc, "*entity.EntMLine").(*entity.EntMLine)
+	if m.Scale != 7.5 || m.Justification != 1 || m.OpenClosed != 3 || m.LinesInStyle != 2 {
+		t.Errorf("MLINE 标量不符: scale=%v just=%d open=%d lines=%d", m.Scale, m.Justification, m.OpenClosed, m.LinesInStyle)
 	}
-	if m.styleHandle != 0xAB {
-		t.Errorf("MLINE 样式句柄不符: %X", m.styleHandle)
+	if m.StyleHandle != 0xAB {
+		t.Errorf("MLINE 样式句柄不符: %X", m.StyleHandle)
 	}
-	if len(m.vertices) != 2 {
-		t.Fatalf("MLINE 顶点数不符: %d", len(m.vertices))
+	if len(m.Vertices) != 2 {
+		t.Fatalf("MLINE 顶点数不符: %d", len(m.Vertices))
 	}
-	v0 := m.vertices[0]
-	if v0.position.x != 3 || v0.position.y != 4 || v0.direction.x != 1 || v0.miter.y != 1 {
-		t.Errorf("MLINE 顶点 0 不符: pos=%+v dir=%+v miter=%+v", v0.position, v0.direction, v0.miter)
+	v0 := m.Vertices[0]
+	if v0.Position.X != 3 || v0.Position.Y != 4 || v0.Direction.X != 1 || v0.Miter.Y != 1 {
+		t.Errorf("MLINE 顶点 0 不符: pos=%+v dir=%+v miter=%+v", v0.Position, v0.Direction, v0.Miter)
 	}
-	if len(v0.segParams) != 2 || v0.segParams[1] != 1.5 || len(v0.areaParams) != 1 || v0.areaParams[0] != 2.5 {
-		t.Errorf("MLINE 顶点 0 参数不符: seg=%v area=%v", v0.segParams, v0.areaParams)
+	if len(v0.SegParams) != 2 || v0.SegParams[1] != 1.5 || len(v0.AreaParams) != 1 || v0.AreaParams[0] != 2.5 {
+		t.Errorf("MLINE 顶点 0 参数不符: seg=%v area=%v", v0.SegParams, v0.AreaParams)
 	}
-	if m.vertices[1].position.x != 5 || m.vertices[1].segParams[1] != 0.75 {
-		t.Errorf("MLINE 顶点 1 不符: %+v", m.vertices[1])
+	if m.Vertices[1].Position.X != 5 || m.Vertices[1].SegParams[1] != 0.75 {
+		t.Errorf("MLINE 顶点 1 不符: %+v", m.Vertices[1])
 	}
 }
 
@@ -2239,44 +2240,44 @@ CC
 295
      1
 `)
-	ml := dxfSyntheticByName(t, doc, "*cad.entMLeader").(*entMLeader)
-	if !ml.hasVersion || ml.classVersion != 2 {
-		t.Errorf("MLEADER 版本不符: %v/%d", ml.hasVersion, ml.classVersion)
+	ml := dxfSyntheticByName(t, doc, "*entity.EntMLeader").(*entity.EntMLeader)
+	if !ml.HasVersion || ml.ClassVersion != 2 {
+		t.Errorf("MLEADER 版本不符: %v/%d", ml.HasVersion, ml.ClassVersion)
 	}
-	if ml.ctx.scaleFactor != 2.5 || ml.ctx.contentBase.z != 3 || ml.ctx.textHeight != 1.5 ||
-		ml.ctx.arrowSize != 0.4 || ml.ctx.landingGap != 0.2 {
+	if ml.Ctx.ScaleFactor != 2.5 || ml.Ctx.ContentBase.Z != 3 || ml.Ctx.TextHeight != 1.5 ||
+		ml.Ctx.ArrowSize != 0.4 || ml.Ctx.LandingGap != 0.2 {
 		t.Errorf("MLEADER ctx 标量不符: scale=%v base=%+v th=%v arrow=%v gap=%v",
-			ml.ctx.scaleFactor, ml.ctx.contentBase, ml.ctx.textHeight, ml.ctx.arrowSize, ml.ctx.landingGap)
+			ml.Ctx.ScaleFactor, ml.Ctx.ContentBase, ml.Ctx.TextHeight, ml.Ctx.ArrowSize, ml.Ctx.LandingGap)
 	}
-	if ml.ctx.textLeft != 1 || ml.ctx.textRight != 2 || ml.ctx.textAngletype != 3 || ml.ctx.textAlignment != 4 || !ml.ctx.hasContentTxt {
-		t.Errorf("MLEADER ctx 文字组不符: %d/%d/%d/%d %v", ml.ctx.textLeft, ml.ctx.textRight, ml.ctx.textAngletype, ml.ctx.textAlignment, ml.ctx.hasContentTxt)
+	if ml.Ctx.TextLeft != 1 || ml.Ctx.TextRight != 2 || ml.Ctx.TextAngletype != 3 || ml.Ctx.TextAlignment != 4 || !ml.Ctx.HasContentTxt {
+		t.Errorf("MLEADER ctx 文字组不符: %d/%d/%d/%d %v", ml.Ctx.TextLeft, ml.Ctx.TextRight, ml.Ctx.TextAngletype, ml.Ctx.TextAlignment, ml.Ctx.HasContentTxt)
 	}
-	if ml.ctx.txt.defaultText != "hello" {
-		t.Errorf("MLEADER ctx 文字不符: %q", ml.ctx.txt.defaultText)
+	if ml.Ctx.Txt.DefaultText != "hello" {
+		t.Errorf("MLEADER ctx 文字不符: %q", ml.Ctx.Txt.DefaultText)
 	}
-	if len(ml.ctx.leaders) != 1 {
-		t.Fatalf("MLEADER 引线数不符: %d", len(ml.ctx.leaders))
+	if len(ml.Ctx.Leaders) != 1 {
+		t.Fatalf("MLEADER 引线数不符: %d", len(ml.Ctx.Leaders))
 	}
-	ln := ml.ctx.leaders[0]
-	if !ln.hasLastLeaderLinePoint || ln.lastLeaderLinePoint.x != 5 || !ln.hasDogleg || ln.doglegVector.y != 1 || ln.branchIndex != 7 || ln.doglegLength != 0.8 {
+	ln := ml.Ctx.Leaders[0]
+	if !ln.HasLastLeaderLinePoint || ln.LastLeaderLinePoint.X != 5 || !ln.HasDogleg || ln.DoglegVector.Y != 1 || ln.BranchIndex != 7 || ln.DoglegLength != 0.8 {
 		t.Errorf("MLEADER 引线节点不符: %+v", ln)
 	}
-	if len(ln.lines) != 1 || len(ln.lines[0].points) != 2 || ln.lines[0].points[1].x != 9 {
-		t.Errorf("MLEADER 引线线段不符: %+v", ln.lines)
+	if len(ln.Lines) != 1 || len(ln.Lines[0].Points) != 2 || ln.Lines[0].Points[1].X != 9 {
+		t.Errorf("MLEADER 引线线段不符: %+v", ln.Lines)
 	}
 	// 顶层尾段
-	if ml.mleaderStyle != 0xCC || ml.flags != 279552 || ml.mleaderType != 1 || ml.lineColor.index != 3 {
-		t.Errorf("MLEADER 尾段样式组不符: style=%X flags=%d type=%d color=%d", ml.mleaderStyle, ml.flags, ml.mleaderType, ml.lineColor.index)
+	if ml.MleaderStyle != 0xCC || ml.Flags != 279552 || ml.MleaderType != 1 || ml.LineColor.Index != 3 {
+		t.Errorf("MLEADER 尾段样式组不符: style=%X flags=%d type=%d color=%d", ml.MleaderStyle, ml.Flags, ml.MleaderType, ml.LineColor.Index)
 	}
-	if ml.lineLinewt != -2 || !ml.hasLanding || !ml.hasDogleg || ml.landingDist != 0.6 || ml.arrowSize != 0.7 || ml.styleContent != 2 {
+	if ml.LineLinewt != -2 || !ml.HasLanding || !ml.HasDogleg || ml.LandingDist != 0.6 || ml.ArrowSize != 0.7 || ml.StyleContent != 2 {
 		t.Errorf("MLEADER 尾段落地组不符: lw=%d land=%v dog=%v dist=%v arrow=%v content=%d",
-			ml.lineLinewt, ml.hasLanding, ml.hasDogleg, ml.landingDist, ml.arrowSize, ml.styleContent)
+			ml.LineLinewt, ml.HasLanding, ml.HasDogleg, ml.LandingDist, ml.ArrowSize, ml.StyleContent)
 	}
-	if !ml.isNegTextdir || ml.ipeAlignment != 5 || ml.justification != 6 || ml.scaleFactor != 8 {
-		t.Errorf("MLEADER 尾段对齐组不符: neg=%v ipe=%d just=%d scale=%v", ml.isNegTextdir, ml.ipeAlignment, ml.justification, ml.scaleFactor)
+	if !ml.IsNegTextdir || ml.IpeAlignment != 5 || ml.Justification != 6 || ml.ScaleFactor != 8 {
+		t.Errorf("MLEADER 尾段对齐组不符: neg=%v ipe=%d just=%d scale=%v", ml.IsNegTextdir, ml.IpeAlignment, ml.Justification, ml.ScaleFactor)
 	}
-	if ml.attachDir != 1 || ml.attachTop != 2 || ml.attachBottom != 3 || !ml.isTextExtended {
-		t.Errorf("MLEADER 尾段附着组不符: %d/%d/%d %v", ml.attachDir, ml.attachTop, ml.attachBottom, ml.isTextExtended)
+	if ml.AttachDir != 1 || ml.AttachTop != 2 || ml.AttachBottom != 3 || !ml.IsTextExtended {
+		t.Errorf("MLEADER 尾段附着组不符: %d/%d/%d %v", ml.AttachDir, ml.AttachTop, ml.AttachBottom, ml.IsTextExtended)
 	}
 }
 
@@ -2389,42 +2390,42 @@ CC
  43
 45.0
 `)
-	ml := dxfSyntheticByName(t, doc, "*cad.entMLeader").(*entMLeader)
-	if !ml.ctx.hasContentBlk {
+	ml := dxfSyntheticByName(t, doc, "*entity.EntMLeader").(*entity.EntMLeader)
+	if !ml.Ctx.HasContentBlk {
 		t.Fatalf("hasContentBlk 未置位")
 	}
-	b := ml.ctx.blk
-	if b.blockTable != 0xEE {
-		t.Errorf("块表句柄不符: %X", b.blockTable)
+	b := ml.Ctx.Blk
+	if b.BlockTable != 0xEE {
+		t.Errorf("块表句柄不符: %X", b.BlockTable)
 	}
-	if b.normal.x != 1 || b.normal.y != 2 || b.normal.z != 3 {
-		t.Errorf("法向不符: %+v", b.normal)
+	if b.Normal.X != 1 || b.Normal.Y != 2 || b.Normal.Z != 3 {
+		t.Errorf("法向不符: %+v", b.Normal)
 	}
-	if b.location.x != 4 || b.location.y != 5 || b.location.z != 6 {
-		t.Errorf("位置不符: %+v", b.location)
+	if b.Location.X != 4 || b.Location.Y != 5 || b.Location.Z != 6 {
+		t.Errorf("位置不符: %+v", b.Location)
 	}
-	if b.scale.x != 0.5 || b.scale.y != 0.6 || b.scale.z != 0.7 {
-		t.Errorf("缩放不符: %+v", b.scale)
+	if b.Scale.X != 0.5 || b.Scale.Y != 0.6 || b.Scale.Z != 0.7 {
+		t.Errorf("缩放不符: %+v", b.Scale)
 	}
-	if math.Abs(b.rotation-math.Pi/2) > 1e-9 {
-		t.Errorf("旋转不符: %v", b.rotation)
+	if math.Abs(b.Rotation-math.Pi/2) > 1e-9 {
+		t.Errorf("旋转不符: %v", b.Rotation)
 	}
-	if b.color.index != 3 {
-		t.Errorf("颜色不符: %d", b.color.index)
+	if b.Color.Index != 3 {
+		t.Errorf("颜色不符: %d", b.Color.Index)
 	}
 	// 变换矩阵主对角（47×16 顺序游标）
-	if b.transform[0] != 1 || b.transform[5] != 1 || b.transform[10] != 1 || b.transform[15] != 1 {
-		t.Errorf("变换矩阵不符: %v", b.transform)
+	if b.Transform[0] != 1 || b.Transform[5] != 1 || b.Transform[10] != 1 || b.Transform[15] != 1 {
+		t.Errorf("变换矩阵不符: %v", b.Transform)
 	}
-	if ml.ctx.base.x != 9 || ml.ctx.base.y != 9.5 {
-		t.Errorf("ctx base 不符: %+v", ml.ctx.base)
+	if ml.Ctx.Base.X != 9 || ml.Ctx.Base.Y != 9.5 {
+		t.Errorf("ctx base 不符: %+v", ml.Ctx.Base)
 	}
 	// 顶层尾段
-	if ml.mleaderStyle != 0xCC {
-		t.Errorf("样式句柄不符: %X", ml.mleaderStyle)
+	if ml.MleaderStyle != 0xCC {
+		t.Errorf("样式句柄不符: %X", ml.MleaderStyle)
 	}
-	if ml.blockScale.x != 8 || ml.blockScale.y != 8.5 || math.Abs(ml.blockRotation-math.Pi/4) > 1e-9 {
-		t.Errorf("顶层块缩放/旋转不符: %+v %v", ml.blockScale, ml.blockRotation)
+	if ml.BlockScale.X != 8 || ml.BlockScale.Y != 8.5 || math.Abs(ml.BlockRotation-math.Pi/4) > 1e-9 {
+		t.Errorf("顶层块缩放/旋转不符: %+v %v", ml.BlockScale, ml.BlockRotation)
 	}
 }
 
@@ -2448,18 +2449,18 @@ func TestParseDXFAttdef(t *testing.T) {
 	if len(blk) != 1 {
 		t.Fatalf("块定义内容数期望 1 得到 %d", len(blk))
 	}
-	ad, ok := blk[0].(*entAttrib)
+	ad, ok := blk[0].(*entity.EntAttrib)
 	if !ok {
 		t.Fatalf("类型期望 entAttrib 得到 %T", blk[0])
 	}
-	if ad.tag != "TAGXY" || ad.text != "DEFVAL" || ad.prompt != "PROMPT-XY" {
-		t.Errorf("标签/默认值/提示不符: %q %q %q", ad.tag, ad.text, ad.prompt)
+	if ad.Tag != "TAGXY" || ad.Text != "DEFVAL" || ad.Prompt != "PROMPT-XY" {
+		t.Errorf("标签/默认值/提示不符: %q %q %q", ad.Tag, ad.Text, ad.Prompt)
 	}
-	if ad.insertion.x != 1 || ad.insertion.y != 2 || ad.height != 3.5 {
-		t.Errorf("插入点/字高不符: %+v %v", ad.insertion, ad.height)
+	if ad.Insertion.X != 1 || ad.Insertion.Y != 2 || ad.Height != 3.5 {
+		t.Errorf("插入点/字高不符: %+v %v", ad.Insertion, ad.Height)
 	}
-	if ad.rotation != 90*(math.Pi/180) || ad.hAlign != 1 || ad.vAlign != 2 {
-		t.Errorf("旋转/对齐不符: %v %d %d", ad.rotation, ad.hAlign, ad.vAlign)
+	if ad.Rotation != 90*(math.Pi/180) || ad.HAlign != 1 || ad.VAlign != 2 {
+		t.Errorf("旋转/对齐不符: %v %d %d", ad.Rotation, ad.HAlign, ad.VAlign)
 	}
 }
 
@@ -2486,21 +2487,21 @@ func TestParseDXFSeqendOwnership(t *testing.T) {
 	if len(doc.modelSpace) != 1 {
 		t.Fatalf("模型空间实体数期望 1（INSERT）得到 %d", len(doc.modelSpace))
 	}
-	ins := doc.modelSpace[0].(*entInsert)
-	if len(ins.attribs) != 1 || ins.attribs[0] != 0xD1 {
-		t.Fatalf("INSERT 属性链不符: %v", ins.attribs)
+	ins := doc.modelSpace[0].(*entity.EntInsert)
+	if len(ins.Attribs) != 1 || ins.Attribs[0] != 0xD1 {
+		t.Fatalf("INSERT 属性链不符: %v", ins.Attribs)
 	}
 	// blocks[D0]：ATTRIB + SEQEND 都归宿主
 	hosted := doc.blocks[0xD0]
 	if len(hosted) != 2 {
 		t.Fatalf("宿主 blocks 内实体数期望 2 得到 %d", len(hosted))
 	}
-	sq, ok := hosted[1].(*entBlockLike)
+	sq, ok := hosted[1].(*entity.EntBlockLike)
 	if !ok {
 		t.Fatalf("SEQEND 类型期望 entBlockLike 得到 %T", hosted[1])
 	}
-	if sq.handle != 0xD2 || sq.owner != 0xD0 || sq.mode != 0 {
-		t.Errorf("SEQEND 句柄/归属/模式不符: h=%X owner=%X mode=%d", sq.handle, sq.owner, sq.mode)
+	if sq.Handle != 0xD2 || sq.Owner != 0xD0 || sq.Mode != 0 {
+		t.Errorf("SEQEND 句柄/归属/模式不符: h=%X owner=%X mode=%d", sq.Handle, sq.Owner, sq.Mode)
 	}
 }
 
@@ -2528,8 +2529,8 @@ func TestParseDXFR12CodepageGBK(t *testing.T) {
 	}
 	textOf := func(doc *Document) string {
 		for _, e := range doc.modelSpace {
-			if txt, ok := e.(*entText); ok {
-				return txt.text
+			if txt, ok := e.(*entity.EntText); ok {
+				return txt.Text
 			}
 		}
 		t.Fatalf("缺 TEXT 实体")

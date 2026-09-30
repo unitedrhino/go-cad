@@ -7,6 +7,7 @@ package cad
 import (
 	"bytes"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"image/png"
 	"math"
 	"os"
@@ -33,21 +34,21 @@ func buildSheetDoc(t *testing.T, sheets []struct {
 	t.Helper()
 	doc := &Document{
 		blocks:          map[uint64][]any{},
-		attribs:         map[uint64]*entAttrib{},
+		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
 		internalObjects: map[uint64]*objGeneric{},
 	}
 	for _, s := range sheets {
 		w, hgt := s.w, s.hgt
 		frame := []any{
-			&entLwPolyline{vertices: []point2{{0, 0}, {w, 0}, {w, hgt}, {0, hgt}, {0, 0}}},
+			&entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {w, 0}, {w, hgt}, {0, hgt}, {0, 0}}},
 		}
 		if s.title != "" {
 			// 图名放在右下角标题栏区（x ∈ [w-w/4, w]，y ∈ [0, h/6]）内
-			frame = append(frame, &entText{
-				text:      s.title,
-				insertion: point3{w - w/8, hgt / 12, 0},
-				height:    hgt / 28,
+			frame = append(frame, &entity.EntText{
+				Text:      s.title,
+				Insertion: entity.Point3{w - w/8, hgt / 12, 0},
+				Height:    hgt / 28,
 			})
 		}
 		doc.blocks[s.h] = frame
@@ -55,20 +56,20 @@ func buildSheetDoc(t *testing.T, sheets []struct {
 			Name:   "BLOCK_HEADER",
 			Fields: []objField{{Key: "name", Val: s.name}},
 		}
-		ins := &entInsert{
-			position:    point3{s.offset[0], s.offset[1], 0},
-			scale:       point3{s.scale, s.scale, s.scale},
-			rotation:    s.rotation,
-			blockHeader: s.h,
+		ins := &entity.EntInsert{
+			Position:    entity.Point3{s.offset[0], s.offset[1], 0},
+			Scale:       entity.Point3{s.scale, s.scale, s.scale},
+			Rotation:    s.rotation,
+			BlockHeader: s.h,
 		}
 		doc.modelSpace = append(doc.modelSpace, ins)
 		// 框内直属内容（内容密度判据，4 条线 = 8 个代表点达下限）
 		ox, oy := s.offset[0], s.offset[1]
 		doc.modelSpace = append(doc.modelSpace,
-			&entLine{start: point3{ox + w/4, oy + hgt/2, 0}, end: point3{ox + w*3/4, oy + hgt/2, 0}},
-			&entLine{start: point3{ox + w/4, oy + hgt/4, 0}, end: point3{ox + w/2, oy + hgt*3/4, 0}},
-			&entLine{start: point3{ox + w*3/5, oy + hgt/5, 0}, end: point3{ox + w*4/5, oy + hgt/5, 0}},
-			&entLine{start: point3{ox + w/6, oy + hgt/6, 0}, end: point3{ox + w/3, oy + hgt/3, 0}},
+			&entity.EntLine{Start: entity.Point3{ox + w/4, oy + hgt/2, 0}, End: entity.Point3{ox + w*3/4, oy + hgt/2, 0}},
+			&entity.EntLine{Start: entity.Point3{ox + w/4, oy + hgt/4, 0}, End: entity.Point3{ox + w/2, oy + hgt*3/4, 0}},
+			&entity.EntLine{Start: entity.Point3{ox + w*3/5, oy + hgt/5, 0}, End: entity.Point3{ox + w*4/5, oy + hgt/5, 0}},
+			&entity.EntLine{Start: entity.Point3{ox + w/6, oy + hgt/6, 0}, End: entity.Point3{ox + w/3, oy + hgt/3, 0}},
 		)
 	}
 	return doc
@@ -136,14 +137,14 @@ func TestDetectSheetsRotation(t *testing.T) {
 		scale    float64
 		rotation float64
 	}{aSeriesSheet(100, "A1图框", "原理图", [2]float64{0, 0})})
-	doc.modelSpace[0].(*entInsert).rotation = math.Pi / 2
+	doc.modelSpace[0].(*entity.EntInsert).Rotation = math.Pi / 2
 	// 自动内容线在未旋转位置，旋转后落框外；按旋转后 AABB（x∈[-841,0]
 	// y∈[0,1189]）补框内直属内容（4 条线 = 8 点）
 	doc.modelSpace = append(doc.modelSpace,
-		&entLine{start: point3{-600, 300, 0}, end: point3{-200, 300, 0}},
-		&entLine{start: point3{-600, 600, 0}, end: point3{-300, 900, 0}},
-		&entLine{start: point3{-700, 150, 0}, end: point3{-400, 150, 0}},
-		&entLine{start: point3{-650, 1000, 0}, end: point3{-350, 1000, 0}},
+		&entity.EntLine{Start: entity.Point3{-600, 300, 0}, End: entity.Point3{-200, 300, 0}},
+		&entity.EntLine{Start: entity.Point3{-600, 600, 0}, End: entity.Point3{-300, 900, 0}},
+		&entity.EntLine{Start: entity.Point3{-700, 150, 0}, End: entity.Point3{-400, 150, 0}},
+		&entity.EntLine{Start: entity.Point3{-650, 1000, 0}, End: entity.Point3{-350, 1000, 0}},
 	)
 	sheets := DetectSheets(doc)
 	if len(sheets) != 1 {
@@ -205,22 +206,22 @@ func TestDetectSheetsNestedInsert(t *testing.T) {
 	doc := &Document{
 		blocks: map[uint64][]any{
 			200: {
-				&entLwPolyline{vertices: []point2{{0, 0}, {1189, 0}, {1189, 841}, {0, 841}, {0, 0}}},
-				&entInsert{position: point3{950, 20, 0}, scale: point3{1, 1, 1}, blockHeader: 201},
+				&entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {1189, 0}, {1189, 841}, {0, 841}, {0, 0}}},
+				&entity.EntInsert{Position: entity.Point3{950, 20, 0}, Scale: entity.Point3{1, 1, 1}, BlockHeader: 201},
 			},
-			201: {&entText{text: "嵌套图名", insertion: point3{0, 30, 0}, height: 30}},
+			201: {&entity.EntText{Text: "嵌套图名", Insertion: entity.Point3{0, 30, 0}, Height: 30}},
 		},
-		attribs:         map[uint64]*entAttrib{},
+		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
 		internalObjects: map[uint64]*objGeneric{},
 	}
 	doc.modelSpace = []any{
-		&entInsert{position: point3{0, 0, 0}, scale: point3{1, 1, 1}, blockHeader: 200},
+		&entity.EntInsert{Position: entity.Point3{0, 0, 0}, Scale: entity.Point3{1, 1, 1}, BlockHeader: 200},
 		// 框内直属内容（内容密度判据，4 条线 = 8 点）
-		&entLine{start: point3{100, 400, 0}, end: point3{900, 400, 0}},
-		&entLine{start: point3{100, 200, 0}, end: point3{600, 600, 0}},
-		&entLine{start: point3{700, 150, 0}, end: point3{1000, 150, 0}},
-		&entLine{start: point3{150, 100, 0}, end: point3{400, 300, 0}},
+		&entity.EntLine{Start: entity.Point3{100, 400, 0}, End: entity.Point3{900, 400, 0}},
+		&entity.EntLine{Start: entity.Point3{100, 200, 0}, End: entity.Point3{600, 600, 0}},
+		&entity.EntLine{Start: entity.Point3{700, 150, 0}, End: entity.Point3{1000, 150, 0}},
+		&entity.EntLine{Start: entity.Point3{150, 100, 0}, End: entity.Point3{400, 300, 0}},
 	}
 	sheets := DetectSheets(doc)
 	if len(sheets) != 1 {
@@ -236,24 +237,24 @@ func TestDetectSheetsAttribTitle(t *testing.T) {
 	// 图名是块参照的 ATTRIB 属性文字
 	doc := &Document{
 		blocks: map[uint64][]any{
-			300: {&entLwPolyline{vertices: []point2{{0, 0}, {1189, 0}, {1189, 841}, {0, 841}, {0, 0}}}},
+			300: {&entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {1189, 0}, {1189, 841}, {0, 841}, {0, 0}}}},
 		},
-		attribs: map[uint64]*entAttrib{
-			900: {text: "属性图名", insertion: point3{950, 60, 0}, height: 30},
+		attribs: map[uint64]*entity.EntAttrib{
+			900: {Text: "属性图名", Insertion: entity.Point3{950, 60, 0}, Height: 30},
 		},
 		layerColors:     map[uint64]layerColor{},
 		internalObjects: map[uint64]*objGeneric{},
 	}
 	doc.modelSpace = []any{
-		&entInsert{
-			position: point3{0, 0, 0}, scale: point3{1, 1, 1}, blockHeader: 300,
-			attribs: []uint64{900},
+		&entity.EntInsert{
+			Position: entity.Point3{0, 0, 0}, Scale: entity.Point3{1, 1, 1}, BlockHeader: 300,
+			Attribs: []uint64{900},
 		},
 		// 框内直属内容（内容密度判据，4 条线 = 8 点）
-		&entLine{start: point3{100, 400, 0}, end: point3{900, 400, 0}},
-		&entLine{start: point3{100, 200, 0}, end: point3{600, 600, 0}},
-		&entLine{start: point3{700, 150, 0}, end: point3{1000, 150, 0}},
-		&entLine{start: point3{150, 100, 0}, end: point3{400, 300, 0}},
+		&entity.EntLine{Start: entity.Point3{100, 400, 0}, End: entity.Point3{900, 400, 0}},
+		&entity.EntLine{Start: entity.Point3{100, 200, 0}, End: entity.Point3{600, 600, 0}},
+		&entity.EntLine{Start: entity.Point3{700, 150, 0}, End: entity.Point3{1000, 150, 0}},
+		&entity.EntLine{Start: entity.Point3{150, 100, 0}, End: entity.Point3{400, 300, 0}},
 	}
 	sheets := DetectSheets(doc)
 	if len(sheets) != 1 || sheets[0].Name != "属性图名" {
@@ -289,11 +290,11 @@ func TestDetectSheetsFallbackNoInsert(t *testing.T) {
 	// 纯图元模型空间（无 INSERT）→ 兜底整图单张
 	doc := &Document{
 		blocks:          map[uint64][]any{},
-		attribs:         map[uint64]*entAttrib{},
+		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
 		internalObjects: map[uint64]*objGeneric{},
 		modelSpace: []any{
-			&entLine{start: point3{0, 0, 0}, end: point3{1000, 600, 0}},
+			&entity.EntLine{Start: entity.Point3{0, 0, 0}, End: entity.Point3{1000, 600, 0}},
 		},
 	}
 	sheets := DetectSheets(doc)
@@ -482,11 +483,11 @@ func TestRenderAllSheetsFallbackSingle(t *testing.T) {
 	// 无图框样本 → 批量接口兜底整图单张
 	doc := &Document{
 		blocks:          map[uint64][]any{},
-		attribs:         map[uint64]*entAttrib{},
+		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
 		internalObjects: map[uint64]*objGeneric{},
 		modelSpace: []any{
-			&entLine{start: point3{0, 0, 0}, end: point3{500, 300, 0}},
+			&entity.EntLine{Start: entity.Point3{0, 0, 0}, End: entity.Point3{500, 300, 0}},
 		},
 	}
 	results, err := RenderAllSheets(doc, RenderOptions{Width: 512}, "png")
@@ -524,21 +525,21 @@ func buildSheetNoDoc(t *testing.T, no, name string, extra func(block []any) []an
 	t.Helper()
 	doc := &Document{
 		blocks:          map[uint64][]any{},
-		attribs:         map[uint64]*entAttrib{},
+		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
 		internalObjects: map[uint64]*objGeneric{},
 	}
 	block := []any{
-		&entLwPolyline{vertices: []point2{{0, 0}, {1189, 0}, {1189, 841}, {0, 841}, {0, 0}}},
+		&entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {1189, 0}, {1189, 841}, {0, 841}, {0, 0}}},
 	}
 	if no != "" {
-		block = append(block, &entText{text: no, insertion: point3{990, 50, 0}, height: 30})
+		block = append(block, &entity.EntText{Text: no, Insertion: entity.Point3{990, 50, 0}, Height: 30})
 	}
 	if name != "" {
 		// 图名在图号上方 19×字高（真实标题栏行距），右端对齐
 		rightNo := 990 + estTextWidth(no, 30)
 		x := rightNo - estTextWidth(name, 30)
-		block = append(block, &entText{text: name, insertion: point3{x, 50 + 19*30, 0}, height: 30})
+		block = append(block, &entity.EntText{Text: name, Insertion: entity.Point3{x, 50 + 19*30, 0}, Height: 30})
 	}
 	if extra != nil {
 		block = extra(block)
@@ -546,12 +547,12 @@ func buildSheetNoDoc(t *testing.T, no, name string, extra func(block []any) []an
 	doc.blocks[100] = block
 	doc.internalObjects[100] = &objGeneric{Name: "BLOCK_HEADER", Fields: []objField{{Key: "name", Val: "图框"}}}
 	doc.modelSpace = []any{
-		&entInsert{position: point3{0, 0, 0}, scale: point3{1, 1, 1}, blockHeader: 100},
+		&entity.EntInsert{Position: entity.Point3{0, 0, 0}, Scale: entity.Point3{1, 1, 1}, BlockHeader: 100},
 		// 框内直属内容（内容密度判据，4 条线 = 8 点）
-		&entLine{start: point3{100, 400, 0}, end: point3{900, 400, 0}},
-		&entLine{start: point3{100, 200, 0}, end: point3{600, 600, 0}},
-		&entLine{start: point3{700, 150, 0}, end: point3{1000, 150, 0}},
-		&entLine{start: point3{150, 100, 0}, end: point3{400, 300, 0}},
+		&entity.EntLine{Start: entity.Point3{100, 400, 0}, End: entity.Point3{900, 400, 0}},
+		&entity.EntLine{Start: entity.Point3{100, 200, 0}, End: entity.Point3{600, 600, 0}},
+		&entity.EntLine{Start: entity.Point3{700, 150, 0}, End: entity.Point3{1000, 150, 0}},
+		&entity.EntLine{Start: entity.Point3{150, 100, 0}, End: entity.Point3{400, 300, 0}},
 	}
 	return doc
 }
@@ -575,8 +576,8 @@ func TestDetectSheetsSheetNoPriority(t *testing.T) {
 		return append(block,
 			// 标题栏区内字号更大的线缆型号与图号左侧的图例中文：
 			// 前者不匹配图号模式，后者右端与图号右端相距数百字高
-			&entText{text: "SC25", insertion: point3{1000, 80, 0}, height: 45},
-			&entText{text: "消防设备线型图例表说明文字", insertion: point3{400, 80, 0}, height: 40},
+			&entity.EntText{Text: "SC25", Insertion: entity.Point3{1000, 80, 0}, Height: 45},
+			&entity.EntText{Text: "消防设备线型图例表说明文字", Insertion: entity.Point3{400, 80, 0}, Height: 40},
 		)
 	})
 	if got := DetectSheets(doc)[0].Name; got != "RD(XF)-05-地下一层消防平面图" {
@@ -595,7 +596,7 @@ func TestDetectSheetsSheetNoOnly(t *testing.T) {
 func TestDetectSheetsSheetNoAbsent(t *testing.T) {
 	// 标题栏区无图号 → 回退区内最大字号文本（含更大字号干扰时取其内容）
 	doc := buildSheetNoDoc(t, "", "普通图名", func(block []any) []any {
-		return append(block, &entText{text: "大字表格", insertion: point3{940, 80, 0}, height: 60})
+		return append(block, &entity.EntText{Text: "大字表格", Insertion: entity.Point3{940, 80, 0}, Height: 60})
 	})
 	if got := DetectSheets(doc)[0].Name; got != "大字表格" {
 		t.Fatalf("无图号应回退最大字号文本: %q", got)
@@ -691,17 +692,17 @@ func TestDetectSheetsFallbackQuantileBox(t *testing.T) {
 	// 无图框 + 离群实体：兜底整图包围盒应贴合主体而非被离群撑爆
 	doc := &Document{
 		blocks:          map[uint64][]any{},
-		attribs:         map[uint64]*entAttrib{},
+		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
 		internalObjects: map[uint64]*objGeneric{},
 	}
 	for i := 0; i < 100; i++ {
 		x := float64(i%10) * 100
 		y := float64(i/10) * 80
-		doc.modelSpace = append(doc.modelSpace, &entLine{start: point3{x, y, 0}, end: point3{x + 60, y + 40, 0}})
+		doc.modelSpace = append(doc.modelSpace, &entity.EntLine{Start: entity.Point3{x, y, 0}, End: entity.Point3{x + 60, y + 40, 0}})
 	}
 	doc.modelSpace = append(doc.modelSpace,
-		&entLine{start: point3{500, 500, 0}, end: point3{-1.4e6, 6.3e6, 0}})
+		&entity.EntLine{Start: entity.Point3{500, 500, 0}, End: entity.Point3{-1.4e6, 6.3e6, 0}})
 	sheets := DetectSheets(doc)
 	if len(sheets) != 1 || sheets[0].Name != "整图" {
 		t.Fatalf("应兜底整图单张: %+v", sheets)
@@ -722,20 +723,20 @@ func buildResidualDoc(t *testing.T) *Document {
 	t.Helper()
 	doc := &Document{
 		blocks:          map[uint64][]any{},
-		attribs:         map[uint64]*entAttrib{},
+		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
 		internalObjects: map[uint64]*objGeneric{},
 	}
 	doc.blocks[100] = []any{
-		&entLwPolyline{vertices: []point2{{0, 0}, {1189000, 0}, {1189000, 841000}, {0, 841000}, {0, 0}}},
+		&entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {1189000, 0}, {1189000, 841000}, {0, 841000}, {0, 0}}},
 	}
 	doc.internalObjects[100] = &objGeneric{Name: "BLOCK_HEADER", Fields: []objField{{Key: "name", Val: "A1图框"}}}
 	doc.modelSpace = append(doc.modelSpace,
-		&entInsert{position: point3{0, 0, 0}, scale: point3{1, 1, 1}, blockHeader: 100},
-		&entLine{start: point3{100000, 400000, 0}, end: point3{900000, 400000, 0}},
-		&entLine{start: point3{100000, 200000, 0}, end: point3{600000, 600000, 0}},
-		&entLine{start: point3{700000, 150000, 0}, end: point3{1000000, 150000, 0}},
-		&entLine{start: point3{150000, 100000, 0}, end: point3{400000, 300000, 0}},
+		&entity.EntInsert{Position: entity.Point3{0, 0, 0}, Scale: entity.Point3{1, 1, 1}, BlockHeader: 100},
+		&entity.EntLine{Start: entity.Point3{100000, 400000, 0}, End: entity.Point3{900000, 400000, 0}},
+		&entity.EntLine{Start: entity.Point3{100000, 200000, 0}, End: entity.Point3{600000, 600000, 0}},
+		&entity.EntLine{Start: entity.Point3{700000, 150000, 0}, End: entity.Point3{1000000, 150000, 0}},
+		&entity.EntLine{Start: entity.Point3{150000, 100000, 0}, End: entity.Point3{400000, 300000, 0}},
 	)
 	return doc
 }
@@ -747,22 +748,22 @@ func TestDetectSheetsResidualTextPage(t *testing.T) {
 	doc := buildResidualDoc(t)
 	for i := 0; i < 6; i++ {
 		for j := 0; j < 50; j++ {
-			doc.modelSpace = append(doc.modelSpace, &entText{
-				text:      fmt.Sprintf("说明条目%d-%d", i, j),
-				insertion: point3{2000000 + float64(j)*250, 1500000 + float64(i)*1000, 0},
-				height:    500,
+			doc.modelSpace = append(doc.modelSpace, &entity.EntText{
+				Text:      fmt.Sprintf("说明条目%d-%d", i, j),
+				Insertion: entity.Point3{2000000 + float64(j)*250, 1500000 + float64(i)*1000, 0},
+				Height:    500,
 			})
 		}
 	}
 	// 框外零星散点（真实图纸的轴号/标注散布）：撑大残余包围盒确定
 	// 聚类网格粒度，自身格计数低于下限不成图
 	for _, d := range [][2]float64{{0, 0}, {4000000, 0}, {0, 3000000}, {4000000, 3000000}} {
-		doc.modelSpace = append(doc.modelSpace, &entLine{
-			start: point3{d[0], d[1], 0}, end: point3{d[0] + 100, d[1] + 100, 0},
+		doc.modelSpace = append(doc.modelSpace, &entity.EntLine{
+			Start: entity.Point3{d[0], d[1], 0}, End: entity.Point3{d[0] + 100, d[1] + 100, 0},
 		})
 	}
-	doc.modelSpace = append(doc.modelSpace, &entText{
-		text: "弱电设计说明（一）", insertion: point3{2012500, 1508500, 0}, height: 600,
+	doc.modelSpace = append(doc.modelSpace, &entity.EntText{
+		Text: "弱电设计说明（一）", Insertion: entity.Point3{2012500, 1508500, 0}, Height: 600,
 	})
 	sheets := DetectSheets(doc)
 	if len(sheets) != 2 {
@@ -785,16 +786,16 @@ func TestDetectSheetsResidualUnnamed(t *testing.T) {
 	doc := buildResidualDoc(t)
 	for i := 0; i < 3; i++ {
 		for j := 0; j < 20; j++ {
-			doc.modelSpace = append(doc.modelSpace, &entText{
-				text:      "※",
-				insertion: point3{2000000 + float64(j)*250, 1500000 + float64(i)*500, 0},
-				height:    100,
+			doc.modelSpace = append(doc.modelSpace, &entity.EntText{
+				Text:      "※",
+				Insertion: entity.Point3{2000000 + float64(j)*250, 1500000 + float64(i)*500, 0},
+				Height:    100,
 			})
 		}
 	}
 	for _, d := range [][2]float64{{0, 0}, {4000000, 0}, {0, 3000000}, {4000000, 3000000}} {
-		doc.modelSpace = append(doc.modelSpace, &entLine{
-			start: point3{d[0], d[1], 0}, end: point3{d[0] + 100, d[1] + 100, 0},
+		doc.modelSpace = append(doc.modelSpace, &entity.EntLine{
+			Start: entity.Point3{d[0], d[1], 0}, End: entity.Point3{d[0] + 100, d[1] + 100, 0},
 		})
 	}
 	sheets := DetectSheets(doc)
@@ -839,7 +840,7 @@ func TestResidualSheetsOverlapDrop(t *testing.T) {
 	// 剔除；远离框的同样点云正常产出补充区域
 	doc := &Document{
 		blocks:          map[uint64][]any{},
-		attribs:         map[uint64]*entAttrib{},
+		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
 		internalObjects: map[uint64]*objGeneric{},
 	}
@@ -888,11 +889,11 @@ func buildMicroTextDoc(t *testing.T, w, h, hWorld float64) *Document {
 	t.Helper()
 	return &Document{
 		blocks:          map[uint64][]any{},
-		attribs:         map[uint64]*entAttrib{},
+		attribs:         map[uint64]*entity.EntAttrib{},
 		layerColors:     map[uint64]layerColor{},
 		internalObjects: map[uint64]*objGeneric{},
 		modelSpace: []any{
-			&entText{text: "微缩标注", insertion: point3{w / 4, h / 2, 0}, height: hWorld},
+			&entity.EntText{Text: "微缩标注", Insertion: entity.Point3{w / 4, h / 2, 0}, Height: hWorld},
 		},
 	}
 }

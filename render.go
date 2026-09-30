@@ -7,6 +7,7 @@ package cad
 import (
 	"bytes"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"image"
 	"image/color"
 	"image/png"
@@ -122,7 +123,7 @@ type primitive struct {
 	kind    int // 0 stroke, 1 label
 	strokes []stroke
 	lb      label
-	color   entColor
+	color   entity.EntColor
 	layer   uint64
 	kind0   string // 类型名（调试/渲染策略）
 }
@@ -137,8 +138,8 @@ type tessellator struct {
 	maxDepth int
 	budget   int
 	insPath  []uint64 // 当前 INSERT 展开路径上的块定义句柄（环检测）
-	vertex2d map[uint64]*entVertex2d
-	vertex3d map[uint64]*entVertex3d
+	vertex2d map[uint64]*entity.EntVertex2d
+	vertex3d map[uint64]*entity.EntVertex3d
 }
 
 func newTessellator(doc *Document) *tessellator {
@@ -154,10 +155,10 @@ type xform struct {
 
 func identityXform() xform { return xform{sx: 1, sy: 1, cos: 1} }
 
-func (t xform) apply(p point2) point2 {
-	return point2{
-		x: p.x*t.sx*t.cos - p.y*t.sy*t.sin + t.tx,
-		y: p.x*t.sx*t.sin + p.y*t.sy*t.cos + t.ty,
+func (t xform) apply(p entity.Point2) entity.Point2 {
+	return entity.Point2{
+		X: p.X*t.sx*t.cos - p.Y*t.sy*t.sin + t.tx,
+		Y: p.X*t.sx*t.sin + p.Y*t.sy*t.cos + t.ty,
 	}
 }
 
@@ -178,11 +179,11 @@ func (t xform) compose(child xform) xform {
 }
 
 // insertXform 构造 INSERT 的变换：缩放→旋转→平移插入点。
-func insertXform(e *entInsert) xform {
+func insertXform(e *entity.EntInsert) xform {
 	return xform{
-		sx: e.scale.x, sy: e.scale.y,
-		cos: math.Cos(e.rotation), sin: math.Sin(e.rotation),
-		tx: e.position.x, ty: e.position.y,
+		sx: e.Scale.X, sy: e.Scale.Y,
+		cos: math.Cos(e.Rotation), sin: math.Sin(e.Rotation),
+		tx: e.Position.X, ty: e.Position.Y,
 	}
 }
 
@@ -194,9 +195,9 @@ func (ts *tessellator) buildVertexIndex() {
 	tally := func(list []any) {
 		for _, e := range list {
 			switch e.(type) {
-			case *entVertex2d:
+			case *entity.EntVertex2d:
 				count2d++
-			case *entVertex3d:
+			case *entity.EntVertex3d:
 				count3d++
 			}
 		}
@@ -206,15 +207,15 @@ func (ts *tessellator) buildVertexIndex() {
 	for _, list := range ts.doc.blocks {
 		tally(list)
 	}
-	ts.vertex2d = make(map[uint64]*entVertex2d, count2d)
-	ts.vertex3d = make(map[uint64]*entVertex3d, count3d)
+	ts.vertex2d = make(map[uint64]*entity.EntVertex2d, count2d)
+	ts.vertex3d = make(map[uint64]*entity.EntVertex3d, count3d)
 	add := func(list []any) {
 		for _, e := range list {
 			switch t := e.(type) {
-			case *entVertex2d:
-				ts.vertex2d[t.handle] = t
-			case *entVertex3d:
-				ts.vertex3d[t.handle] = t
+			case *entity.EntVertex2d:
+				ts.vertex2d[t.Handle] = t
+			case *entity.EntVertex3d:
+				ts.vertex3d[t.Handle] = t
 			}
 		}
 	}
@@ -249,191 +250,191 @@ func (ts *tessellator) appendEntity(out []primitive, ent any, t xform, depth int
 	}
 	ts.budget--
 	switch e := ent.(type) {
-	case *entLine:
-		a, b := t.apply(point2{e.start.x, e.start.y}), t.apply(point2{e.end.x, e.end.y})
-		out = append(out, primitive{kind: 0, strokes: []stroke{{a.x, a.y, b.x, b.y}}, color: e.color, layer: e.layer, kind0: "LINE"})
-	case *entCircle:
-		out = append(out, primitive{kind: 0, strokes: tessCircle(e.center.x, e.center.y, e.radius, t), color: e.color, layer: e.layer, kind0: "CIRCLE"})
-	case *entArc:
-		out = append(out, primitive{kind: 0, strokes: tessArc(e.center.x, e.center.y, e.radius, e.angleStart, e.angleEnd, t), color: e.color, layer: e.layer, kind0: "ARC"})
-	case *entPoint:
-		p := t.apply(point2{e.location.x, e.location.y})
+	case *entity.EntLine:
+		a, b := t.apply(entity.Point2{e.Start.X, e.Start.Y}), t.apply(entity.Point2{e.End.X, e.End.Y})
+		out = append(out, primitive{kind: 0, strokes: []stroke{{a.X, a.Y, b.X, b.Y}}, color: e.Color, layer: e.Layer, kind0: "LINE"})
+	case *entity.EntCircle:
+		out = append(out, primitive{kind: 0, strokes: tessCircle(e.Center.X, e.Center.Y, e.Radius, t), color: e.Color, layer: e.Layer, kind0: "CIRCLE"})
+	case *entity.EntArc:
+		out = append(out, primitive{kind: 0, strokes: tessArc(e.Center.X, e.Center.Y, e.Radius, e.AngleStart, e.AngleEnd, t), color: e.Color, layer: e.Layer, kind0: "ARC"})
+	case *entity.EntPoint:
+		p := t.apply(entity.Point2{e.Location.X, e.Location.Y})
 		r := 0.02 * t.lengthScale()
 		if r == 0 {
 			r = 0.1
 		}
 		out = append(out, primitive{kind: 0, strokes: []stroke{
-			{p.x - r, p.y, p.x + r, p.y}, {p.x, p.y - r, p.x, p.y + r},
-		}, color: e.color, layer: e.layer, kind0: "POINT"})
-	case *entEllipse:
-		out = append(out, primitive{kind: 0, strokes: tessEllipse(e, t), color: e.color, layer: e.layer, kind0: "ELLIPSE"})
-	case *entLwPolyline:
-		out = append(out, primitive{kind: 0, strokes: tessLwPolyline(e, t), color: e.color, layer: e.layer, kind0: "LWPOLYLINE"})
-	case *entText:
+			{p.X - r, p.Y, p.X + r, p.Y}, {p.X, p.Y - r, p.X, p.Y + r},
+		}, color: e.Color, layer: e.Layer, kind0: "POINT"})
+	case *entity.EntEllipse:
+		out = append(out, primitive{kind: 0, strokes: tessEllipse(e, t), color: e.Color, layer: e.Layer, kind0: "ELLIPSE"})
+	case *entity.EntLwPolyline:
+		out = append(out, primitive{kind: 0, strokes: tessLwPolyline(e, t), color: e.Color, layer: e.Layer, kind0: "LWPOLYLINE"})
+	case *entity.EntText:
 		// 非默认对齐（h/vAlign 任一非零）时锚点取 alignment_pt（DXF 语义）
-		x, y := e.insertion.x, e.insertion.y
-		if (e.hAlign != 0 || e.vAlign != 0) && e.alignPt != nil {
-			x, y = e.alignPt.x, e.alignPt.y
+		x, y := e.Insertion.X, e.Insertion.Y
+		if (e.HAlign != 0 || e.VAlign != 0) && e.AlignPt != nil {
+			x, y = e.AlignPt.X, e.AlignPt.Y
 		}
-		out = append(out, ts.textLabelWith(x, y, e.height, e.rotation, len([]rune(e.text)), t, e, "TEXT", textInfo{
-			lines: []string{e.text}, gen: e.gen, hAlign: e.hAlign, vAlign: e.vAlign,
-			widthFactor: textWidthFactor(e.widthFactor),
+		out = append(out, ts.textLabelWith(x, y, e.Height, e.Rotation, len([]rune(e.Text)), t, e, "TEXT", textInfo{
+			lines: []string{e.Text}, gen: e.Gen, hAlign: e.HAlign, vAlign: e.VAlign,
+			widthFactor: textWidthFactor(e.WidthFactor),
 		}))
-	case *entMText:
-		rot := math.Atan2(e.xAxisDir.y, e.xAxisDir.x)
-		lines := strings.Split(stripMTextFormat(e.text), "\n")
+	case *entity.EntMText:
+		rot := math.Atan2(e.XAxisDir.Y, e.XAxisDir.X)
+		lines := strings.Split(stripMTextFormat(e.Text), "\n")
 		n := 0
 		for _, ln := range lines {
 			n += len([]rune(ln))
 		}
-		out = append(out, ts.textLabelWith(e.insertion.x, e.insertion.y, e.textHeight, rot, n, t, e, "MTEXT", textInfo{
-			lines: lines, attachment: e.attachment, rectWidth: e.rectWidth,
-			lineFactor: e.lineFactor,
+		out = append(out, ts.textLabelWith(e.Insertion.X, e.Insertion.Y, e.TextHeight, rot, n, t, e, "MTEXT", textInfo{
+			lines: lines, attachment: e.Attachment, rectWidth: e.RectWidth,
+			lineFactor: e.LineFactor,
 		}))
-	case *entAttrib:
-		x, y := e.insertion.x, e.insertion.y
-		if (e.hAlign != 0 || e.vAlign != 0) && e.alignPt != nil {
-			x, y = e.alignPt.x, e.alignPt.y
+	case *entity.EntAttrib:
+		x, y := e.Insertion.X, e.Insertion.Y
+		if (e.HAlign != 0 || e.VAlign != 0) && e.AlignPt != nil {
+			x, y = e.AlignPt.X, e.AlignPt.Y
 		}
-		out = append(out, ts.textLabelWith(x, y, e.height, e.rotation, len([]rune(e.text)), t, e, "ATTRIB", textInfo{
-			lines: []string{e.text}, gen: e.gen, hAlign: e.hAlign, vAlign: e.vAlign,
-			widthFactor: textWidthFactor(e.widthFactor),
+		out = append(out, ts.textLabelWith(x, y, e.Height, e.Rotation, len([]rune(e.Text)), t, e, "ATTRIB", textInfo{
+			lines: []string{e.Text}, gen: e.Gen, hAlign: e.HAlign, vAlign: e.VAlign,
+			widthFactor: textWidthFactor(e.WidthFactor),
 		}))
-	case *entSpline:
-		out = append(out, primitive{kind: 0, strokes: tessSpline(e, t), color: e.color, layer: e.layer, kind0: "SPLINE"})
-	case *entHelix:
-		out = append(out, primitive{kind: 0, strokes: tessHelix(e, t), color: e.color, layer: e.layer, kind0: "HELIX"})
-	case *entUnderlay:
-		out = append(out, primitive{kind: 0, strokes: tessUnderlay(e, t), color: e.color, layer: e.layer, kind0: "UNDERLAY"})
-	case *entHatch:
-		for _, p := range e.paths {
-			var pts []point2
-			for _, v := range p.points {
+	case *entity.EntSpline:
+		out = append(out, primitive{kind: 0, strokes: tessSpline(e, t), color: e.Color, layer: e.Layer, kind0: "SPLINE"})
+	case *entity.EntHelix:
+		out = append(out, primitive{kind: 0, strokes: tessHelix(e, t), color: e.Color, layer: e.Layer, kind0: "HELIX"})
+	case *entity.EntUnderlay:
+		out = append(out, primitive{kind: 0, strokes: tessUnderlay(e, t), color: e.Color, layer: e.Layer, kind0: "UNDERLAY"})
+	case *entity.EntHatch:
+		for _, p := range e.Paths {
+			var pts []entity.Point2
+			for _, v := range p.Points {
 				pts = append(pts, t.apply(v))
 			}
 			var strokes []stroke
 			for i := 0; i+1 < len(pts); i++ {
-				strokes = append(strokes, stroke{pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y})
+				strokes = append(strokes, stroke{pts[i].X, pts[i].Y, pts[i+1].X, pts[i+1].Y})
 			}
-			out = append(out, primitive{kind: 0, strokes: strokes, color: e.color, layer: e.layer, kind0: "HATCH"})
+			out = append(out, primitive{kind: 0, strokes: strokes, color: e.Color, layer: e.Layer, kind0: "HATCH"})
 		}
-	case *entDimension:
+	case *entity.EntDimension:
 		// 标注：连接测量点与文字中点（简化可视表达）
-		var pts []point2
-		for _, p := range []point3{e.point10, e.point13, e.point14} {
-			pts = append(pts, t.apply(point2{p.x, p.y}))
+		var pts []entity.Point2
+		for _, p := range []entity.Point3{e.Point10, e.Point13, e.Point14} {
+			pts = append(pts, t.apply(entity.Point2{p.X, p.Y}))
 		}
-		mid := t.apply(point2{e.textMidpoint.x, e.textMidpoint.y})
+		mid := t.apply(entity.Point2{e.TextMidpoint.X, e.TextMidpoint.Y})
 		var strokes []stroke
 		for i := 0; i+1 < len(pts); i++ {
-			strokes = append(strokes, stroke{pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y})
+			strokes = append(strokes, stroke{pts[i].X, pts[i].Y, pts[i+1].X, pts[i+1].Y})
 		}
 		if len(pts) > 0 {
-			strokes = append(strokes, stroke{pts[len(pts)-1].x, pts[len(pts)-1].y, mid.x, mid.y})
+			strokes = append(strokes, stroke{pts[len(pts)-1].X, pts[len(pts)-1].Y, mid.X, mid.Y})
 		}
-		out = append(out, primitive{kind: 0, strokes: strokes, color: e.color, layer: e.layer, kind0: "DIMENSION"})
-	case *entRay:
-		a := t.apply(point2{e.start.x, e.start.y})
-		end := point2{
-			e.start.x + e.unitVector.x*1e6,
-			e.start.y + e.unitVector.y*1e6,
+		out = append(out, primitive{kind: 0, strokes: strokes, color: e.Color, layer: e.Layer, kind0: "DIMENSION"})
+	case *entity.EntRay:
+		a := t.apply(entity.Point2{e.Start.X, e.Start.Y})
+		end := entity.Point2{
+			e.Start.X + e.UnitVector.X*1e6,
+			e.Start.Y + e.UnitVector.Y*1e6,
 		}
 		b := t.apply(end)
-		strokes := []stroke{{a.x, a.y, b.x, b.y}}
-		if e.xline {
-			c := t.apply(point2{
-				e.start.x - e.unitVector.x*1e6,
-				e.start.y - e.unitVector.y*1e6,
+		strokes := []stroke{{a.X, a.Y, b.X, b.Y}}
+		if e.Xline {
+			c := t.apply(entity.Point2{
+				e.Start.X - e.UnitVector.X*1e6,
+				e.Start.Y - e.UnitVector.Y*1e6,
 			})
-			strokes = append(strokes, stroke{a.x, a.y, c.x, c.y})
+			strokes = append(strokes, stroke{a.X, a.Y, c.X, c.Y})
 		}
 		kind0 := "RAY"
-		if e.xline {
+		if e.Xline {
 			kind0 = "XLINE"
 		}
-		out = append(out, primitive{kind: 0, strokes: strokes, color: e.color, layer: e.layer, kind0: kind0})
-	case *entSolid:
-		pts := []point2{t.apply(e.p1), t.apply(e.p2), t.apply(e.p3), t.apply(e.p4)}
+		out = append(out, primitive{kind: 0, strokes: strokes, color: e.Color, layer: e.Layer, kind0: kind0})
+	case *entity.EntSolid:
+		pts := []entity.Point2{t.apply(e.P1), t.apply(e.P2), t.apply(e.P3), t.apply(e.P4)}
 		var strokes []stroke
 		for i := 0; i+1 < len(pts); i++ {
-			strokes = append(strokes, stroke{pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y})
+			strokes = append(strokes, stroke{pts[i].X, pts[i].Y, pts[i+1].X, pts[i+1].Y})
 		}
-		strokes = append(strokes, stroke{pts[3].x, pts[3].y, pts[0].x, pts[0].y})
+		strokes = append(strokes, stroke{pts[3].X, pts[3].Y, pts[0].X, pts[0].Y})
 		kind0 := "SOLID"
-		if e.trace {
+		if e.Trace {
 			kind0 = "TRACE"
 		}
-		out = append(out, primitive{kind: 0, strokes: strokes, color: e.color, layer: e.layer, kind0: kind0})
-	case *entFace3d:
-		pts := []point2{t.apply(point2{e.p1.x, e.p1.y}), t.apply(point2{e.p2.x, e.p2.y}),
-			t.apply(point2{e.p3.x, e.p3.y}), t.apply(point2{e.p4.x, e.p4.y})}
+		out = append(out, primitive{kind: 0, strokes: strokes, color: e.Color, layer: e.Layer, kind0: kind0})
+	case *entity.EntFace3d:
+		pts := []entity.Point2{t.apply(entity.Point2{e.P1.X, e.P1.Y}), t.apply(entity.Point2{e.P2.X, e.P2.Y}),
+			t.apply(entity.Point2{e.P3.X, e.P3.Y}), t.apply(entity.Point2{e.P4.X, e.P4.Y})}
 		var strokes []stroke
 		for i := 0; i+1 < len(pts); i++ {
-			strokes = append(strokes, stroke{pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y})
+			strokes = append(strokes, stroke{pts[i].X, pts[i].Y, pts[i+1].X, pts[i+1].Y})
 		}
-		strokes = append(strokes, stroke{pts[3].x, pts[3].y, pts[0].x, pts[0].y})
-		out = append(out, primitive{kind: 0, strokes: strokes, color: e.color, layer: e.layer, kind0: "3DFACE"})
-	case *entLeader:
-		if len(e.points) >= 2 {
+		strokes = append(strokes, stroke{pts[3].X, pts[3].Y, pts[0].X, pts[0].Y})
+		out = append(out, primitive{kind: 0, strokes: strokes, color: e.Color, layer: e.Layer, kind0: "3DFACE"})
+	case *entity.EntLeader:
+		if len(e.Points) >= 2 {
 			var strokes []stroke
-			prev := t.apply(point2{e.points[0].x, e.points[0].y})
-			for _, p := range e.points[1:] {
-				cur := t.apply(point2{p.x, p.y})
-				strokes = append(strokes, stroke{prev.x, prev.y, cur.x, cur.y})
+			prev := t.apply(entity.Point2{e.Points[0].X, e.Points[0].Y})
+			for _, p := range e.Points[1:] {
+				cur := t.apply(entity.Point2{p.X, p.Y})
+				strokes = append(strokes, stroke{prev.X, prev.Y, cur.X, cur.Y})
 				prev = cur
 			}
-			out = append(out, primitive{kind: 0, strokes: strokes, color: e.color, layer: e.layer, kind0: "LEADER"})
+			out = append(out, primitive{kind: 0, strokes: strokes, color: e.Color, layer: e.Layer, kind0: "LEADER"})
 		}
-	case *entMLine:
-		if len(e.vertices) >= 2 {
+	case *entity.EntMLine:
+		if len(e.Vertices) >= 2 {
 			var strokes []stroke
-			prev := t.apply(point2{e.vertices[0].position.x, e.vertices[0].position.y})
-			for _, v := range e.vertices[1:] {
-				cur := t.apply(point2{v.position.x, v.position.y})
-				strokes = append(strokes, stroke{prev.x, prev.y, cur.x, cur.y})
+			prev := t.apply(entity.Point2{e.Vertices[0].Position.X, e.Vertices[0].Position.Y})
+			for _, v := range e.Vertices[1:] {
+				cur := t.apply(entity.Point2{v.Position.X, v.Position.Y})
+				strokes = append(strokes, stroke{prev.X, prev.Y, cur.X, cur.Y})
 				prev = cur
 			}
-			out = append(out, primitive{kind: 0, strokes: strokes, color: e.color, layer: e.layer, kind0: "MLINE"})
+			out = append(out, primitive{kind: 0, strokes: strokes, color: e.Color, layer: e.Layer, kind0: "MLINE"})
 		}
-	case *entPolyline2d:
+	case *entity.EntPolyline2d:
 		var strokes []stroke
-		var pts []point2
-		for _, vh := range e.ownedHandles {
+		var pts []entity.Point2
+		for _, vh := range e.OwnedHandles {
 			if v, ok := ts.vertex2d[vh]; ok {
-				pts = append(pts, t.apply(point2{v.position.x, v.position.y}))
+				pts = append(pts, t.apply(entity.Point2{v.Position.X, v.Position.Y}))
 			}
 		}
 		for i := 0; i+1 < len(pts); i++ {
-			strokes = append(strokes, stroke{pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y})
+			strokes = append(strokes, stroke{pts[i].X, pts[i].Y, pts[i+1].X, pts[i+1].Y})
 		}
-		out = append(out, primitive{kind: 0, strokes: strokes, color: e.color, layer: e.layer, kind0: "POLYLINE_2D"})
-	case *entPolyline3d:
+		out = append(out, primitive{kind: 0, strokes: strokes, color: e.Color, layer: e.Layer, kind0: "POLYLINE_2D"})
+	case *entity.EntPolyline3d:
 		var strokes []stroke
-		var pts []point2
-		for _, vh := range e.ownedHandles {
+		var pts []entity.Point2
+		for _, vh := range e.OwnedHandles {
 			if v, ok := ts.vertex3d[vh]; ok {
-				pts = append(pts, t.apply(point2{v.position.x, v.position.y}))
+				pts = append(pts, t.apply(entity.Point2{v.Position.X, v.Position.Y}))
 			}
 		}
 		for i := 0; i+1 < len(pts); i++ {
-			strokes = append(strokes, stroke{pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y})
+			strokes = append(strokes, stroke{pts[i].X, pts[i].Y, pts[i+1].X, pts[i+1].Y})
 		}
-		out = append(out, primitive{kind: 0, strokes: strokes, color: e.color, layer: e.layer, kind0: "POLYLINE_3D"})
-	case *entInsert:
+		out = append(out, primitive{kind: 0, strokes: strokes, color: e.Color, layer: e.Layer, kind0: "POLYLINE_3D"})
+	case *entity.EntInsert:
 		// 环检测：展开路径上已出现同一块定义即自引用/互引用环，短路该
 		// 分支（环分支不消耗预算，预算只对无环的巨量展开兜底）
 		for _, h := range ts.insPath {
-			if h == e.blockHeader {
+			if h == e.BlockHeader {
 				return out
 			}
 		}
-		ts.insPath = append(ts.insPath, e.blockHeader)
+		ts.insPath = append(ts.insPath, e.BlockHeader)
 		child := t.compose(insertXform(e))
-		for _, inner := range ts.doc.blocks[e.blockHeader] {
+		for _, inner := range ts.doc.blocks[e.BlockHeader] {
 			out = ts.appendEntity(out, inner, child, depth+1)
 		}
 		// 关联属性（文字位置在插入变换下的对应位置）
-		for _, ah := range e.attribs {
+		for _, ah := range e.Attribs {
 			if a, ok := ts.doc.attribs[ah]; ok {
 				out = ts.appendEntity(out, a, child, depth+1)
 			}
@@ -446,7 +447,7 @@ func (ts *tessellator) appendEntity(out []primitive, ent any, t xform, depth int
 // textLabel 文字占位条：按字符数与字高估算占位宽度。
 // text 携带剥离格式码后的文本内容、anchor 携带水平锚点（RenderSVG 矢量
 // 输出用；PNG 路径仅消费几何字段，文本为空时 SVG 退化为占位框）。
-func (ts *tessellator) textLabel(x, y, h, rot float64, nChars int, t xform, e entityCommon, kind, text string, anchor uint8) primitive {
+func (ts *tessellator) textLabel(x, y, h, rot float64, nChars int, t xform, e entity.EntityCommon, kind, text string, anchor uint8) primitive {
 	if nChars <= 0 {
 		nChars = 1
 	}
@@ -455,13 +456,13 @@ func (ts *tessellator) textLabel(x, y, h, rot float64, nChars int, t xform, e en
 	if w > h*80 {
 		w = h * 80
 	}
-	p1 := t.apply(point2{x, y})
-	p2 := t.apply(point2{x + w*math.Cos(rot), y + w*math.Sin(rot)})
+	p1 := t.apply(entity.Point2{x, y})
+	p2 := t.apply(entity.Point2{x + w*math.Cos(rot), y + w*math.Sin(rot)})
 	scaledH := h * t.lengthScale()
 	return primitive{
 		kind:  1,
-		lb:    label{x: p1.x, y: p1.y, w: p2.x - p1.x, h: scaledH, rot: math.Atan2(p2.y-p1.y, p2.x-p1.x), text: text, anchor: anchor},
-		color: e.common().color, layer: e.common().layer, kind0: kind,
+		lb:    label{x: p1.X, y: p1.Y, w: p2.X - p1.X, h: scaledH, rot: math.Atan2(p2.Y-p1.Y, p2.X-p1.X), text: text, anchor: anchor},
+		color: e.Common().Color, layer: e.Common().Layer, kind0: kind,
 	}
 }
 
@@ -483,15 +484,15 @@ func textWidthFactor(wf float64) float64 {
 // 镜像下方向精确），render_text.go 据此换算像素版式绘制真实字形；text/
 // anchor 供 RenderSVG 的 <text> 元素消费；handle 附源实体句柄
 // （<text data-h> AI 元数据）。
-func (ts *tessellator) textLabelWith(x, y, h, rot float64, nChars int, t xform, e entityCommon, kind string, tx textInfo) primitive {
+func (ts *tessellator) textLabelWith(x, y, h, rot float64, nChars int, t xform, e entity.EntityCommon, kind string, tx textInfo) primitive {
 	p := ts.textLabel(x, y, h, rot, nChars, t, e, kind, "", 0)
-	p.lb.handle = e.common().handle
+	p.lb.handle = e.Common().Handle
 	c, s := math.Cos(rot), math.Sin(rot)
-	o := t.apply(point2{x, y})
-	u := t.apply(point2{x + c, y + s})
-	v := t.apply(point2{x - s, y + c})
-	tx.ux, tx.uy = u.x-o.x, u.y-o.y
-	tx.vx, tx.vy = v.x-o.x, v.y-o.y
+	o := t.apply(entity.Point2{x, y})
+	u := t.apply(entity.Point2{x + c, y + s})
+	v := t.apply(entity.Point2{x - s, y + c})
+	tx.ux, tx.uy = u.X-o.X, u.Y-o.Y
+	tx.vx, tx.vy = v.X-o.X, v.Y-o.Y
 	tx.hWorld = h
 	if tx.widthFactor > 0 {
 		// 占位条宽度同步宽度因子（TEXT/ATTRIB 压缩字宽；MTEXT 恒 1）
@@ -542,11 +543,11 @@ func textAnchorAttachment(att uint16) uint8 {
 func tessCircle(cx, cy, r float64, t xform) []stroke {
 	const n = 72
 	out := make([]stroke, 0, n)
-	prev := t.apply(point2{cx + r, cy})
+	prev := t.apply(entity.Point2{cx + r, cy})
 	for i := 1; i <= n; i++ {
 		a := float64(i) / n * 2 * math.Pi
-		cur := t.apply(point2{cx + r*math.Cos(a), cy + r*math.Sin(a)})
-		out = append(out, stroke{prev.x, prev.y, cur.x, cur.y})
+		cur := t.apply(entity.Point2{cx + r*math.Cos(a), cy + r*math.Sin(a)})
+		out = append(out, stroke{prev.X, prev.Y, cur.X, cur.Y})
 		prev = cur
 	}
 	return out
@@ -557,7 +558,7 @@ func tessCircle(cx, cy, r float64, t xform) []stroke {
 func tessArc(cx, cy, r, a0, a1 float64, t xform) []stroke {
 	// 变异输入可产生 NaN/Inf 角度（错位解码实证）：Mod 后 span 仍为 NaN
 	// 会导致 segments 计算溢出为负，make cap panic，须先做有限性防御
-	if !isFinite(a0) || !isFinite(a1) || !isFinite(cx) || !isFinite(cy) || !isFinite(r) {
+	if !entity.IsFinite(a0) || !entity.IsFinite(a1) || !entity.IsFinite(cx) || !entity.IsFinite(cy) || !entity.IsFinite(r) {
 		return nil
 	}
 	span := math.Mod(a1-a0, 2*math.Pi)
@@ -572,37 +573,37 @@ func tessArc(cx, cy, r, a0, a1 float64, t xform) []stroke {
 	prevA := a0
 	for i := 1; i <= segments; i++ {
 		a := a0 + span*float64(i)/float64(segments)
-		p1 := t.apply(point2{cx + r*math.Cos(prevA), cy + r*math.Sin(prevA)})
-		p2 := t.apply(point2{cx + r*math.Cos(a), cy + r*math.Sin(a)})
-		out = append(out, stroke{p1.x, p1.y, p2.x, p2.y})
+		p1 := t.apply(entity.Point2{cx + r*math.Cos(prevA), cy + r*math.Sin(prevA)})
+		p2 := t.apply(entity.Point2{cx + r*math.Cos(a), cy + r*math.Sin(a)})
+		out = append(out, stroke{p1.X, p1.Y, p2.X, p2.Y})
 		prevA = a
 	}
 	return out
 }
 
 // tessEllipse 椭圆参数方程离散。
-func tessEllipse(e *entEllipse, t xform) []stroke {
-	majorLen := math.Hypot(e.majorAxis.x, e.majorAxis.y)
-	if majorLen == 0 || e.ratio <= 0 {
+func tessEllipse(e *entity.EntEllipse, t xform) []stroke {
+	majorLen := math.Hypot(e.MajorAxis.X, e.MajorAxis.Y)
+	if majorLen == 0 || e.Ratio <= 0 {
 		return nil
 	}
-	majorAng := math.Atan2(e.majorAxis.y, e.majorAxis.x)
-	span := e.endAng - e.startAng
+	majorAng := math.Atan2(e.MajorAxis.Y, e.MajorAxis.X)
+	span := e.EndAng - e.StartAng
 	segments := 96
 	out := make([]stroke, 0, segments)
-	pointAt := func(a float64) point2 {
+	pointAt := func(a float64) entity.Point2 {
 		// 椭圆角度相对主轴方向
 		rx := majorLen * math.Cos(a)
-		ry := majorLen * e.ratio * math.Sin(a)
+		ry := majorLen * e.Ratio * math.Sin(a)
 		wx := rx*math.Cos(majorAng) - ry*math.Sin(majorAng)
 		wy := rx*math.Sin(majorAng) + ry*math.Cos(majorAng)
-		return t.apply(point2{e.center.x + wx, e.center.y + wy})
+		return t.apply(entity.Point2{e.Center.X + wx, e.Center.Y + wy})
 	}
-	prev := pointAt(e.startAng)
+	prev := pointAt(e.StartAng)
 	for i := 1; i <= segments; i++ {
-		a := e.startAng + span*float64(i)/float64(segments)
+		a := e.StartAng + span*float64(i)/float64(segments)
 		cur := pointAt(a)
-		out = append(out, stroke{prev.x, prev.y, cur.x, cur.y})
+		out = append(out, stroke{prev.X, prev.Y, cur.X, cur.Y})
 		prev = cur
 	}
 	return out
@@ -610,47 +611,47 @@ func tessEllipse(e *entEllipse, t xform) []stroke {
 
 // tessLwPolyline 多段线离散：直线顶点间连线，bulge≠0 顶点间插弧。
 // bulge = tan(θ/4)，θ 为该段弧的圆心角。
-func tessLwPolyline(e *entLwPolyline, t xform) []stroke {
+func tessLwPolyline(e *entity.EntLwPolyline, t xform) []stroke {
 	// 段数下界 = 顶点数-1（bulge 段按需增长）；顶点级大多段线下预分配
 	// 免反复翻倍扩容（pprof 渲染分配 ~21%）
-	out := make([]stroke, 0, len(e.vertices)+8)
-	n := len(e.vertices)
+	out := make([]stroke, 0, len(e.Vertices)+8)
+	n := len(e.Vertices)
 	if n == 0 {
 		return nil
 	}
-	emitArc := func(p1, p2 point2, bulge float64) {
+	emitArc := func(p1, p2 entity.Point2, bulge float64) {
 		theta := 4 * math.Atan(bulge)
 		// 弦中点到圆心的距离
-		chord := math.Hypot(p2.x-p1.x, p2.y-p1.y)
+		chord := math.Hypot(p2.X-p1.X, p2.Y-p1.Y)
 		if chord < 1e-12 {
 			return
 		}
 		r := chord / (2 * math.Sin(math.Abs(theta)/2))
 		// 圆心在弦的垂直平分线上，偏向 bulge 符号一侧
-		midX, midY := (p1.x+p2.x)/2, (p1.y+p2.y)/2
+		midX, midY := (p1.X+p2.X)/2, (p1.Y+p2.Y)/2
 		dist := math.Sqrt(math.Max(0, r*r-chord*chord/4))
-		nx, ny := -(p2.y-p1.y)/chord, (p2.x-p1.x)/chord
+		nx, ny := -(p2.Y-p1.Y)/chord, (p2.X-p1.X)/chord
 		if bulge < 0 {
 			nx, ny = -nx, -ny
 		}
 		cx, cy := midX+nx*dist, midY+ny*dist
-		a0 := math.Atan2(p1.y-cy, p1.x-cx)
+		a0 := math.Atan2(p1.Y-cy, p1.X-cx)
 		a1 := a0 + theta
 		out = append(out, tessArc(cx, cy, math.Abs(r), a0, a1, t)...)
 	}
 	bulgeAt := func(i int) float64 {
-		if i < len(e.bulges) {
-			return e.bulges[i]
+		if i < len(e.Bulges) {
+			return e.Bulges[i]
 		}
 		return 0
 	}
 	for i := 0; i < n-1; i++ {
-		p1 := t.apply(e.vertices[i])
-		p2 := t.apply(e.vertices[i+1])
+		p1 := t.apply(e.Vertices[i])
+		p2 := t.apply(e.Vertices[i+1])
 		if b := bulgeAt(i); b != 0 {
 			emitArc(p1, p2, b)
 		} else {
-			out = append(out, stroke{p1.x, p1.y, p2.x, p2.y})
+			out = append(out, stroke{p1.X, p1.Y, p2.X, p2.Y})
 		}
 	}
 	// 几何闭合（首尾顶点重合）时最后一段已回到起点，无需回连段
@@ -684,18 +685,18 @@ func (c *canvas) setTransform(bbox box2, scale float64) {
 	c.maxY = bbox.maxY
 }
 
-func (c *canvas) toPixel(p point2) (float64, float64) {
-	return (p.x - c.minX) * c.scale, (c.maxY - p.y) * c.scale
+func (c *canvas) toPixel(p entity.Point2) (float64, float64) {
+	return (p.X - c.minX) * c.scale, (c.maxY - p.Y) * c.scale
 }
 
 // entityColor 解析实体最终颜色（true color > 实体 ACI > 图层 > 默认黑）。
 func entityColor(doc *Document, e *primitive, bgWhite bool) color.RGBA {
-	if e.color.hasTrue {
-		r, g, b := splitTrueColor(e.color.trueColor)
+	if e.color.HasTrue {
+		r, g, b := splitTrueColor(e.color.TrueColor)
 		return color.RGBA{r, g, b, 255}
 	}
-	if e.color.hasIndex && e.color.index != 0 && e.color.index != 256 && e.color.index != 257 {
-		if r, g, b, ok := aciColor(e.color.index, bgWhite); ok {
+	if e.color.HasIndex && e.color.Index != 0 && e.color.Index != 256 && e.color.Index != 257 {
+		if r, g, b, ok := aciColor(e.color.Index, bgWhite); ok {
 			return color.RGBA{r, g, b, 255}
 		}
 	}
@@ -761,8 +762,8 @@ func (c *canvas) drawPrimitive(p primitive, doc *Document, bgWhite bool) {
 
 // drawLine 世界坐标线段绘制。
 func (c *canvas) drawLine(s stroke, col color.RGBA) {
-	x1, y1 := c.toPixel(point2{s.x1, s.y1})
-	x2, y2 := c.toPixel(point2{s.x2, s.y2})
+	x1, y1 := c.toPixel(entity.Point2{s.x1, s.y1})
+	x2, y2 := c.toPixel(entity.Point2{s.x2, s.y2})
 	c.drawPixelLine(x1, y1, x2, y2, col)
 }
 
@@ -855,7 +856,7 @@ func (c *canvas) drawLabel(lb label, col color.RGBA) {
 	for i, c0 := range corners {
 		wx := lb.x + c0[0]*cos - c0[1]*sin
 		wy := lb.y + c0[0]*sin + c0[1]*cos
-		pix[i][0], pix[i][1] = c.toPixel(point2{wx, wy})
+		pix[i][0], pix[i][1] = c.toPixel(entity.Point2{wx, wy})
 	}
 	// 四条边（像素坐标直绘）
 	edges := [4][2]int{{0, 1}, {1, 2}, {2, 3}, {3, 0}}
@@ -1056,7 +1057,7 @@ func mtextBlockHeightEstimate(tx *textInfo) float64 {
 
 // plausible 坐标量级合理性（工程图纸世界坐标通常 <1e7）。
 func plausible(x, y float64) bool {
-	return isFinite(x) && isFinite(y) && math.Abs(x) < 1e7 && math.Abs(y) < 1e7
+	return entity.IsFinite(x) && entity.IsFinite(y) && math.Abs(x) < 1e7 && math.Abs(y) < 1e7
 }
 
 // extend 扩展包围盒以包含点。
@@ -1190,98 +1191,56 @@ func filterRadiatingStrokes(prims []primitive) []primitive {
 
 // tessSpline 样条曲线细分：拟合点模式用向心 Catmull-Rom 平滑；
 // 控制点模式用 De Boor 递推按节点向量求值（度数 ≤ 3 时精确）。
-func tessSpline(e *entSpline, t xform) []stroke {
-	if e.scenario == 2 && len(e.fitPoints) >= 2 {
-		pts := catmullRomSpline(e.fitPoints, e.closed, 16)
+func tessSpline(e *entity.EntSpline, t xform) []stroke {
+	if e.Scenario == 2 && len(e.FitPoints) >= 2 {
+		pts := catmullRomSpline(e.FitPoints, e.Closed, 16)
 		return polylineStrokes(pts, t)
 	}
-	if len(e.controlPoints) < 2 {
+	if len(e.ControlPoints) < 2 {
 		return nil
 	}
-	deg := int(e.degree)
-	if deg <= 0 || deg >= len(e.controlPoints) {
+	deg := int(e.Degree)
+	if deg <= 0 || deg >= len(e.ControlPoints) {
 		// 度数退化：退化为控制点折线
-		return polylineStrokes(e.controlPoints, t)
+		return polylineStrokes(e.ControlPoints, t)
 	}
-	if len(e.knots) < len(e.controlPoints)+deg+1 {
-		return polylineStrokes(e.controlPoints, t)
+	if len(e.Knots) < len(e.ControlPoints)+deg+1 {
+		return polylineStrokes(e.ControlPoints, t)
 	}
 	// De Boor 求值：每段控制点区间取 16 个采样
-	var pts []point3
-	spanCount := len(e.controlPoints) - deg
+	var pts []entity.Point3
+	spanCount := len(e.ControlPoints) - deg
 	for i := 0; i < spanCount; i++ {
-		t0, t1 := e.knots[i+deg], e.knots[i+deg+1]
+		t0, t1 := e.Knots[i+deg], e.Knots[i+deg+1]
 		if t1 <= t0 {
 			continue
 		}
 		for s := 0; s < 16; s++ {
 			u := t0 + (t1-t0)*float64(s)/16
-			p := deBoor(e.controlPoints, e.weights, e.knots, deg, i+deg, u)
+			p := entity.DeBoor(e.ControlPoints, e.Weights, e.Knots, deg, i+deg, u)
 			pts = append(pts, p)
 		}
 	}
-	last := e.controlPoints[len(e.controlPoints)-1]
+	last := e.ControlPoints[len(e.ControlPoints)-1]
 	pts = append(pts, last)
 	return polylineStrokes(pts, t)
 }
 
-// deBoor De Boor 递推求 B 样条上参数 u 处的点（knotSpan 为 u 所在节点区间上限索引）。
-func deBoor(ctrl []point3, weights []float64, knots []float64, degree, knotSpan int, u float64) point3 {
-	d := make([]point3, degree+1)
-	w := make([]float64, degree+1)
-	for j := 0; j <= degree; j++ {
-		idx := knotSpan - degree + j
-		if idx >= len(ctrl) {
-			idx = len(ctrl) - 1
-		}
-		d[j] = ctrl[idx]
-		if idx < len(weights) {
-			w[j] = weights[idx]
-		} else {
-			w[j] = 1
-		}
-	}
-	for r := 1; r <= degree; r++ {
-		for j := degree; j >= r; j-- {
-			i := knotSpan - degree + j
-			if i-1 < 0 || i >= len(knots) {
-				continue
-			}
-			denom := knots[i+degree-r+1] - knots[i]
-			alpha := 0.0
-			if denom != 0 {
-				alpha = (u - knots[i]) / denom
-			}
-			// 有理权重插值
-			d[j] = point3{
-				(1-alpha)*d[j].x*w[j] + alpha*d[j-1].x*w[j-1],
-				(1-alpha)*d[j].y*w[j] + alpha*d[j-1].y*w[j-1],
-				(1-alpha)*d[j].z*w[j] + alpha*d[j-1].z*w[j-1],
-			}
-			w[j] = (1-alpha)*w[j] + alpha*w[j-1]
-			if w[j] != 0 {
-				d[j] = point3{d[j].x / w[j], d[j].y / w[j], d[j].z / w[j]}
-			}
-		}
-	}
-	return d[degree]
-}
-
 // catmullRomSpline 向心 Catmull-Rom 平滑（拟合点模式）。
-func catmullRomSpline(points []point3, closed bool, segments int) []point3 {
+func catmullRomSpline(points []entity.Point3, closed bool, segments int) []entity.Point3 {
 	if len(points) < 2 {
 		return points
 	}
 	if segments < 1 {
 		segments = 1
 	}
-	var out []point3
+	var out []entity.Point3
 	n := len(points)
 	segCount := n
 	if !closed {
 		segCount = n - 1
 	}
-	at := func(i int) point3 {
+	at := func(i int) entity.Point3 {
 		if closed {
 			return points[(i%n+n)%n]
 		}
@@ -1311,19 +1270,19 @@ func catmullRomSpline(points []point3, closed bool, segments int) []point3 {
 	return out
 }
 
-func crDist(a, b point3) float64 {
-	dx, dy, dz := a.x-b.x, a.y-b.y, a.z-b.z
+func crDist(a, b entity.Point3) float64 {
+	dx, dy, dz := a.X-b.X, a.Y-b.Y, a.Z-b.Z
 	return math.Pow(dx*dx+dy*dy+dz*dz, 0.25) // 距离^alpha，alpha=0.5
 }
 
-func crPoint(p0, p1, p2, p3 point3, t0, t1, t2, t3, t float64) point3 {
-	crLerp := func(a, b point3, ta, tb float64) point3 {
+func crPoint(p0, p1, p2, p3 entity.Point3, t0, t1, t2, t3, t float64) entity.Point3 {
+	crLerp := func(a, b entity.Point3, ta, tb float64) entity.Point3 {
 		if math.Abs(tb-ta) < 1e-12 {
 			return a
 		}
 		w0 := (tb - t) / (tb - ta)
 		w1 := (t - ta) / (tb - ta)
-		return point3{w0*a.x + w1*b.x, w0*a.y + w1*b.y, w0*a.z + w1*b.z}
+		return entity.Point3{w0*a.X + w1*b.X, w0*a.Y + w1*b.Y, w0*a.Z + w1*b.Z}
 	}
 	a1 := crLerp(p0, p1, t0, t1)
 	a2 := crLerp(p1, p2, t1, t2)
@@ -1334,15 +1293,15 @@ func crPoint(p0, p1, p2, p3 point3, t0, t1, t2, t3, t float64) point3 {
 }
 
 // polylineStrokes 点列转折线段（应用变换）。
-func polylineStrokes(pts []point3, t xform) []stroke {
+func polylineStrokes(pts []entity.Point3, t xform) []stroke {
 	if len(pts) < 2 {
 		return nil
 	}
 	var out []stroke
-	prev := t.apply(point2{pts[0].x, pts[0].y})
+	prev := t.apply(entity.Point2{pts[0].X, pts[0].Y})
 	for _, p := range pts[1:] {
-		cur := t.apply(point2{p.x, p.y})
-		out = append(out, stroke{prev.x, prev.y, cur.x, cur.y})
+		cur := t.apply(entity.Point2{p.X, p.Y})
+		out = append(out, stroke{prev.X, prev.Y, cur.X, cur.Y})
 		prev = cur
 	}
 	return out
@@ -1351,48 +1310,48 @@ func polylineStrokes(pts []point3, t xform) []stroke {
 // tessHelix 螺旋线 2D 投影离散：绕轴点（XY 投影）按 turns 圈数参数化，
 // 半径取 spec radius，起角由 start_pt 相对轴点的 XY 方位确定（z 分量
 // 不参与 2D 视口投影）。
-func tessHelix(e *entHelix, t xform) []stroke {
-	if e.radius <= 0 || e.turns <= 0 {
+func tessHelix(e *entity.EntHelix, t xform) []stroke {
+	if e.Radius <= 0 || e.Turns <= 0 {
 		return nil
 	}
 	const stepsPerTurn = 32
-	total := int(e.turns * stepsPerTurn)
+	total := int(e.Turns * stepsPerTurn)
 	if total < 8 {
 		total = 8
 	}
 	if total > 20000 {
 		total = 20000
 	}
-	cx, cy := e.axisBasePt.x, e.axisBasePt.y
-	startAng := math.Atan2(e.startPt.y-cy, e.startPt.x-cx)
+	cx, cy := e.AxisBasePt.X, e.AxisBasePt.Y
+	startAng := math.Atan2(e.StartPt.Y-cy, e.StartPt.X-cx)
 	// 左右手决定旋向（ handedness：true=逆时针/右手，false=顺时针）
 	dir := 1.0
-	if !e.handedness {
+	if !e.Handedness {
 		dir = -1.0
 	}
-	pts := make([]point3, 0, total+1)
+	pts := make([]entity.Point3, 0, total+1)
 	for i := 0; i <= total; i++ {
 		frac := float64(i) / stepsPerTurn
 		ang := startAng + dir*frac*2*math.Pi
-		pts = append(pts, point3{cx + e.radius*math.Cos(ang), cy + e.radius*math.Sin(ang), 0})
+		pts = append(pts, entity.Point3{cx + e.Radius*math.Cos(ang), cy + e.Radius*math.Sin(ang), 0})
 	}
 	return polylineStrokes(pts, t)
 }
 
 // tessUnderlay 底图引用框离散：裁剪多边形顶点按 scale/angle 变换后
 // 平移到插入点（定义坐标系 → 世界坐标），闭合描边呈现引用范围。
-func tessUnderlay(e *entUnderlay, t xform) []stroke {
-	if len(e.clipVerts) < 2 {
+func tessUnderlay(e *entity.EntUnderlay, t xform) []stroke {
+	if len(e.ClipVerts) < 2 {
 		return nil
 	}
-	ca, sa := math.Cos(e.angle), math.Sin(e.angle)
-	pts := make([]point3, 0, len(e.clipVerts)+1)
-	for _, v := range e.clipVerts {
-		wx := v.x * e.scale.x
-		wy := v.y * e.scale.y
-		pts = append(pts, point3{
-			e.insPt.x + wx*ca - wy*sa,
-			e.insPt.y + wx*sa + wy*ca,
+	ca, sa := math.Cos(e.Angle), math.Sin(e.Angle)
+	pts := make([]entity.Point3, 0, len(e.ClipVerts)+1)
+	for _, v := range e.ClipVerts {
+		wx := v.X * e.Scale.X
+		wy := v.Y * e.Scale.Y
+		pts = append(pts, entity.Point3{
+			e.InsPt.X + wx*ca - wy*sa,
+			e.InsPt.Y + wx*sa + wy*ca,
 			0,
 		})
 	}

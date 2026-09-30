@@ -7,6 +7,7 @@ package cad
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"os"
 	"path/filepath"
@@ -290,11 +291,11 @@ func TestDropOversizeStrokes(t *testing.T) {
 // TestDeBoor De Boor 递推：输出点应落在控制点凸包内且 y/z 为零。
 // knotSpan=3、u=1.5 的值 (2,0,0) 经参数扫描探针固定为回归基线。
 func TestDeBoor(t *testing.T) {
-	ctrl := []point3{{0, 0, 0}, {1, 0, 0}, {2, 0, 0}, {3, 0, 0}}
+	ctrl := []entity.Point3{{0, 0, 0}, {1, 0, 0}, {2, 0, 0}, {3, 0, 0}}
 	knots := []float64{0, 0, 0, 1, 2, 3, 3, 3}
-	p := deBoor(ctrl, nil, knots, 2, 3, 1.5)
-	if p.x != 2 || p.y != 0 || p.z != 0 {
-		t.Errorf("deBoor(u=1.5) = (%v,%v,%v)，期望 (2,0,0)", p.x, p.y, p.z)
+	p := entity.DeBoor(ctrl, nil, knots, 2, 3, 1.5)
+	if p.X != 2 || p.Y != 0 || p.Z != 0 {
+		t.Errorf("deBoor(u=1.5) = (%v,%v,%v)，期望 (2,0,0)", p.X, p.Y, p.Z)
 	}
 }
 
@@ -305,13 +306,13 @@ func TestDeBoor(t *testing.T) {
 func TestReadTextString(t *testing.T) {
 	w := bitstream.NewEncWriter()
 	w.WriteTU("ABCD")
-	s, err := readTextString(bitstream.NewBitStream(w.Bytes()), 0)
+	s, err := entity.ReadTextString(bitstream.NewBitStream(w.Bytes()), 0)
 	if err != nil || strings.TrimSuffix(s, "\x00") != "ABCD" {
 		t.Errorf("TU 路径: %q err=%v", s, err)
 	}
 	w2 := bitstream.NewEncWriter()
 	w2.WriteTV("ROOM")
-	s2, err2 := readTextString(bitstream.NewBitStream(w2.Bytes()), 0)
+	s2, err2 := entity.ReadTextString(bitstream.NewBitStream(w2.Bytes()), 0)
 	if err2 != nil || strings.TrimSuffix(s2, "\x00") != "ROOM" {
 		t.Errorf("TV 路径: %q err=%v", s2, err2)
 	}
@@ -322,7 +323,7 @@ func TestReadMTextStringBest(t *testing.T) {
 	w := bitstream.NewEncWriter()
 	w.WriteTU("LONGTEXT-OK")
 	r := bitstream.NewBitStream(w.Bytes())
-	text, end, err := readMTextStringBest(r, 0)
+	text, end, err := entity.ReadMTextStringBest(r, 0)
 	if err != nil || strings.TrimSuffix(text, "\x00") != "LONGTEXT-OK" {
 		t.Fatalf("直读路径: %q err=%v", text, err)
 	}
@@ -332,7 +333,7 @@ func TestReadMTextStringBest(t *testing.T) {
 	// 短文本（评分低于阈值）触发 ±64 位窗口扫描，仍应返回非空文本
 	w2 := bitstream.NewEncWriter()
 	w2.WriteTU("AB")
-	text2, _, err2 := readMTextStringBest(bitstream.NewBitStream(w2.Bytes()), 0)
+	text2, _, err2 := entity.ReadMTextStringBest(bitstream.NewBitStream(w2.Bytes()), 0)
 	if err2 != nil || strings.TrimSuffix(text2, "\x00") == "" {
 		t.Errorf("窗口重扫路径: %q err=%v", text2, err2)
 	}

@@ -7,6 +7,7 @@ package cad
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"os"
 	"strings"
 	"testing"
@@ -59,10 +60,10 @@ func TestAciRGBFullIndex(t *testing.T) {
 
 // TestOle2FrameAuditField OLE2FRAME 审计键。
 func TestOle2FrameAuditField(t *testing.T) {
-	o := &entOle2Frame{oleType: 2, mode: 3}
-	if ole2FrameAuditField(o, "type") != int64(2) ||
-		ole2FrameAuditField(o, "mode") != int64(3) ||
-		ole2FrameAuditField(o, "nope") != nil {
+	o := &entity.EntOle2Frame{OleType: 2, Mode: 3}
+	if entity.Ole2FrameAuditField(o, "type") != int64(2) ||
+		entity.Ole2FrameAuditField(o, "mode") != int64(3) ||
+		entity.Ole2FrameAuditField(o, "nope") != nil {
 		t.Error("ole2FrameAuditField 键值不符")
 	}
 }
@@ -94,34 +95,34 @@ func TestResbufValueType(t *testing.T) {
 
 // TestDimScores 量级评分的惩罚分支全命中。
 func TestDimScores(t *testing.T) {
-	if dimAngleScore(0.5) != 0 || dimAngleScore(2000) != 25 ||
-		dimAngleScore(1e8) != 250 || dimAngleScore(1e14) != 1_000_000 {
+	if entity.DimAngleScore(0.5) != 0 || entity.DimAngleScore(2000) != 25 ||
+		entity.DimAngleScore(1e8) != 250 || entity.DimAngleScore(1e14) != 1_000_000 {
 		t.Error("dimAngleScore 分段不符")
 	}
-	if dimAngleScore(1e-40) != 5000 {
+	if entity.DimAngleScore(1e-40) != 5000 {
 		t.Error("dimAngleScore denormal 应重罚")
 	}
-	if dimValueScore(100) != 0 || dimValueScore(1e7) != 10 ||
-		dimValueScore(1e10) != 100 || dimValueScore(1e15) != 1000 ||
-		dimValueScore(1e20) != 10000 || dimValueScore(1e30) != 1_000_000 {
+	if entity.DimValueScore(100) != 0 || entity.DimValueScore(1e7) != 10 ||
+		entity.DimValueScore(1e10) != 100 || entity.DimValueScore(1e15) != 1000 ||
+		entity.DimValueScore(1e20) != 10000 || entity.DimValueScore(1e30) != 1_000_000 {
 		t.Error("dimValueScore 分段不符")
 	}
-	if dimValueScore(1e-40) != 5000 {
+	if entity.DimValueScore(1e-40) != 5000 {
 		t.Error("dimValueScore denormal 应重罚")
 	}
-	if dimPointScore(point3{1, 1e7, 1e-40}) != 5010 {
-		t.Errorf("dimPointScore = %d", dimPointScore(point3{1, 1e7, 1e-40}))
+	if entity.DimPointScore(entity.Point3{1, 1e7, 1e-40}) != 5010 {
+		t.Errorf("dimPointScore = %d", entity.DimPointScore(entity.Point3{1, 1e7, 1e-40}))
 	}
 }
 
 // TestCadTraceField trace 开启分支（仅要求不 panic）。
 func TestCadTraceField(t *testing.T) {
-	cadTraceField(false, 0, 1, "k", "v")
+	entity.CadTraceField(false, 0, 1, "k", "v")
 	if os.Getenv("CAD_TRACE_HANDLE") != "" {
 		t.Skip("trace 已开启，跳过开启分支断言")
 	}
 	// 直接覆盖 on=true 分支（输出到 stderr，不打断）
-	cadTraceField(true, 0, 1, "k", "v")
+	entity.CadTraceField(true, 0, 1, "k", "v")
 }
 
 // ---- entities.go：MTEXT 背景 ----
@@ -134,7 +135,7 @@ func TestReadMTextBackground(t *testing.T) {
 	w.WriteBL(0xFF) // rgb
 	w.WriteRC(0)    // flags（无附加串）
 	w.WriteBL(0)    // transparency
-	if err := readMTextBackground(bitstream.NewBitStream(w.Bytes())); err != nil {
+	if err := entity.ReadMTextBackground(bitstream.NewBitStream(w.Bytes())); err != nil {
 		t.Fatalf("readMTextBackground 失败: %v", err)
 	}
 }
@@ -146,11 +147,11 @@ func TestDecodeAcisWireframe(t *testing.T) {
 	// wireframe_data_present=false 短路
 	w := bitstream.NewEncWriter()
 	w.WriteB(false)
-	a1 := &entAcis{}
-	if err := decodeAcisWireframe(bitstream.NewBitStream(w.Bytes()), a1); err != nil {
+	a1 := &entity.EntAcis{}
+	if err := entity.DecodeAcisWireframe(bitstream.NewBitStream(w.Bytes()), a1); err != nil {
 		t.Fatalf("短路分支失败: %v", err)
 	}
-	if a1.wireframeDataPresent {
+	if a1.WireframeDataPresent {
 		t.Error("短路分支 wireframeDataPresent 应为 false")
 	}
 
@@ -178,11 +179,11 @@ func TestDecodeAcisWireframe(t *testing.T) {
 	w2.WriteB(false)
 	w2.WriteB(false)
 	w2.WriteBL(0) // num_silhouettes
-	a2 := &entAcis{}
-	if err := decodeAcisWireframe(bitstream.NewBitStream(w2.Bytes()), a2); err != nil {
+	a2 := &entity.EntAcis{}
+	if err := entity.DecodeAcisWireframe(bitstream.NewBitStream(w2.Bytes()), a2); err != nil {
 		t.Fatalf("完整线框解析失败: %v", err)
 	}
-	if !a2.wireframeDataPresent || !a2.pointPresent || a2.isolines != 4 || a2.numWires != 1 {
+	if !a2.WireframeDataPresent || !a2.PointPresent || a2.Isolines != 4 || a2.NumWires != 1 {
 		t.Errorf("字段不符: %+v", a2)
 	}
 }
@@ -199,14 +200,14 @@ func TestDecodePolylineMesh(t *testing.T) {
 	w.WriteBL(1) // owned count（R2004+）
 	w.WriteRC(0) // handle 流兜底
 	w.WriteRC(0)
-	head := commonEntityHead{handle: 0x30, objSizeBit: uint64(w.TellBits()) - 16}
-	ent, err := decodePolylineMesh(bitstream.NewBitStream(w.Bytes()), &head, true)
+	head := entity.CommonEntityHead{Handle: 0x30, ObjSizeBit: uint64(w.TellBits()) - 16}
+	ent, err := entity.DecodePolylineMesh(bitstream.NewBitStream(w.Bytes()), &head, true)
 	if err != nil {
 		t.Fatalf("decodePolylineMesh 失败: %v", err)
 	}
-	m := ent.(*entPolylineMesh)
-	if m.mVertexCount != 2 || m.nVertexCount != 2 {
-		t.Errorf("顶点数不符: m=%d n=%d", m.mVertexCount, m.nVertexCount)
+	m := ent.(*entity.EntPolylineMesh)
+	if m.MVertexCount != 2 || m.NVertexCount != 2 {
+		t.Errorf("顶点数不符: m=%d n=%d", m.MVertexCount, m.NVertexCount)
 	}
 }
 
@@ -326,15 +327,15 @@ func TestDecodeMLeaderLeadersAndContext(t *testing.T) {
 	w.WriteBL(0) // branchIndex
 	w.WriteBD(2) // doglegLength
 	w.WriteBL(0) // numLines
-	m := &entMLeader{}
-	if err := decodeMLeaderLeaders(bitstream.NewBitStream(w.Bytes()), m, container.VerR2000, false); err != nil {
+	m := &entity.EntMLeader{}
+	if err := entity.DecodeMLeaderLeaders(bitstream.NewBitStream(w.Bytes()), m, container.VerR2000, false); err != nil {
 		t.Fatalf("decodeMLeaderLeaders 失败: %v", err)
 	}
-	if m.ctx.numLeaders != 1 || len(m.ctx.leaders) != 1 {
-		t.Fatalf("leaders 计数不符: %d", m.ctx.numLeaders)
+	if m.Ctx.NumLeaders != 1 || len(m.Ctx.Leaders) != 1 {
+		t.Fatalf("leaders 计数不符: %d", m.Ctx.NumLeaders)
 	}
-	if m.ctx.leaders[0].doglegLength != 2 {
-		t.Errorf("doglegLength = %v", m.ctx.leaders[0].doglegLength)
+	if m.Ctx.Leaders[0].DoglegLength != 2 {
+		t.Errorf("doglegLength = %v", m.Ctx.Leaders[0].DoglegLength)
 	}
 
 	w2 := bitstream.NewEncWriter()
@@ -379,15 +380,15 @@ func TestDecodeMLeaderLeadersAndContext(t *testing.T) {
 	w3bd(w2, 0, 1, 0)
 	w3bd(w2, 1, 0, 0)
 	w2.WriteB(false)
-	m2 := &entMLeader{}
-	if err := decodeMLeaderContext(bitstream.NewBitStream(w2.Bytes()), m2, container.VerR2000, 0, nil); err != nil {
+	m2 := &entity.EntMLeader{}
+	if err := entity.DecodeMLeaderContext(bitstream.NewBitStream(w2.Bytes()), m2, container.VerR2000, 0, nil); err != nil {
 		t.Fatalf("decodeMLeaderContext 失败: %v", err)
 	}
-	if m2.ctx.textHeight != 2.0 || !m2.ctx.hasContentTxt {
-		t.Errorf("context 标量组不符: textHeight=%v hasTxt=%v", m2.ctx.textHeight, m2.ctx.hasContentTxt)
+	if m2.Ctx.TextHeight != 2.0 || !m2.Ctx.HasContentTxt {
+		t.Errorf("context 标量组不符: textHeight=%v hasTxt=%v", m2.Ctx.TextHeight, m2.Ctx.HasContentTxt)
 	}
-	if m2.ctx.txt.defaultText != "NOTE" {
-		t.Errorf("defaultText = %q", m2.ctx.txt.defaultText)
+	if m2.Ctx.Txt.DefaultText != "NOTE" {
+		t.Errorf("defaultText = %q", m2.Ctx.Txt.DefaultText)
 	}
 }
 
@@ -398,24 +399,24 @@ func TestHatchHelpers(t *testing.T) {
 	w.WriteBS(7)
 	w.WriteBL(0)
 	w.WriteRC(0)
-	if err := skipColorCMCR2004(bitstream.NewBitStream(w.Bytes())); err != nil {
+	if err := entity.SkipColorCMCR2004(bitstream.NewBitStream(w.Bytes())); err != nil {
 		t.Fatalf("skipColorCMCR2004 失败: %v", err)
 	}
 
 	// 字符串三模式
 	w2 := bitstream.NewEncWriter()
 	w2.WriteTV("SOLID")
-	s1, err := readHatchString(bitstream.NewBitStream(w2.Bytes()), hatchStrInlineTv, 30)
+	s1, err := entity.ReadHatchString(bitstream.NewBitStream(w2.Bytes()), entity.HatchStrInlineTv, 30)
 	if err != nil || s1 != "SOLID" {
 		t.Errorf("inline TV = %q err=%v", s1, err)
 	}
 	w3 := bitstream.NewEncWriter()
 	w3.WriteTU("ANSI31")
-	s2, err := readHatchString(bitstream.NewBitStream(w3.Bytes()), hatchStrInlineTu, 30)
+	s2, err := entity.ReadHatchString(bitstream.NewBitStream(w3.Bytes()), entity.HatchStrInlineTu, 30)
 	if err != nil || strings.TrimSuffix(s2, "\x00") != "ANSI31" {
 		t.Errorf("inline TU = %q err=%v", s2, err)
 	}
-	if s3, err := readHatchString(nil, hatchStrStringStream, 30); err != nil || s3 != "" {
+	if s3, err := entity.ReadHatchString(nil, entity.HatchStrStringStream, 30); err != nil || s3 != "" {
 		t.Errorf("StringStream 模式应返回空串: %q err=%v", s3, err)
 	}
 
@@ -434,12 +435,12 @@ func TestHatchHelpers(t *testing.T) {
 	w4.WriteRD(2)
 	w4.WriteRD(3)
 	w4.WriteBD(1.0)
-	seg, _, err := decodeHatchSplineEdge(bitstream.NewBitStream(w4.Bytes()), false)
+	seg, _, err := entity.DecodeHatchSplineEdge(bitstream.NewBitStream(w4.Bytes()), false)
 	if err != nil {
 		t.Fatalf("decodeHatchSplineEdge 失败: %v", err)
 	}
-	if seg.degree != 2 || !seg.rational || len(seg.knots) != 2 || len(seg.ctrl) != 2 || len(seg.weights) != 2 {
-		t.Errorf("样条边字段不符: degree=%d ctrl=%d knots=%d weights=%d", seg.degree, len(seg.ctrl), len(seg.knots), len(seg.weights))
+	if seg.Degree != 2 || !seg.Rational || len(seg.Knots) != 2 || len(seg.Ctrl) != 2 || len(seg.Weights) != 2 {
+		t.Errorf("样条边字段不符: degree=%d ctrl=%d knots=%d weights=%d", seg.Degree, len(seg.Ctrl), len(seg.Knots), len(seg.Weights))
 	}
 
 	// 拟合点分支（含起末切线）
@@ -456,12 +457,12 @@ func TestHatchHelpers(t *testing.T) {
 	w5.WriteRD(1) // startTan.y
 	w5.WriteRD(0) // endTan.x
 	w5.WriteRD(1) // endTan.y
-	seg2, _, err := decodeHatchSplineEdge(bitstream.NewBitStream(w5.Bytes()), true)
+	seg2, _, err := entity.DecodeHatchSplineEdge(bitstream.NewBitStream(w5.Bytes()), true)
 	if err != nil {
 		t.Fatalf("拟合点分支失败: %v", err)
 	}
-	if seg2.degree != 3 || len(seg2.fitPts) != 1 || seg2.fitPts[0].y != 2 {
-		t.Errorf("拟合点分支字段不符: degree=%d fitPts=%d", seg2.degree, len(seg2.fitPts))
+	if seg2.Degree != 3 || len(seg2.FitPts) != 1 || seg2.FitPts[0].Y != 2 {
+		t.Errorf("拟合点分支字段不符: degree=%d fitPts=%d", seg2.Degree, len(seg2.FitPts))
 	}
 }
 
@@ -526,17 +527,17 @@ func TestTessSpline(t *testing.T) {
 	xf := identityXform()
 
 	// fit 模式（scenario=2）
-	spFit := &entSpline{scenario: 2, degree: 3, fitPoints: []point3{{0, 0, 0}, {5, 5, 0}, {10, 0, 0}}}
+	spFit := &entity.EntSpline{Scenario: 2, Degree: 3, FitPoints: []entity.Point3{{0, 0, 0}, {5, 5, 0}, {10, 0, 0}}}
 	st1 := tessSpline(spFit, xf)
 	if len(st1) == 0 {
 		t.Fatal("fit 模式应产生描边")
 	}
 
 	// 控制点模式：degree/knots 齐备走 De Boor
-	spCtrl := &entSpline{
-		scenario: 1, degree: 2,
-		controlPoints: []point3{{0, 0, 0}, {1, 1, 0}, {2, 0, 0}, {3, 1, 0}},
-		knots:         []float64{0, 0, 0, 1, 2, 3, 3, 3},
+	spCtrl := &entity.EntSpline{
+		Scenario: 1, Degree: 2,
+		ControlPoints: []entity.Point3{{0, 0, 0}, {1, 1, 0}, {2, 0, 0}, {3, 1, 0}},
+		Knots:         []float64{0, 0, 0, 1, 2, 3, 3, 3},
 	}
 	st2 := tessSpline(spCtrl, xf)
 	if len(st2) == 0 {
@@ -544,14 +545,14 @@ func TestTessSpline(t *testing.T) {
 	}
 
 	// 退化：度数非法 → 控制点折线
-	spDeg := &entSpline{scenario: 1, degree: 9, controlPoints: []point3{{0, 0, 0}, {1, 1, 0}}}
+	spDeg := &entity.EntSpline{Scenario: 1, Degree: 9, ControlPoints: []entity.Point3{{0, 0, 0}, {1, 1, 0}}}
 	st3 := tessSpline(spDeg, xf)
 	if len(st3) == 0 {
 		t.Fatal("退化折线应产生描边")
 	}
 
 	// 控制点不足 → nil
-	if got := tessSpline(&entSpline{scenario: 1, controlPoints: nil}, xf); got != nil {
+	if got := tessSpline(&entity.EntSpline{Scenario: 1, ControlPoints: nil}, xf); got != nil {
 		t.Error("控制点不足应返回 nil")
 	}
 }
@@ -584,11 +585,11 @@ func TestParseCommonEntityHeadR2013Preview(t *testing.T) {
 	w.WriteB(false)
 	w.WriteBS(0)
 	w.WriteRC(0)
-	head, err := parseCommonEntityHeadR2013(bitstream.NewBitStream(w.Bytes()), uint64(w.TellBits()))
+	head, err := entity.ParseCommonEntityHeadR2013(bitstream.NewBitStream(w.Bytes()), uint64(w.TellBits()))
 	if err != nil {
 		t.Fatalf("预览分支解析失败: %v", err)
 	}
-	if !head.previewExists || len(head.preview) != 8 {
-		t.Errorf("预览不符: exists=%v len=%d", head.previewExists, len(head.preview))
+	if !head.PreviewExists || len(head.Preview) != 8 {
+		t.Errorf("预览不符: exists=%v len=%d", head.PreviewExists, len(head.Preview))
 	}
 }

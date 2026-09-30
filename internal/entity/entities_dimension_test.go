@@ -1,6 +1,6 @@
 // entities_dimension_test.go / hatch 单元测试：bitWriter 构造标准位流，
 // 验证 DIMENSION 与 HATCH 的字段解码（与参考布局逐位对齐）。
-package cad
+package entity
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
@@ -12,8 +12,8 @@ import (
 
 // TestDecodeDimLinearR2018 R2018 DIM_LINEAR：版本字节 + 3BD 挤出 + 中点 + ...
 func TestDecodeDimLinearR2018(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x15)
-	writeCommonHead(w, 700, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x15)
+	testsupport.WriteCommonHead(w, 700, 2)
 	w.RC(1)             // dimension version（变体 hasDimensionVersion）
 	w.B3BD(0, 0, 1)     // extrusion（3BD，非 BE）
 	w.RD(100).RD(50)    // text midpoint x/y
@@ -39,30 +39,30 @@ func TestDecodeDimLinearR2018(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
+	Head, err := ParseEntityHead(r, 0, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeDimension(r, &head, container.VerR2018, dimLayoutLinear)
+	ent, err := DecodeDimension(r, &Head, container.VerR2018, DimLayoutLinear)
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := ent.(*entDimension)
-	if d.point13.x != 10 || d.point13.y != 10 || d.point14.x != 110 || d.point10.x != 30 {
-		t.Fatalf("点: p13=%v p14=%v p10=%v", d.point13, d.point14, d.point10)
+	d := ent.(*EntDimension)
+	if d.Point13.X != 10 || d.Point13.Y != 10 || d.Point14.X != 110 || d.Point10.X != 30 {
+		t.Fatalf("点: p13=%v p14=%v p10=%v", d.Point13, d.Point14, d.Point10)
 	}
-	if math.Abs(d.actualMeasurement-25.0) > 1e-9 {
-		t.Fatalf("测量值: %v", d.actualMeasurement)
+	if math.Abs(d.ActualMeasurement-25.0) > 1e-9 {
+		t.Fatalf("测量值: %v", d.ActualMeasurement)
 	}
-	if d.insertPoint.x != 10 || d.insertPoint.y != 20 {
-		t.Fatalf("12-pt: %v", d.insertPoint)
+	if d.InsertPoint.X != 10 || d.InsertPoint.Y != 20 {
+		t.Fatalf("12-pt: %v", d.InsertPoint)
 	}
 }
 
 // TestDecodeHatchPolylinePath HATCH 多段线路径。
 func TestDecodeHatchPolylinePath(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x4F)
-	writeCommonHead(w, 800, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x4F)
+	testsupport.WriteCommonHead(w, 800, 2)
 	// R2004+ 渐变段（无渐变填充：固定字段 + 2 个默认色；R2007+ 渐变名在字符串区）
 	w.BL(0) // is_gradient_fill
 	w.BL(0) // reserved
@@ -98,23 +98,23 @@ func TestDecodeHatchPolylinePath(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
+	Head, err := ParseEntityHead(r, 0, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeHatch(r, &head, container.VerR2018, 30)
+	ent, err := decodeHatch(r, &Head, container.VerR2018, 30)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := ent.(*entHatch)
-	if !h.solidFill {
-		t.Fatalf("solid 标志: %v", h.solidFill)
+	h := ent.(*EntHatch)
+	if !h.SolidFill {
+		t.Fatalf("solid 标志: %v", h.SolidFill)
 	}
-	if len(h.paths) != 1 || len(h.paths[0].points) < 3 {
-		t.Fatalf("路径: %d 条", len(h.paths))
+	if len(h.Paths) != 1 || len(h.Paths[0].Points) < 3 {
+		t.Fatalf("路径: %d 条", len(h.Paths))
 	}
-	pts := h.paths[0].points
-	if pts[0].x != 0 || pts[len(pts)-1].x != 0 {
+	pts := h.Paths[0].Points
+	if pts[0].X != 0 || pts[len(pts)-1].X != 0 {
 		t.Fatalf("闭合失败: 首尾不一致 %v %v", pts[0], pts[len(pts)-1])
 	}
 }

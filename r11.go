@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"math"
 )
 
@@ -224,7 +225,7 @@ func parsePreR13Document(data []byte) (*Document, error) {
 	doc := &Document{
 		version:     version,
 		blocks:      make(map[uint64][]any),
-		attribs:     make(map[uint64]*entAttrib),
+		attribs:     make(map[uint64]*entity.EntAttrib),
 		layerColors: make(map[uint64]layerColor),
 	}
 	r := &preR13Reader{data: data}
@@ -292,19 +293,19 @@ func parsePreR13Document(data []byte) (*Document, error) {
 // （INSERT 属性展开与 Texts 渲染路径依赖）。
 func preR13Archive(doc *Document, list []any) {
 	for _, ent := range list {
-		ec, ok := ent.(entityCommon)
+		ec, ok := ent.(entity.EntityCommon)
 		if !ok {
 			continue
 		}
-		b := ec.common()
-		if b.handle != 0 {
+		b := ec.Common()
+		if b.Handle != 0 {
 			if doc.entityByHandle == nil {
 				doc.entityByHandle = make(map[uint64]any)
 			}
-			doc.entityByHandle[b.handle] = ent
+			doc.entityByHandle[b.Handle] = ent
 		}
-		if a, ok := ent.(*entAttrib); ok && a.handle != 0 {
-			doc.attribs[a.handle] = a
+		if a, ok := ent.(*entity.EntAttrib); ok && a.Handle != 0 {
+			doc.attribs[a.Handle] = a
 		}
 	}
 }
@@ -710,35 +711,35 @@ func parsePreR13CommonHead(data []byte, pos int, ver container.DwgVersion) (preR
 // 依赖记录顺序表达归属——VERTEX 跟随其 POLYLINE（至 SEQEND/JUMP/下一条
 // 非顶点实体止），ATTRIB 跟随带 HAS_ATTRIBS 的 INSERT（至下一条实体止）。
 type preR13EntityAgg struct {
-	poly       any        // 当前 POLYLINE（2d/3d/mesh/pface）
-	insert     *entInsert // 当前待挂属性的 INSERT
-	insertOpen bool       // INSERT 属性收集窗口开启（HAS_ATTRIBS 置位）
+	poly       any               // 当前 POLYLINE（2d/3d/mesh/pface）
+	insert     *entity.EntInsert // 当前待挂属性的 INSERT
+	insertOpen bool              // INSERT 属性收集窗口开启（HAS_ATTRIBS 置位）
 }
 
 // step 序列推进一个解码实体，维护归属窗口。
 func (a *preR13EntityAgg) step(ent any, hasAttribs bool) {
 	switch v := ent.(type) {
-	case *entPolyline2d:
+	case *entity.EntPolyline2d:
 		a.poly, a.insert, a.insertOpen = v, nil, false
-	case *entPolyline3d:
+	case *entity.EntPolyline3d:
 		a.poly, a.insert, a.insertOpen = v, nil, false
-	case *entPolylineMesh:
+	case *entity.EntPolylineMesh:
 		a.poly, a.insert, a.insertOpen = v, nil, false
-	case *entPolylinePface:
+	case *entity.EntPolylinePface:
 		a.poly, a.insert, a.insertOpen = v, nil, false
-	case *entVertex2d:
-		preR13AppendOwned(a.poly, v.handle)
-	case *entVertex3d:
-		preR13AppendOwned(a.poly, v.handle)
-	case *entVertexPface:
-		preR13AppendOwned(a.poly, v.handle)
-	case *entInsert:
+	case *entity.EntVertex2d:
+		preR13AppendOwned(a.poly, v.Handle)
+	case *entity.EntVertex3d:
+		preR13AppendOwned(a.poly, v.Handle)
+	case *entity.EntVertexPface:
+		preR13AppendOwned(a.poly, v.Handle)
+	case *entity.EntInsert:
 		a.poly = nil
 		a.insert, a.insertOpen = v, hasAttribs
-	case *entAttrib:
+	case *entity.EntAttrib:
 		// 仅 ATTRIB（非 ATTDEF 定义）挂接 INSERT；非窗口内ATTRIB 照常独立
-		if a.insertOpen && a.insert != nil && v.typeName == "ATTRIB" {
-			a.insert.attribs = append(a.insert.attribs, v.handle)
+		if a.insertOpen && a.insert != nil && v.TypeName == "ATTRIB" {
+			a.insert.Attribs = append(a.insert.Attribs, v.Handle)
 		} else {
 			a.insert, a.insertOpen = nil, false
 		}
@@ -752,12 +753,12 @@ func (a *preR13EntityAgg) step(ent any, hasAttribs bool) {
 // 与 R13+ 该类型的模型一致）。
 func preR13AppendOwned(poly any, handle uint64) {
 	switch p := poly.(type) {
-	case *entPolyline2d:
-		p.ownedHandles = append(p.ownedHandles, handle)
-	case *entPolyline3d:
-		p.ownedHandles = append(p.ownedHandles, handle)
-	case *entPolylineMesh:
-		p.ownedHandles = append(p.ownedHandles, handle)
+	case *entity.EntPolyline2d:
+		p.OwnedHandles = append(p.OwnedHandles, handle)
+	case *entity.EntPolyline3d:
+		p.OwnedHandles = append(p.OwnedHandles, handle)
+	case *entity.EntPolylineMesh:
+		p.OwnedHandles = append(p.OwnedHandles, handle)
 	}
 }
 
@@ -782,8 +783,8 @@ func parsePreR13Entities(doc *Document, agg *preR13EntityAgg, data []byte, start
 		agg.step(ent, head.flag&preR13FlagHasAttribs != 0)
 		if ent != nil {
 			if head.isPspace {
-				if ec, ok := ent.(entityCommon); ok {
-					ec.common().mode = 1
+				if ec, ok := ent.(entity.EntityCommon); ok {
+					ec.Common().Mode = 1
 				}
 				doc.pspaceSpace = append(doc.pspaceSpace, ent)
 			} else {
@@ -865,12 +866,12 @@ const (
 )
 
 // preR13DimPt DIMENSION 定义点：R10+ 为 3RD，R9 为 2RD（z=elevation）。
-func preR13DimPt(r *preR13Reader, h preR13EntHead, ver container.DwgVersion) point3 {
+func preR13DimPt(r *preR13Reader, h preR13EntHead, ver container.DwgVersion) entity.Point3 {
 	x, y := r.rd(), r.rd()
 	if ver >= container.VerR10 {
-		return point3{x, y, r.rd()}
+		return entity.Point3{x, y, r.rd()}
 	}
-	return point3{x, y, preR13Z(h)}
+	return entity.Point3{x, y, preR13Z(h)}
 }
 
 // decodePreR13Dimension DIMENSION（decode.c decode_preR13_DIMENSION）：
@@ -879,172 +880,172 @@ func preR13DimPt(r *preR13Reader, h preR13EntHead, ver container.DwgVersion) poi
 // 类型决定 typeName（gold entity 键），几何字段映射 R13+ 的
 // entDimension 模型（point13/14/15/10、p16、textRotation 等），
 // dimstyle 为 2 字节 DIMSTYLE 表索引。
-func decodePreR13Dimension(r *preR13Reader, h preR13EntHead, ver container.DwgVersion, codepage uint16) *entDimension {
-	e := &entDimension{}
-	e.typeName = "DIMENSION_LINEAR"
-	e.typeCode = preR13TypeDimension
-	e.mode = 2
-	preR13HandleBase(&e.baseEntity, h)
-	preR13Color(&e.baseEntity, h)
+func decodePreR13Dimension(r *preR13Reader, h preR13EntHead, ver container.DwgVersion, codepage uint16) *entity.EntDimension {
+	e := &entity.EntDimension{}
+	e.TypeName = "DIMENSION_LINEAR"
+	e.TypeCode = preR13TypeDimension
+	e.Mode = 2
+	preR13HandleBase(&e.BaseEntity, h)
+	preR13Color(&e.BaseEntity, h)
 	opts := h.opts
-	e.anonymousBlock = uint64(r.rs()) // block HANDLE(2)
-	e.point10 = preR13DimPt(r, h, ver)
+	e.AnonymousBlock = uint64(r.rs()) // block HANDLE(2)
+	e.Point10 = preR13DimPt(r, h, ver)
 	tx, ty := r.rd(), r.rd()
-	e.textMidpoint = point3{tx, ty, preR13Z(h)}
+	e.TextMidpoint = entity.Point3{tx, ty, preR13Z(h)}
 	dimtype := uint8(0)
 	if opts&preR13OptsDimHasDXF12 != 0 {
 		cx, cy := r.rd(), r.rd()
-		e.insertPoint = point3{cx, cy, preR13Z(h)}
-		e.hasInsertPoint = true
+		e.InsertPoint = entity.Point3{cx, cy, preR13Z(h)}
+		e.HasInsertPoint = true
 	}
 	if opts&preR13OptsDimHasFlag != 0 {
 		dimtype = r.rc()
 	}
-	e.dimFlags = dimtype
-	e.dimFlag = dimtype // pre-R13 flag 低 4 位即类型语义，无需 R13+ 合成
+	e.DimFlags = dimtype
+	e.DimFlag = dimtype // pre-R13 flag 低 4 位即类型语义，无需 R13+ 合成
 	if opts&preR13OptsDimHasText != 0 {
-		e.userText = preR13TV(r, codepage)
+		e.UserText = preR13TV(r, codepage)
 	}
 	switch dimtype & 15 {
 	case preR13DimTypeLinear:
-		e.typeName = "DIMENSION_LINEAR"
+		e.TypeName = "DIMENSION_LINEAR"
 		if opts&preR13OptsDimHasDXF13 != 0 {
-			e.point13 = preR13DimPt(r, h, ver)
+			e.Point13 = preR13DimPt(r, h, ver)
 		}
 		if opts&preR13OptsDimHasDXF14 != 0 {
-			e.point14 = preR13DimPt(r, h, ver)
+			e.Point14 = preR13DimPt(r, h, ver)
 		}
 		if opts&preR13OptsDimHasRot != 0 {
-			e.dimRotation = r.rd()
+			e.DimRotation = r.rd()
 		}
 		if opts&preR13OptsDimUnknown512 != 0 {
-			e.extLineRotation = r.rd() // oblique_angle/ext_line_rotation
+			e.ExtLineRotation = r.rd() // oblique_angle/ext_line_rotation
 		}
 		if opts&preR13OptsDimHasDXF53 != 0 {
-			e.textRotation = r.rd()
+			e.TextRotation = r.rd()
 		}
 		if opts&preR13OptsDimHasExtrusion != 0 {
-			e.extrusion = point3{r.rd(), r.rd(), r.rd()}
+			e.Extrusion = entity.Point3{r.rd(), r.rd(), r.rd()}
 		}
 		if opts&preR13OptsDimHasDimstyle != 0 {
-			e.dimstyleHandle = uint64(r.rs())
+			e.DimstyleHandle = uint64(r.rs())
 		}
 	case preR13DimTypeAligned:
-		e.typeName = "DIMENSION_ALIGNED"
+		e.TypeName = "DIMENSION_ALIGNED"
 		if opts&preR13OptsDimHasDXF13 != 0 {
-			e.point13 = preR13DimPt(r, h, ver)
+			e.Point13 = preR13DimPt(r, h, ver)
 		}
 		if opts&preR13OptsDimHasDXF14 != 0 {
-			e.point14 = preR13DimPt(r, h, ver)
+			e.Point14 = preR13DimPt(r, h, ver)
 		}
 		if opts&preR13OptsDimHasRot != 0 {
-			e.extLineRotation = r.rd() // oblique_angle（对齐型无独立转角）
+			e.ExtLineRotation = r.rd() // oblique_angle（对齐型无独立转角）
 		}
 		if opts&preR13OptsDimHasDXF53 != 0 {
-			e.textRotation = r.rd()
+			e.TextRotation = r.rd()
 		}
 		if opts&preR13OptsDimHasDimstyle != 0 {
-			e.dimstyleHandle = uint64(r.rs())
+			e.DimstyleHandle = uint64(r.rs())
 		}
 	case preR13DimTypeAng2Ln:
-		e.typeName = "DIMENSION_ANG2LN"
+		e.TypeName = "DIMENSION_ANG2LN"
 		if opts&preR13OptsDimHasDXF13 != 0 {
-			e.point13 = preR13DimPt(r, h, ver) // xline1start
+			e.Point13 = preR13DimPt(r, h, ver) // xline1start
 		}
 		if opts&preR13OptsDimHasDXF14 != 0 {
-			e.point14 = preR13DimPt(r, h, ver) // xline1end
+			e.Point14 = preR13DimPt(r, h, ver) // xline1end
 		}
 		if opts&preR13OptsDimHasDXF15 != 0 {
-			e.point15 = preR13DimPt(r, h, ver) // xline2start
-			e.hasPoint15 = true
+			e.Point15 = preR13DimPt(r, h, ver) // xline2start
+			e.HasPoint15 = true
 		}
 		if opts&preR13OptsDimHasAngles != 0 {
-			e.point16x, e.p16y = r.rd(), r.rd() // xline2end 2RD
-			e.hasPoint16 = true
+			e.Point16x, e.P16y = r.rd(), r.rd() // xline2end 2RD
+			e.HasPoint16 = true
 		}
 		if opts&preR13OptsDimHasDXF53 != 0 {
-			e.textRotation = r.rd()
+			e.TextRotation = r.rd()
 		}
 		if opts&preR13OptsDimHasDimstyle != 0 {
-			e.dimstyleHandle = uint64(r.rs())
+			e.DimstyleHandle = uint64(r.rs())
 		}
 	case preR13DimTypeDiameter:
-		e.typeName = "DIMENSION_DIAMETER"
+		e.TypeName = "DIMENSION_DIAMETER"
 		if opts&preR13OptsDimHasDXF15 != 0 {
 			// first_arc_pt：R10 且无 HAS_ELEVATION 时 3RD，否则 2RD
 			x, y := r.rd(), r.rd()
 			if ver >= container.VerR10 && h.flag&preR13FlagHasElevation == 0 {
-				e.point15 = point3{x, y, r.rd()}
+				e.Point15 = entity.Point3{x, y, r.rd()}
 			} else {
-				e.point15 = point3{x, y, preR13Z(h)}
+				e.Point15 = entity.Point3{x, y, preR13Z(h)}
 			}
-			e.hasPoint15 = true
+			e.HasPoint15 = true
 		}
 		if opts&preR13OptsDimHasDXF40 != 0 {
 			_ = r.rd() // leader_len
 		}
 		if opts&preR13OptsDimHasDXF53 != 0 {
-			e.textRotation = r.rd()
+			e.TextRotation = r.rd()
 		}
 		if opts&preR13OptsDimHasExtrusion != 0 {
-			e.extrusion = point3{r.rd(), r.rd(), r.rd()}
+			e.Extrusion = entity.Point3{r.rd(), r.rd(), r.rd()}
 		}
 		if opts&preR13OptsDimHasDimstyle != 0 {
-			e.dimstyleHandle = uint64(r.rs())
+			e.DimstyleHandle = uint64(r.rs())
 		}
 	case preR13DimTypeRadius:
-		e.typeName = "DIMENSION_RADIUS"
+		e.TypeName = "DIMENSION_RADIUS"
 		if opts&preR13OptsDimHasDXF15 != 0 {
-			e.point15 = preR13DimPt(r, h, ver) // first_arc_pt
-			e.hasPoint15 = true
+			e.Point15 = preR13DimPt(r, h, ver) // first_arc_pt
+			e.HasPoint15 = true
 		}
 		if opts&preR13OptsDimHasDXF40 != 0 {
 			_ = r.rd() // leader_len
 		}
 		if opts&preR13OptsDimHasDXF53 != 0 {
-			e.textRotation = r.rd()
+			e.TextRotation = r.rd()
 		}
 		if opts&preR13OptsDimHasExtrusion != 0 {
-			e.extrusion = point3{r.rd(), r.rd(), r.rd()}
+			e.Extrusion = entity.Point3{r.rd(), r.rd(), r.rd()}
 		}
 		if opts&preR13OptsDimHasDimstyle != 0 {
-			e.dimstyleHandle = uint64(r.rs())
+			e.DimstyleHandle = uint64(r.rs())
 		}
 	case preR13DimTypeAng3Pt:
-		e.typeName = "DIMENSION_ANG3PT"
+		e.TypeName = "DIMENSION_ANG3PT"
 		if opts&preR13OptsDimHasDXF13 != 0 {
-			e.point13 = preR13DimPt(r, h, ver) // xline1_pt
+			e.Point13 = preR13DimPt(r, h, ver) // xline1_pt
 		}
 		if opts&preR13OptsDimHasDXF14 != 0 {
-			e.point14 = preR13DimPt(r, h, ver) // xline2_pt
+			e.Point14 = preR13DimPt(r, h, ver) // xline2_pt
 		}
 		if opts&preR13OptsDimHasDXF15 != 0 {
-			e.point15 = preR13DimPt(r, h, ver) // center_pt
-			e.hasPoint15 = true
+			e.Point15 = preR13DimPt(r, h, ver) // center_pt
+			e.HasPoint15 = true
 		}
 		if opts&preR13OptsDimHasAngles != 0 {
-			e.point16x, e.p16y = r.rd(), r.rd() // xline2end 2RD
-			e.hasPoint16 = true
+			e.Point16x, e.P16y = r.rd(), r.rd() // xline2end 2RD
+			e.HasPoint16 = true
 		}
 		if opts&preR13OptsDimHasDXF53 != 0 {
-			e.textRotation = r.rd()
+			e.TextRotation = r.rd()
 		}
 		if opts&preR13OptsDimHasDimstyle != 0 {
-			e.dimstyleHandle = uint64(r.rs())
+			e.DimstyleHandle = uint64(r.rs())
 		}
 	case preR13DimTypeOrdinate:
-		e.typeName = "DIMENSION_ORDINATE"
+		e.TypeName = "DIMENSION_ORDINATE"
 		if opts&preR13OptsDimHasDXF13 != 0 {
-			e.point13 = preR13DimPt(r, h, ver) // feature_location_pt
+			e.Point13 = preR13DimPt(r, h, ver) // feature_location_pt
 		}
 		if opts&preR13OptsDimHasDXF14 != 0 {
-			e.point14 = preR13DimPt(r, h, ver) // leader_endpt
+			e.Point14 = preR13DimPt(r, h, ver) // leader_endpt
 		}
 		if opts&preR13OptsDimHasDXF53 != 0 {
-			e.textRotation = r.rd()
+			e.TextRotation = r.rd()
 		}
 		if opts&preR13OptsDimHasDimstyle != 0 {
-			e.dimstyleHandle = uint64(r.rs())
+			e.DimstyleHandle = uint64(r.rs())
 		}
 	}
 	return e
@@ -1115,10 +1116,10 @@ func decodePreR13Polyline(data []byte, h preR13EntHead, ver container.DwgVersion
 	opts := h.opts
 	switch {
 	case plineFlag&preR13FlagPolyline3D != 0:
-		e := &entPolyline3d{}
-		e.typeName = "POLYLINE_3D"
+		e := &entity.EntPolyline3d{}
+		e.TypeName = "POLYLINE_3D"
 		if opts&preR13OptsPolylineHasFlag != 0 {
-			e.flags70 = r.rc()
+			e.Flags70 = r.rc()
 		}
 		if opts&preR13OptsPolylineHasStartWidth != 0 {
 			_ = r.rd() // start_width
@@ -1130,70 +1131,70 @@ func decodePreR13Polyline(data []byte, h preR13EntHead, ver container.DwgVersion
 			r.skip(24) // extrusion 3RD
 		}
 		if opts&preR13OptsPolylineHasCurvetype != 0 {
-			e.flags75 = uint8(r.rs()) // curve_type（3D 网格）
+			e.Flags75 = uint8(r.rs()) // curve_type（3D 网格）
 		}
-		e.typeCode = preR13TypePolyline
-		e.mode = 2
-		preR13HandleBase(&e.baseEntity, h)
-		preR13Color(&e.baseEntity, h)
+		e.TypeCode = preR13TypePolyline
+		e.Mode = 2
+		preR13HandleBase(&e.BaseEntity, h)
+		preR13Color(&e.BaseEntity, h)
 		return e
 	case plineFlag&preR13FlagPolylineMesh != 0:
-		e := &entPolylineMesh{}
-		e.typeName = "POLYLINE_MESH"
+		e := &entity.EntPolylineMesh{}
+		e.TypeName = "POLYLINE_MESH"
 		if opts&preR13OptsPolylineHasFlag != 0 {
-			e.flags = uint16(r.rc())
+			e.Flags = uint16(r.rc())
 		}
 		if opts&preR13OptsPolylineHasMVerts != 0 {
-			e.mVertexCount = r.rs()
+			e.MVertexCount = r.rs()
 		}
 		if opts&preR13OptsPolylineHasNVerts != 0 {
-			e.nVertexCount = r.rs()
+			e.NVertexCount = r.rs()
 		}
 		if opts&preR13OptsPolylineHasMDensity != 0 {
-			e.mDensity = r.rs()
+			e.MDensity = r.rs()
 		}
 		if opts&preR13OptsPolylineHasNDensity != 0 {
-			e.nDensity = r.rs()
+			e.NDensity = r.rs()
 		}
 		if opts&preR13OptsPolylineHasCurvetype != 0 {
-			e.curveType = r.rs()
+			e.CurveType = r.rs()
 		}
-		e.typeCode = preR13TypePolyline
-		e.mode = 2
-		preR13HandleBase(&e.baseEntity, h)
-		preR13Color(&e.baseEntity, h)
+		e.TypeCode = preR13TypePolyline
+		e.Mode = 2
+		preR13HandleBase(&e.BaseEntity, h)
+		preR13Color(&e.BaseEntity, h)
 		return e
 	case plineFlag&preR13FlagPolylinePfaceMesh != 0:
-		e := &entPolylinePface{}
-		e.typeName = "POLYLINE_PFACE"
+		e := &entity.EntPolylinePface{}
+		e.TypeName = "POLYLINE_PFACE"
 		if opts&preR13OptsPolylineHasFlag != 0 {
 			_ = r.rc() // flag
 		}
 		if opts&preR13OptsPolylineHasMVerts != 0 {
-			e.numVertices = int(r.rs()) // numverts（gold 键 71）
+			e.NumVertices = int(r.rs()) // numverts（gold 键 71）
 		}
 		if opts&preR13OptsPolylineHasNVerts != 0 {
-			e.numFaces = int(r.rs()) // numfaces（gold 键 72）
+			e.NumFaces = int(r.rs()) // numfaces（gold 键 72）
 		}
-		e.typeCode = preR13TypePolyline
-		e.mode = 2
-		preR13HandleBase(&e.baseEntity, h)
-		preR13Color(&e.baseEntity, h)
+		e.TypeCode = preR13TypePolyline
+		e.Mode = 2
+		preR13HandleBase(&e.BaseEntity, h)
+		preR13Color(&e.BaseEntity, h)
 		return e
 	default:
-		e := &entPolyline2d{}
-		e.typeName = "POLYLINE_2D"
+		e := &entity.EntPolyline2d{}
+		e.TypeName = "POLYLINE_2D"
 		if opts&preR13OptsPolylineHasFlag != 0 {
-			e.flags = uint16(r.rc())
+			e.Flags = uint16(r.rc())
 		}
 		if opts&preR13OptsPolylineHasStartWidth != 0 {
-			e.widthStart = r.rd()
+			e.WidthStart = r.rd()
 		}
 		if opts&preR13OptsPolylineHasEndWidth != 0 {
-			e.widthEnd = r.rd()
+			e.WidthEnd = r.rd()
 		}
 		if opts&preR13OptsPolylineHasExtrusion != 0 {
-			e.extrusion = point3{r.rd(), r.rd(), r.rd()}
+			e.Extrusion = entity.Point3{r.rd(), r.rd(), r.rd()}
 		}
 		if opts&preR13OptsPolylineHasMVerts != 0 {
 			_ = r.rs() // num_m_verts（顶点以记录顺序聚合表达）
@@ -1202,7 +1203,7 @@ func decodePreR13Polyline(data []byte, h preR13EntHead, ver container.DwgVersion
 			_ = r.rs() // num_n_verts
 		}
 		if opts&preR13OptsPolylineHasCurvetype != 0 {
-			e.curveType = r.rs()
+			e.CurveType = r.rs()
 		}
 		if opts&preR13OptsPolylineInExtra != 0 && h.size > 20 {
 			// 附加实体区引用文本：记录尾（R11 扣 2 字节 CRC）前剩余整段
@@ -1214,12 +1215,12 @@ func decodePreR13Polyline(data []byte, h preR13EntHead, ver container.DwgVersion
 				r.skip(n)
 			}
 		}
-		e.elevation = h.elevation
-		e.thickness = h.thickness
-		e.typeCode = preR13TypePolyline
-		e.mode = 2
-		preR13HandleBase(&e.baseEntity, h)
-		preR13Color(&e.baseEntity, h)
+		e.Elevation = h.elevation
+		e.Thickness = h.thickness
+		e.TypeCode = preR13TypePolyline
+		e.Mode = 2
+		preR13HandleBase(&e.BaseEntity, h)
+		preR13Color(&e.BaseEntity, h)
 		return e
 	}
 }
@@ -1291,85 +1292,85 @@ func decodePreR13Vertex(data []byte, h preR13EntHead, ver container.DwgVersion) 
 	}
 	_, bodyPos := parsePreR13CommonHead(data, h.startOff, ver)
 	r := &preR13Reader{data: data, pos: bodyPos}
-	readPoint := func() point3 {
+	readPoint := func() entity.Point3 {
 		x, y := r.rd(), r.rd()
-		return point3{x, y, preR13Z(h)}
+		return entity.Point3{x, y, preR13Z(h)}
 	}
-	base := func() baseEntity {
-		var b baseEntity
-		b.typeCode = preR13TypeVertex
-		b.mode = 2
+	base := func() entity.BaseEntity {
+		var b entity.BaseEntity
+		b.TypeCode = preR13TypeVertex
+		b.Mode = 2
 		preR13HandleBase(&b, h)
 		preR13Color(&b, h)
 		return b
 	}
 	switch {
 	case vertexFlag&preR13FlagVertexMesh != 0 && vertexFlag&preR13FlagVertexPfaceMesh != 0:
-		e := &entVertexPface{}
-		e.baseEntity = base()
-		e.typeName = "VERTEX_PFACE"
+		e := &entity.EntVertexPface{}
+		e.BaseEntity = base()
+		e.TypeName = "VERTEX_PFACE"
 		if opts&preR13OptsVertexHasNotXY == 0 {
-			e.position = readPoint()
+			e.Position = readPoint()
 		}
 		if opts&preR13OptsVertexHasFlag != 0 {
-			e.flag = r.rc()
+			e.Flag = r.rc()
 		}
 		return e
 	case vertexFlag&preR13FlagVertexMesh != 0:
-		e := &entVertexPface{}
-		e.baseEntity = base()
-		e.typeName = "VERTEX_MESH"
-		e.position = readPoint()
-		e.flag = r.rc() // VERTEX_MESH 的 flag 无条件存在
+		e := &entity.EntVertexPface{}
+		e.BaseEntity = base()
+		e.TypeName = "VERTEX_MESH"
+		e.Position = readPoint()
+		e.Flag = r.rc() // VERTEX_MESH 的 flag 无条件存在
 		return e
 	case vertexFlag&preR13FlagVertexPfaceMesh != 0:
-		e := &entVertexPfaceFace{}
-		e.baseEntity = base()
-		e.typeName = "VERTEX_PFACE_FACE"
+		e := &entity.EntVertexPfaceFace{}
+		e.BaseEntity = base()
+		e.TypeName = "VERTEX_PFACE_FACE"
 		if opts&preR13OptsVertexHasFlag != 0 {
-			e.flag = r.rc()
+			e.Flag = r.rc()
 		}
 		if opts&preR13OptsVertexHasIndex1 != 0 {
-			e.vertind[0] = int32(int16(r.rs()))
+			e.Vertind[0] = int32(int16(r.rs()))
 		}
 		if opts&preR13OptsVertexHasIndex2 != 0 {
-			e.vertind[1] = int32(int16(r.rs()))
+			e.Vertind[1] = int32(int16(r.rs()))
 		}
 		if opts&preR13OptsVertexHasIndex3 != 0 {
-			e.vertind[2] = int32(int16(r.rs()))
+			e.Vertind[2] = int32(int16(r.rs()))
 		}
 		if opts&preR13OptsVertexHasIndex4 != 0 {
-			e.vertind[3] = int32(int16(r.rs()))
+			e.Vertind[3] = int32(int16(r.rs()))
 		}
 		return e
 	case vertexFlag&preR13FlagVertex3D != 0:
-		e := &entVertex3d{}
-		e.baseEntity = base()
-		e.typeName = "VERTEX_3D"
-		e.position = readPoint()
+		e := &entity.EntVertex3d{}
+		e.BaseEntity = base()
+		e.TypeName = "VERTEX_3D"
+		e.Position = readPoint()
 		if opts&preR13OptsVertexHasFlag != 0 {
-			e.flags = r.rc()
+			e.Flags = r.rc()
 		}
 		return e
 	default:
-		e := &entVertex2d{}
-		e.baseEntity = base()
-		e.typeName = "VERTEX_2D"
-		e.position = readPoint()
+		e := &entity.EntVertex2d{}
+		e.BaseEntity = base()
+		e.TypeName = "VERTEX_2D"
+		e.Position = readPoint()
 		if opts&preR13OptsVertexHasStartWidth != 0 {
-			e.startWidth = r.rd()
+			e.StartWidth = r.rd()
 		}
 		if opts&preR13OptsVertexHasEndWidth != 0 {
-			e.endWidth = r.rd()
+			e.EndWidth = r.rd()
 		}
 		if opts&preR13OptsVertexHasBulge != 0 {
-			e.bulge = r.rd()
+			e.Bulge = r.rd()
 		}
 		if opts&preR13OptsVertexHasFlag != 0 {
-			e.flags = uint16(r.rc())
+			e.Flags = uint16(r.rc())
 		}
 		if opts&preR13OptsVertexHasTangentDir != 0 {
-			e.tangentDir = r.rd()
+			e.TangentDir = r.rd()
 		}
 		return e
 	}
@@ -1378,22 +1379,22 @@ func decodePreR13Vertex(data []byte, h preR13EntHead, ver container.DwgVersion) 
 // decodePreR13Viewport VIEWPORT 视口（dwg.spec PRE(R_13b1) 分支）：
 // center 3RD + width RD + height RD + id RS。仅解码不渲染
 // （与 R13+ VIEWPORT 渲染策略一致），id 无模型字段挂 extra。
-func decodePreR13Viewport(r *preR13Reader, h preR13EntHead) *entViewport {
-	e := &entViewport{}
-	e.typeName = "VIEWPORT"
-	e.typeCode = preR13TypeViewport
-	e.mode = 2
-	preR13HandleBase(&e.baseEntity, h)
-	preR13Color(&e.baseEntity, h)
+func decodePreR13Viewport(r *preR13Reader, h preR13EntHead) *entity.EntViewport {
+	e := &entity.EntViewport{}
+	e.TypeName = "VIEWPORT"
+	e.TypeCode = preR13TypeViewport
+	e.Mode = 2
+	preR13HandleBase(&e.BaseEntity, h)
+	preR13Color(&e.BaseEntity, h)
 	cx, cy, cz := r.rd(), r.rd(), r.rd()
-	e.center = point3{cx, cy, cz}
-	e.width = r.rd()
-	e.height = r.rd()
+	e.Center = entity.Point3{cx, cy, cz}
+	e.Width = r.rd()
+	e.Height = r.rd()
 	id := r.rs()
-	if e.extra == nil {
-		e.extra = map[string]any{}
+	if e.Extra == nil {
+		e.Extra = map[string]any{}
 	}
-	e.extra["id"] = id
+	e.Extra["id"] = id
 	return e
 }
 
@@ -1401,40 +1402,40 @@ func decodePreR13Viewport(r *preR13Reader, h preR13EntHead) *entViewport {
 // 插入点 2RD + 缩放 RD + style_id RC，opts 位展开旋转/样式句柄/
 // 宽度因子/倾斜角；thickness 取公共头（HAS_THICKNESS），插入点 z 取
 // 公共头 elevation（spec DECODER 显式回填语义，同 TEXT）。
-func decodePreR13Shape(r *preR13Reader, h preR13EntHead) *entShape {
-	e := &entShape{}
-	e.typeName = "SHAPE"
-	e.typeCode = preR13TypeShape
-	e.mode = 2
-	preR13HandleBase(&e.baseEntity, h)
-	preR13Color(&e.baseEntity, h)
+func decodePreR13Shape(r *preR13Reader, h preR13EntHead) *entity.EntShape {
+	e := &entity.EntShape{}
+	e.TypeName = "SHAPE"
+	e.TypeCode = preR13TypeShape
+	e.Mode = 2
+	preR13HandleBase(&e.BaseEntity, h)
+	preR13Color(&e.BaseEntity, h)
 	ix, iy := r.rd(), r.rd()
-	e.scale = r.rd()
-	e.shapeNo = uint16(r.rc()) // style_id：SHAPEFILE 内形编号（1 字节表索引）
+	e.Scale = r.rd()
+	e.ShapeNo = uint16(r.rc()) // style_id：SHAPEFILE 内形编号（1 字节表索引）
 	if h.opts&0x01 != 0 {
-		e.rotation = r.rd() // rotation（弧度，gold 0.5236 = 30°）
+		e.Rotation = r.rd() // rotation（弧度，gold 0.5236 = 30°）
 	}
 	if h.opts&0x02 != 0 {
 		_ = r.rc() // style（HAS_LOAD_NUM，1 字节 STYLE 表索引）
 	}
 	if h.opts&0x04 != 0 {
-		e.widthFactor = r.rd()
+		e.WidthFactor = r.rd()
 	}
 	if h.opts&0x08 != 0 {
-		e.oblique = r.rd()
+		e.Oblique = r.rd()
 	}
-	e.insertion = point3{ix, iy, preR13Z(h)}
-	e.thickness = h.thickness
+	e.Insertion = entity.Point3{ix, iy, preR13Z(h)}
+	e.Thickness = h.thickness
 	return e
 }
 
 // preR13Color 应用实体颜色与图层索引到公共字段（ACI 索引；0/256 语义
 // 由 colorResolved 统一处理，这里原样带过）。
-func preR13Color(base *baseEntity, h preR13EntHead) {
-	base.layer = uint64(h.layerIdx)
+func preR13Color(base *entity.BaseEntity, h preR13EntHead) {
+	base.Layer = uint64(h.layerIdx)
 	if h.flag&preR13FlagHasColor != 0 && h.colorIdx > 0 {
-		base.color.index = uint16(h.colorIdx)
-		base.color.hasIndex = true
+		base.Color.Index = uint16(h.colorIdx)
+		base.Color.HasIndex = true
 	}
 }
 
@@ -1443,20 +1444,20 @@ func preR13Z(h preR13EntHead) float64 { return h.elevation }
 
 // decodePreR13Line LINE：R9 恒 2RD×2；R10+ 以 HAS_ELEVATION 位区分
 // 2RD×2（z=elevation）与 3RD×2。
-func decodePreR13Line(r *preR13Reader, h preR13EntHead, ver container.DwgVersion) *entLine {
-	e := &entLine{}
-	e.typeName = "LINE"
-	e.typeCode = preR13TypeLine
-	e.mode = 2
-	preR13HandleBase(&e.baseEntity, h)
-	preR13Color(&e.baseEntity, h)
+func decodePreR13Line(r *preR13Reader, h preR13EntHead, ver container.DwgVersion) *entity.EntLine {
+	e := &entity.EntLine{}
+	e.TypeName = "LINE"
+	e.TypeCode = preR13TypeLine
+	e.Mode = 2
+	preR13HandleBase(&e.BaseEntity, h)
+	preR13Color(&e.BaseEntity, h)
 	is3d := ver >= container.VerR10 && h.flag&preR13FlagHasElevation == 0
 	if is3d {
-		e.start = point3{r.rd(), r.rd(), r.rd()}
-		e.end = point3{r.rd(), r.rd(), r.rd()}
+		e.Start = entity.Point3{r.rd(), r.rd(), r.rd()}
+		e.End = entity.Point3{r.rd(), r.rd(), r.rd()}
 	} else {
-		e.start = point3{r.rd(), r.rd(), preR13Z(h)}
-		e.end = point3{r.rd(), r.rd(), preR13Z(h)}
+		e.Start = entity.Point3{r.rd(), r.rd(), preR13Z(h)}
+		e.End = entity.Point3{r.rd(), r.rd(), preR13Z(h)}
 	}
 	return e
 }
@@ -1465,33 +1466,33 @@ func decodePreR13Line(r *preR13Reader, h preR13EntHead, ver container.DwgVersion
 // 位逐点选择 3RD（bit0 起点、bit1 终点）否则 2RD（z=elevation）；R10+ 以
 // HAS_ELEVATION 位区分（置位 2RD×2、否则 3RD×2），opts bit0 为挤出方向。
 // 复用 entLine 模型（R13+ 渲染直连）。
-func decodePreR133DLine(r *preR13Reader, h preR13EntHead, ver container.DwgVersion) *entLine {
-	e := &entLine{}
-	e.typeName = "3DLINE"
-	e.typeCode = preR13Type3DLine
-	e.mode = 2
-	preR13HandleBase(&e.baseEntity, h)
-	preR13Color(&e.baseEntity, h)
+func decodePreR133DLine(r *preR13Reader, h preR13EntHead, ver container.DwgVersion) *entity.EntLine {
+	e := &entity.EntLine{}
+	e.TypeName = "3DLINE"
+	e.TypeCode = preR13Type3DLine
+	e.Mode = 2
+	preR13HandleBase(&e.BaseEntity, h)
+	preR13Color(&e.BaseEntity, h)
 	if ver < container.VerR10 {
 		if h.opts&0x01 != 0 {
-			e.start = point3{r.rd(), r.rd(), r.rd()}
+			e.Start = entity.Point3{r.rd(), r.rd(), r.rd()}
 		} else {
-			e.start = point3{r.rd(), r.rd(), preR13Z(h)}
+			e.Start = entity.Point3{r.rd(), r.rd(), preR13Z(h)}
 		}
 		if h.opts&0x02 != 0 {
-			e.end = point3{r.rd(), r.rd(), r.rd()}
+			e.End = entity.Point3{r.rd(), r.rd(), r.rd()}
 		} else {
-			e.end = point3{r.rd(), r.rd(), preR13Z(h)}
+			e.End = entity.Point3{r.rd(), r.rd(), preR13Z(h)}
 		}
 		return e
 	}
 	is2d := h.flag&preR13FlagHasElevation != 0
 	if is2d {
-		e.start = point3{r.rd(), r.rd(), preR13Z(h)}
-		e.end = point3{r.rd(), r.rd(), preR13Z(h)}
+		e.Start = entity.Point3{r.rd(), r.rd(), preR13Z(h)}
+		e.End = entity.Point3{r.rd(), r.rd(), preR13Z(h)}
 	} else {
-		e.start = point3{r.rd(), r.rd(), r.rd()}
-		e.end = point3{r.rd(), r.rd(), r.rd()}
+		e.Start = entity.Point3{r.rd(), r.rd(), r.rd()}
+		e.End = entity.Point3{r.rd(), r.rd(), r.rd()}
 	}
 	if h.opts&0x01 != 0 {
 		r.skip(24) // extrusion 3RD
@@ -1503,13 +1504,13 @@ func decodePreR133DLine(r *preR13Reader, h preR13EntHead, ver container.DwgVersi
 // 选择 3RD（bit0~bit3 对应角 1~4）否则 2RD（z=elevation）；R10+ 以
 // HAS_ELEVATION 位区分 2RD×4/3RD×4，opts bit0 为不可见边标志 RS。
 // 复用 entFace3d 模型（R13+ 渲染直连）。
-func decodePreR133DFace(r *preR13Reader, h preR13EntHead, ver container.DwgVersion) *entFace3d {
-	e := &entFace3d{}
-	e.typeName = "3DFACE"
-	e.typeCode = preR13Type3DFace
-	e.mode = 2
-	preR13HandleBase(&e.baseEntity, h)
-	preR13Color(&e.baseEntity, h)
+func decodePreR133DFace(r *preR13Reader, h preR13EntHead, ver container.DwgVersion) *entity.EntFace3d {
+	e := &entity.EntFace3d{}
+	e.TypeName = "3DFACE"
+	e.TypeCode = preR13Type3DFace
+	e.Mode = 2
+	preR13HandleBase(&e.BaseEntity, h)
+	preR13Color(&e.BaseEntity, h)
 	// hasZ：该角点是否带显式 z（R9 按 opts 位、R10+ 按 HAS_ELEVATION 全局位）
 	hasZ := func(cornerBit uint16) bool {
 		if ver < container.VerR10 {
@@ -1517,86 +1518,86 @@ func decodePreR133DFace(r *preR13Reader, h preR13EntHead, ver container.DwgVersi
 		}
 		return h.flag&preR13FlagHasElevation == 0
 	}
-	readCorner := func(cornerBit uint16) point3 {
+	readCorner := func(cornerBit uint16) entity.Point3 {
 		x, y := r.rd(), r.rd()
 		if hasZ(cornerBit) {
-			return point3{x, y, r.rd()}
+			return entity.Point3{x, y, r.rd()}
 		}
-		return point3{x, y, preR13Z(h)}
+		return entity.Point3{x, y, preR13Z(h)}
 	}
-	e.p1 = readCorner(0x01)
-	e.p2 = readCorner(0x02)
-	e.p3 = readCorner(0x04)
-	e.p4 = readCorner(0x08)
+	e.P1 = readCorner(0x01)
+	e.P2 = readCorner(0x02)
+	e.P3 = readCorner(0x04)
+	e.P4 = readCorner(0x08)
 	// 不可见边标志仅 R10+ 存在（R9 的 opts 位被角点 z 占用）
 	if ver >= container.VerR10 && h.opts&0x01 != 0 {
-		e.invisibleEdgeFlags = r.rs()
+		e.InvisibleEdgeFlags = r.rs()
 	}
 	return e
 }
 
 // decodePreR13Point POINT：x/y 恒 RD；z 仅 R10+ 且无 HAS_ELEVATION 时存在。
-func decodePreR13Point(r *preR13Reader, h preR13EntHead, ver container.DwgVersion) *entPoint {
-	e := &entPoint{}
-	e.typeName = "POINT"
-	e.typeCode = preR13TypePoint
-	e.mode = 2
-	preR13HandleBase(&e.baseEntity, h)
-	preR13Color(&e.baseEntity, h)
+func decodePreR13Point(r *preR13Reader, h preR13EntHead, ver container.DwgVersion) *entity.EntPoint {
+	e := &entity.EntPoint{}
+	e.TypeName = "POINT"
+	e.TypeCode = preR13TypePoint
+	e.Mode = 2
+	preR13HandleBase(&e.BaseEntity, h)
+	preR13Color(&e.BaseEntity, h)
 	x, y := r.rd(), r.rd()
 	z := 0.0
 	if ver >= container.VerR10 && h.flag&preR13FlagHasElevation == 0 {
 		z = r.rd() // z（DXF 30，仅 R10+ 且无 HAS_ELEVATION）
 	}
-	e.location = point3{x, y, z}
+	e.Location = entity.Point3{x, y, z}
 	if h.opts&0x01 != 0 {
 		r.skip(24) // extrusion 3RD
 	}
 	if h.opts&0x02 != 0 {
-		e.rotation = r.rd() // x_ang（弧度，pre-R13 角度字段与 R13+ 同为弧度口径）
+		e.Rotation = r.rd() // x_ang（弧度，pre-R13 角度字段与 R13+ 同为弧度口径）
 	}
 	return e
 }
 
 // decodePreR13Circle CIRCLE：center 2RD + radius RD。
-func decodePreR13Circle(r *preR13Reader, h preR13EntHead, ver container.DwgVersion) *entCircle {
-	e := &entCircle{}
-	e.typeName = "CIRCLE"
-	e.typeCode = preR13TypeCircle
-	e.mode = 2
-	preR13HandleBase(&e.baseEntity, h)
-	preR13Color(&e.baseEntity, h)
+func decodePreR13Circle(r *preR13Reader, h preR13EntHead, ver container.DwgVersion) *entity.EntCircle {
+	e := &entity.EntCircle{}
+	e.TypeName = "CIRCLE"
+	e.TypeCode = preR13TypeCircle
+	e.Mode = 2
+	preR13HandleBase(&e.BaseEntity, h)
+	preR13Color(&e.BaseEntity, h)
 	cx, cy := r.rd(), r.rd()
-	e.radius = r.rd()
-	e.center = point3{cx, cy, preR13Z(h)}
+	e.Radius = r.rd()
+	e.Center = entity.Point3{cx, cy, preR13Z(h)}
 	if h.opts&0x01 != 0 {
 		r.skip(24) // extrusion 3RD
 	}
 	if h.opts&0x02 != 0 {
-		e.center.z = r.rd() // center.z 显式字段（DXF 38）
+		e.Center.Z = r.rd() // center.z 显式字段（DXF 38）
 	}
 	return e
 }
 
 // decodePreR13Arc ARC：center 2RD + radius + 起终角（度 → 弧度对齐 R13+）。
-func decodePreR13Arc(r *preR13Reader, h preR13EntHead, ver container.DwgVersion) *entArc {
-	e := &entArc{}
-	e.typeName = "ARC"
-	e.typeCode = preR13TypeArc
-	e.mode = 2
-	preR13HandleBase(&e.baseEntity, h)
-	preR13Color(&e.baseEntity, h)
+func decodePreR13Arc(r *preR13Reader, h preR13EntHead, ver container.DwgVersion) *entity.EntArc {
+	e := &entity.EntArc{}
+	e.TypeName = "ARC"
+	e.TypeCode = preR13TypeArc
+	e.Mode = 2
+	preR13HandleBase(&e.BaseEntity, h)
+	preR13Color(&e.BaseEntity, h)
 	cx, cy := r.rd(), r.rd()
-	e.radius = r.rd()
+	e.Radius = r.rd()
 	// pre-R13 角度字段即弧度（gold start=4.712=270°），与 R13+ 口径一致
-	e.angleStart = r.rd()
-	e.angleEnd = r.rd()
-	e.center = point3{cx, cy, preR13Z(h)}
+	e.AngleStart = r.rd()
+	e.AngleEnd = r.rd()
+	e.Center = entity.Point3{cx, cy, preR13Z(h)}
 	if h.opts&0x01 != 0 {
 		r.skip(24) // extrusion 3RD
 	}
 	if h.opts&0x02 != 0 {
-		e.center.z = r.rd() // center.z（DXF 30）
+		e.Center.Z = r.rd() // center.z（DXF 30）
 	}
 	return e
 }
@@ -1604,25 +1605,25 @@ func decodePreR13Arc(r *preR13Reader, h preR13EntHead, ver container.DwgVersion)
 // decodePreR13Text TEXT：插入点 + 字高 + 变长文字 + opts 位展开的可选字段
 // （rotation/宽度因子/样式/生成标志/水平对齐/对齐点/挤出/垂直对齐）。
 // codepage 为头变量流的码页编号（文字按其解码，30 默认 Latin-1 近似）。
-func decodePreR13Text(r *preR13Reader, h preR13EntHead, codepage uint16) *entText {
-	e := &entText{}
-	e.typeName = "TEXT"
-	e.typeCode = preR13TypeText
-	e.mode = 2
-	preR13HandleBase(&e.baseEntity, h)
-	preR13Color(&e.baseEntity, h)
+func decodePreR13Text(r *preR13Reader, h preR13EntHead, codepage uint16) *entity.EntText {
+	e := &entity.EntText{}
+	e.TypeName = "TEXT"
+	e.TypeCode = preR13TypeText
+	e.Mode = 2
+	preR13HandleBase(&e.BaseEntity, h)
+	preR13Color(&e.BaseEntity, h)
 	ix, iy := r.rd(), r.rd()
-	e.height = r.rd()
-	e.insertion = point3{ix, iy, preR13Z(h)}
+	e.Height = r.rd()
+	e.Insertion = entity.Point3{ix, iy, preR13Z(h)}
 	n := int(r.rs())
 	if n > 0 && r.pos+n <= len(r.data) {
 		// pre-R2000 字符串尾可能带 \0 填充，截断
-		e.text = bitstream.DecodeCodepage(preR13TruncNul(r.bytes(n)), codepage)
+		e.Text = bitstream.DecodeCodepage(preR13TruncNul(r.bytes(n)), codepage)
 	} else {
 		r.skip(n)
 	}
 	if h.opts&0x01 != 0 {
-		e.rotation = r.rd() // rotation（弧度口径）
+		e.Rotation = r.rd() // rotation（弧度口径）
 	}
 	if h.opts&0x02 != 0 {
 		_ = r.rd() // width_factor
@@ -1634,20 +1635,20 @@ func decodePreR13Text(r *preR13Reader, h preR13EntHead, codepage uint16) *entTex
 		_ = r.rc() // style（HANDLE code=1，1 字节表索引）
 	}
 	if h.opts&0x10 != 0 {
-		e.gen = uint16(r.rc()) // generation
+		e.Gen = uint16(r.rc()) // generation
 	}
 	if h.opts&0x20 != 0 {
-		e.hAlign = uint16(r.rc()) // horiz_alignment
+		e.HAlign = uint16(r.rc()) // horiz_alignment
 	}
 	if h.opts&0x40 != 0 {
 		ax, ay := r.rd(), r.rd()
-		e.alignPt = &point2{ax, ay}
+		e.AlignPt = &entity.Point2{ax, ay}
 	}
 	if h.opts&0x80 != 0 {
 		r.skip(24) // extrusion 3RD
 	}
 	if h.opts&0x100 != 0 {
-		e.vAlign = uint16(r.rc()) // vert_alignment
+		e.VAlign = uint16(r.rc()) // vert_alignment
 	}
 	return e
 }
@@ -1670,28 +1671,28 @@ func preR13TV(r *preR13Reader, codepage uint16) string {
 // 旋转/宽度因子/倾斜角/样式/生成标志/水平对齐/对齐点/挤出/垂直对齐。
 // ATTDEF 的文字为 default_value（gold default_value 键），ATTRIB 为
 // text_value；插入点 z 取公共头 elevation（同 TEXT 口径）。
-func decodePreR13Attrib(r *preR13Reader, h preR13EntHead, attdef bool, codepage uint16) *entAttrib {
-	e := &entAttrib{}
+func decodePreR13Attrib(r *preR13Reader, h preR13EntHead, attdef bool, codepage uint16) *entity.EntAttrib {
+	e := &entity.EntAttrib{}
 	if attdef {
-		e.typeName = "ATTDEF"
+		e.TypeName = "ATTDEF"
 	} else {
-		e.typeName = "ATTRIB"
+		e.TypeName = "ATTRIB"
 	}
-	e.typeCode = uint16(h.typ)
-	e.mode = 2
-	preR13HandleBase(&e.baseEntity, h)
-	preR13Color(&e.baseEntity, h)
+	e.TypeCode = uint16(h.typ)
+	e.Mode = 2
+	preR13HandleBase(&e.BaseEntity, h)
+	preR13Color(&e.BaseEntity, h)
 	ix, iy := r.rd(), r.rd()
-	e.height = r.rd()
-	e.text = preR13TV(r, codepage)
+	e.Height = r.rd()
+	e.Text = preR13TV(r, codepage)
 	if attdef {
-		e.prompt = preR13TV(r, codepage) // prompt（仅 ATTDEF）
+		e.Prompt = preR13TV(r, codepage) // prompt（仅 ATTDEF）
 	}
-	e.tag = preR13TV(r, codepage)
+	e.Tag = preR13TV(r, codepage)
 	// flags：1 不可见 2 常量 4 校验 8 预置（无对应模型字段，仅推进流）
 	_ = r.rc()
 	if h.opts&0x02 != 0 {
-		e.rotation = r.rd()
+		e.Rotation = r.rd()
 	}
 	if h.opts&0x04 != 0 {
 		_ = r.rd() // width_factor
@@ -1703,10 +1704,10 @@ func decodePreR13Attrib(r *preR13Reader, h preR13EntHead, attdef bool, codepage 
 		_ = r.rc() // style（1 字节 STYLE 表索引）
 	}
 	if h.opts&0x20 != 0 {
-		e.gen = uint16(r.rc()) // generation
+		e.Gen = uint16(r.rc()) // generation
 	}
 	if h.opts&0x40 != 0 {
-		e.hAlign = uint16(r.rc()) // horiz_alignment
+		e.HAlign = uint16(r.rc()) // horiz_alignment
 	}
 	if h.opts&0x80 != 0 {
 		_ = r.rd() // alignment_pt x
@@ -1716,66 +1717,66 @@ func decodePreR13Attrib(r *preR13Reader, h preR13EntHead, attdef bool, codepage 
 		r.skip(24) // extrusion 3RD
 	}
 	if h.opts&0x200 != 0 {
-		e.vAlign = uint16(r.rc()) // vert_alignment
+		e.VAlign = uint16(r.rc()) // vert_alignment
 	}
-	e.insertion = point3{ix, iy, preR13Z(h)}
+	e.Insertion = entity.Point3{ix, iy, preR13Z(h)}
 	return e
 }
 
 // decodePreR13Solid SOLID/TRACE：四角 2RD（z=elevation，单独 elevation 字段）。
-func decodePreR13Solid(r *preR13Reader, h preR13EntHead) *entSolid {
-	e := &entSolid{trace: h.typ == preR13TypeTrace}
-	if e.trace {
-		e.typeName = "TRACE"
+func decodePreR13Solid(r *preR13Reader, h preR13EntHead) *entity.EntSolid {
+	e := &entity.EntSolid{Trace: h.typ == preR13TypeTrace}
+	if e.Trace {
+		e.TypeName = "TRACE"
 	} else {
-		e.typeName = "SOLID"
+		e.TypeName = "SOLID"
 	}
-	e.typeCode = uint16(h.typ)
-	e.mode = 2
-	preR13HandleBase(&e.baseEntity, h)
-	preR13Color(&e.baseEntity, h)
+	e.TypeCode = uint16(h.typ)
+	e.Mode = 2
+	preR13HandleBase(&e.BaseEntity, h)
+	preR13Color(&e.BaseEntity, h)
 	z := preR13Z(h)
-	e.elevation = z
-	e.p1 = point2{r.rd(), r.rd()}
-	e.p2 = point2{r.rd(), r.rd()}
-	e.p3 = point2{r.rd(), r.rd()}
-	e.p4 = point2{r.rd(), r.rd()}
+	e.Elevation = z
+	e.P1 = entity.Point2{r.rd(), r.rd()}
+	e.P2 = entity.Point2{r.rd(), r.rd()}
+	e.P3 = entity.Point2{r.rd(), r.rd()}
+	e.P4 = entity.Point2{r.rd(), r.rd()}
 	if h.opts&0x01 != 0 {
 		r.skip(24) // extrusion 3RD
 	}
 	if h.opts&0x02 != 0 {
-		e.elevation = r.rd() // 显式 elevation（DXF 38）
+		e.Elevation = r.rd() // 显式 elevation（DXF 38）
 	}
 	return e
 }
 
 // decodePreR13Insert INSERT：块表索引引用 + 插入点 + 按位展开的
 // 缩放/旋转/阵列参数。scale 缺省 1.0（仅 opts 置位时存储）。
-func decodePreR13Insert(r *preR13Reader, h preR13EntHead, ver container.DwgVersion, blockHeaders []preR13BlockHeader) *entInsert {
-	e := &entInsert{}
-	e.typeName = "INSERT"
-	e.typeCode = preR13TypeInsert
-	e.mode = 2
-	preR13HandleBase(&e.baseEntity, h)
-	preR13Color(&e.baseEntity, h)
+func decodePreR13Insert(r *preR13Reader, h preR13EntHead, ver container.DwgVersion, blockHeaders []preR13BlockHeader) *entity.EntInsert {
+	e := &entity.EntInsert{}
+	e.TypeName = "INSERT"
+	e.TypeCode = preR13TypeInsert
+	e.Mode = 2
+	preR13HandleBase(&e.BaseEntity, h)
+	preR13Color(&e.BaseEntity, h)
 	idx := r.rs() // block_header（BLOCK_HEADER 表索引）
 	if int(idx) < len(blockHeaders) {
-		e.blockHeader = preR13BlockKeyBase + uint64(idx)
+		e.BlockHeader = preR13BlockKeyBase + uint64(idx)
 	}
 	ix, iy := r.rd(), r.rd()
-	e.position = point3{ix, iy, preR13Z(h)}
-	e.scale = point3{1, 1, 1}
+	e.Position = entity.Point3{ix, iy, preR13Z(h)}
+	e.Scale = entity.Point3{1, 1, 1}
 	if h.opts&0x01 != 0 {
-		e.scale.x = r.rd()
+		e.Scale.X = r.rd()
 	}
 	if h.opts&0x02 != 0 {
-		e.scale.y = r.rd()
+		e.Scale.Y = r.rd()
 	}
 	if h.opts&0x04 != 0 {
-		e.rotation = r.rd() // 弧度（gold 0.5236 = 30°）
+		e.Rotation = r.rd() // 弧度（gold 0.5236 = 30°）
 	}
 	if h.opts&0x08 != 0 {
-		e.scale.z = r.rd()
+		e.Scale.Z = r.rd()
 	}
 	if h.opts&0x10 != 0 {
 		_ = r.rs() // num_cols（MINSERT 阵列，渲染按单次插入处理）
@@ -1797,11 +1798,11 @@ func decodePreR13Insert(r *preR13Reader, h preR13EntHead, ver container.DwgVersi
 
 // preR13HandleBase pre-R13 实体无全局句柄流：HAS_HANDLING 显式句柄优先，
 // 否则以记录偏移作稳定伪句柄（同一次解析内唯一，满足 entityByHandle 归档）。
-func preR13HandleBase(base *baseEntity, h preR13EntHead) {
+func preR13HandleBase(base *entity.BaseEntity, h preR13EntHead) {
 	if h.handle != 0 {
-		base.handle = uint64(h.handle)
+		base.Handle = uint64(h.handle)
 	} else {
-		base.handle = uint64(h.startOff)
+		base.Handle = uint64(h.startOff)
 	}
 }
 

@@ -5,6 +5,7 @@ package cad
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
@@ -237,10 +238,10 @@ func TestStripMTextFormat(t *testing.T) {
 }
 
 func TestScoreText(t *testing.T) {
-	if decodedTextScore("正常文本") <= 0 {
+	if entity.DecodedTextScore("正常文本") <= 0 {
 		t.Error("可读文本应为正分")
 	}
-	if decodedTextScore("\x00\x01\x02") >= 0 {
+	if entity.DecodedTextScore("\x00\x01\x02") >= 0 {
 		t.Error("控制字符应为负分")
 	}
 }
@@ -277,9 +278,9 @@ func TestXformCompose(t *testing.T) {
 	// 外层平移 (10,20)，内层缩放 2 + 平移 (1,1)：点 (1,1) → 内层 (3,3) → 外层 (13,23)
 	outer := xform{sx: 1, sy: 1, cos: 1, tx: 10, ty: 20}
 	inner := xform{sx: 2, sy: 2, cos: 1, tx: 1, ty: 1}
-	got := outer.compose(inner).apply(point2{1, 1})
-	if math.Abs(got.x-13) > 1e-9 || math.Abs(got.y-23) > 1e-9 {
-		t.Fatalf("复合变换错误: (%v,%v)", got.x, got.y)
+	got := outer.compose(inner).apply(entity.Point2{1, 1})
+	if math.Abs(got.X-13) > 1e-9 || math.Abs(got.Y-23) > 1e-9 {
+		t.Fatalf("复合变换错误: (%v,%v)", got.X, got.Y)
 	}
 }
 

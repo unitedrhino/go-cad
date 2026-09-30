@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"math/rand"
@@ -1244,15 +1245,15 @@ func TestJsonBuildLongTail(t *testing.T) {
 	o["annotation_type"] = float64(1)
 	o["path_type"] = float64(2)
 	o["points"] = []any{[]any{1.0, 2.0, 0.0}, []any{3.0, 4.0, 1.0}}
-	l, ok := jsonBuildLeader(o).(*entLeader)
+	l, ok := jsonBuildLeader(o).(*entity.EntLeader)
 	if !ok {
 		t.Fatal("jsonBuildLeader 类型错误")
 	}
-	if len(l.points) != 2 || l.points[1].x != 3 {
-		t.Errorf("leader points = %v", l.points)
+	if len(l.Points) != 2 || l.Points[1].X != 3 {
+		t.Errorf("leader points = %v", l.Points)
 	}
-	if l.annotationType != 1 || l.pathType != 2 {
-		t.Errorf("leader type/path = %d/%d", l.annotationType, l.pathType)
+	if l.AnnotationType != 1 || l.PathType != 2 {
+		t.Errorf("leader type/path = %d/%d", l.AnnotationType, l.PathType)
 	}
 
 	o = gap2JSONBase("SHAPE")
@@ -1262,12 +1263,12 @@ func TestJsonBuildLongTail(t *testing.T) {
 	o["width_factor"] = 1.2
 	o["oblique_angle"] = 0.1
 	o["thickness"] = 3.0
-	s, ok := jsonBuildShape(o).(*entShape)
+	s, ok := jsonBuildShape(o).(*entity.EntShape)
 	if !ok {
 		t.Fatal("jsonBuildShape 类型错误")
 	}
-	if s.scale != 2.5 || s.insertion.y != 2 {
-		t.Errorf("shape scale/ins = %v/%v", s.scale, s.insertion)
+	if s.Scale != 2.5 || s.Insertion.Y != 2 {
+		t.Errorf("shape scale/ins = %v/%v", s.Scale, s.Insertion)
 	}
 
 	o = gap2JSONBase("OLE2FRAME")
@@ -1276,12 +1277,12 @@ func TestJsonBuildLongTail(t *testing.T) {
 	o["lock_aspect"] = float64(0)
 	o["data_size"] = float64(4)
 	o["data"] = "DEADBEEF"
-	ole2, ok := jsonBuildOle2Frame(o).(*entOle2Frame)
+	ole2, ok := jsonBuildOle2Frame(o).(*entity.EntOle2Frame)
 	if !ok {
 		t.Fatal("jsonBuildOle2Frame 类型错误")
 	}
-	if ole2.dataSize != 4 || string(ole2.data) != "\xDE\xAD\xBE\xEF" {
-		t.Errorf("ole2 size/data = %d/%X", ole2.dataSize, ole2.data)
+	if ole2.DataSize != 4 || string(ole2.Data) != "\xDE\xAD\xBE\xEF" {
+		t.Errorf("ole2 size/data = %d/%X", ole2.DataSize, ole2.Data)
 	}
 
 	o = gap2JSONBase("OLEFRAME")
@@ -1289,12 +1290,12 @@ func TestJsonBuildLongTail(t *testing.T) {
 	o["mode"] = float64(0)
 	o["data_size"] = float64(2)
 	o["data"] = "00FF"
-	ole1, ok := jsonBuildOleFrame(o).(*entOleFrame)
+	ole1, ok := jsonBuildOleFrame(o).(*entity.EntOleFrame)
 	if !ok {
 		t.Fatal("jsonBuildOleFrame 类型错误")
 	}
-	if ole1.dataSize != 2 || ole1.data[1] != 0xFF {
-		t.Errorf("ole1 = %d/%X", ole1.dataSize, ole1.data)
+	if ole1.DataSize != 2 || ole1.Data[1] != 0xFF {
+		t.Errorf("ole1 = %d/%X", ole1.DataSize, ole1.Data)
 	}
 
 	o = gap2JSONBase("PROXY_ENTITY")
@@ -1307,12 +1308,12 @@ func TestJsonBuildLongTail(t *testing.T) {
 	o["num_objids"] = float64(0)
 	o["proxy_data_size"] = float64(3)
 	o["proxy_data"] = "AABB01"
-	p, ok := jsonBuildProxyEntity(o).(*entProxyEntity)
+	p, ok := jsonBuildProxyEntity(o).(*entity.EntProxyEntity)
 	if !ok {
 		t.Fatal("jsonBuildProxyEntity 类型错误")
 	}
-	if p.dwgVersionNum != 19 || len(p.proxyData) != 3 {
-		t.Errorf("proxy = %d/%d", p.dwgVersionNum, len(p.proxyData))
+	if p.DwgVersionNum != 19 || len(p.ProxyData) != 3 {
+		t.Errorf("proxy = %d/%d", p.DwgVersionNum, len(p.ProxyData))
 	}
 
 	// jsonHexBytes：奇数长度与非十六进制字符返回 nil，空串返回 nil
@@ -1326,7 +1327,7 @@ func TestJsonBuildLongTail(t *testing.T) {
 
 // TestJsonBuildLightColorForms jsonBuildLight 的 light_color 双形态。
 func TestJsonBuildLightColorForms(t *testing.T) {
-	build := func(colorKey string, colorVal any) *entLight {
+	build := func(colorKey string, colorVal any) *entity.EntLight {
 		o := gap2JSONBase("LIGHT")
 		o["class_version"] = float64(1)
 		o["name"] = "sun"
@@ -1336,18 +1337,18 @@ func TestJsonBuildLightColorForms(t *testing.T) {
 		o["position"] = []any{0.0, 0.0, 1.0}
 		o["target"] = []any{0.0, 0.0, 0.0}
 		o[colorKey] = colorVal
-		return jsonBuildLight(o).(*entLight)
+		return jsonBuildLight(o).(*entity.EntLight)
 	}
 	// 标量索引形态（pre-R2004）
 	l := build("light_color", 3.0)
-	if l.lightColorIndex != 3 || l.hasLightColorTrue {
-		t.Errorf("标量形态 index=%d hasTrue=%v", l.lightColorIndex, l.hasLightColorTrue)
+	if l.LightColorIndex != 3 || l.HasLightColorTrue {
+		t.Errorf("标量形态 index=%d hasTrue=%v", l.LightColorIndex, l.HasLightColorTrue)
 	}
 	// CMC 对象形态（R2004+）
 	l = build("light_color", map[string]any{
 		"index": 5.0, "rgb": "C30A0AFF", "flag": 1.0})
-	if !l.hasLightColorTrue || l.lightColorIndex != 5 {
-		t.Errorf("CMC 形态 index=%d hasTrue=%v", l.lightColorIndex, l.hasLightColorTrue)
+	if !l.HasLightColorTrue || l.LightColorIndex != 5 {
+		t.Errorf("CMC 形态 index=%d hasTrue=%v", l.LightColorIndex, l.HasLightColorTrue)
 	}
 }
 
@@ -1393,36 +1394,36 @@ func TestJsonBuildHatchPolyAndSegs(t *testing.T) {
 			},
 		},
 	}
-	h, ok := jsonBuildHatch(o).(*entHatch)
+	h, ok := jsonBuildHatch(o).(*entity.EntHatch)
 	if !ok {
 		t.Fatal("jsonBuildHatch 类型错误")
 	}
-	if len(h.paths) != 3 {
-		t.Fatalf("paths = %d", len(h.paths))
+	if len(h.Paths) != 3 {
+		t.Fatalf("paths = %d", len(h.Paths))
 	}
-	if len(h.paths[0].polyVerts) != 2 {
-		t.Errorf("poly verts = %d", len(h.paths[0].polyVerts))
+	if len(h.Paths[0].PolyVerts) != 2 {
+		t.Errorf("poly verts = %d", len(h.Paths[0].PolyVerts))
 	}
-	if len(h.paths[0].points) < 2 {
-		t.Errorf("poly 展开点列过短: %d", len(h.paths[0].points))
+	if len(h.Paths[0].Points) < 2 {
+		t.Errorf("poly 展开点列过短: %d", len(h.Paths[0].Points))
 	}
-	if len(h.paths[1].segs) != 2 || h.paths[1].segs[0].curveType != 1 {
-		t.Errorf("line segs = %v", h.paths[1].segs)
+	if len(h.Paths[1].Segs) != 2 || h.Paths[1].Segs[0].CurveType != 1 {
+		t.Errorf("line segs = %v", h.Paths[1].Segs)
 	}
-	if h.paths[2].segs[0].radius != 3 {
-		t.Errorf("ellipse seg = %v", h.paths[2].segs[0])
+	if h.Paths[2].Segs[0].Radius != 3 {
+		t.Errorf("ellipse seg = %v", h.Paths[2].Segs[0])
 	}
 }
 
 // TestDedupeByHandleAndDxfFail dedupeByHandle 过滤与 dxfWriter 首错记录。
 func TestDedupeByHandleAndDxfFail(t *testing.T) {
 	mk := func(h uint64) any {
-		return &entShape{baseEntity: baseEntity{handle: h, typeName: "SHAPE"}}
+		return &entity.EntShape{BaseEntity: entity.BaseEntity{Handle: h, TypeName: "SHAPE"}}
 	}
 	prev := []any{mk(1), mk(2)}
 	base := []any{mk(2), mk(3), nil, mk(4)}
 	out := dedupeByHandle(prev, base)
-	if len(out) != 2 || entBase(out[0]).handle != 3 || entBase(out[1]).handle != 4 {
+	if len(out) != 2 || entity.EntityBase(out[0]).Handle != 3 || entity.EntityBase(out[1]).Handle != 4 {
 		t.Errorf("dedupe 结果 = %v", out)
 	}
 
@@ -1546,20 +1547,20 @@ func TestSynthPreR13Dimension(t *testing.T) {
 		}
 		h := preR13EntHead{opts: opts}
 		e := decodePreR13Dimension(&preR13Reader{data: data}, h, container.VerR11, 30)
-		if e == nil || e.userText != "abc" {
-			t.Errorf("dimtype %d: userText = %q", dimtype, e.userText)
+		if e == nil || e.UserText != "abc" {
+			t.Errorf("dimtype %d: userText = %q", dimtype, e.UserText)
 		}
 	}
 	// Ordinate 的 feature/leader 点与 Ang2Ln 的 p16 断言
 	h := preR13EntHead{opts: opts}
 	e := decodePreR13Dimension(&preR13Reader{data: append(common(2), tail...)}, h, container.VerR11, 30)
-	if !e.hasPoint16 || e.point16x != 10 {
-		t.Errorf("Ang2Ln point16 = %v/%v", e.point16x, e.p16y)
+	if !e.HasPoint16 || e.Point16x != 10 {
+		t.Errorf("Ang2Ln point16 = %v/%v", e.Point16x, e.P16y)
 	}
 	// Diameter 在 R10+ 无 HAS_ELEVATION 时 first_arc_pt 为 3RD
 	e = decodePreR13Dimension(&preR13Reader{data: append(common(3), tailShort...)}, h, container.VerR11, 30)
-	if !e.hasPoint15 || e.point15.z != 9 {
-		t.Errorf("Diameter point15 = %v", e.point15)
+	if !e.HasPoint15 || e.Point15.Z != 9 {
+		t.Errorf("Diameter point15 = %v", e.Point15)
 	}
 }
 
@@ -1588,19 +1589,19 @@ func TestSynthPreR13Polyline(t *testing.T) {
 		preR13OptsPolylineHasMVerts|preR13OptsPolylineHasNVerts|
 		preR13OptsPolylineHasCurvetype,
 		gap2R11Body(rd(1), rd(2), rd(1), rd(0), rd(0),
-			gap2R11LE(uint16(2)), gap2R11LE(uint16(3)), gap2R11LE(uint16(6)))).(*entPolyline2d)
+			gap2R11LE(uint16(2)), gap2R11LE(uint16(3)), gap2R11LE(uint16(6)))).(*entity.EntPolyline2d)
 	if !ok {
 		t.Fatal("期望 POLYLINE_2D")
 	}
-	if e2.curveType != 6 || e2.widthStart != 1 {
-		t.Errorf("2D curveType/width = %d/%v", e2.curveType, e2.widthStart)
+	if e2.CurveType != 6 || e2.WidthStart != 1 {
+		t.Errorf("2D curveType/width = %d/%v", e2.CurveType, e2.WidthStart)
 	}
 	// 3D：flags + sw + ew + extrusion(skip) + curvetype
 	e3, ok := build(preR13FlagPolyline3D, preR13OptsPolylineHasFlag|
 		preR13OptsPolylineHasStartWidth|preR13OptsPolylineHasEndWidth|
 		preR13OptsPolylineHasExtrusion|preR13OptsPolylineHasCurvetype,
-		gap2R11Body(rd(0.5), rd(0.6), rd(1), rd(0), rd(0), gap2R11LE(uint16(7)))).(*entPolyline3d)
-	if !ok || e3.flags75 != 7 {
+		gap2R11Body(rd(0.5), rd(0.6), rd(1), rd(0), rd(0), gap2R11LE(uint16(7)))).(*entity.EntPolyline3d)
+	if !ok || e3.Flags75 != 7 {
 		t.Errorf("期望 POLYLINE_3D，得到 %T", e3)
 	}
 	// MESH：flags + m + n + md + nd + curvetype
@@ -1609,15 +1610,15 @@ func TestSynthPreR13Polyline(t *testing.T) {
 		preR13OptsPolylineHasMDensity|preR13OptsPolylineHasNDensity|
 		preR13OptsPolylineHasCurvetype,
 		gap2R11Body(gap2R11LE(uint16(4)), gap2R11LE(uint16(4)),
-			gap2R11LE(uint16(5)), gap2R11LE(uint16(5)), gap2R11LE(uint16(6)))).(*entPolylineMesh)
-	if !ok || em.mDensity != 5 {
+			gap2R11LE(uint16(5)), gap2R11LE(uint16(5)), gap2R11LE(uint16(6)))).(*entity.EntPolylineMesh)
+	if !ok || em.MDensity != 5 {
 		t.Errorf("期望 POLYLINE_MESH，得到 %T", em)
 	}
 	// PFACE：flags + numverts + numfaces
 	ep, ok := build(preR13FlagPolylinePfaceMesh, preR13OptsPolylineHasFlag|
 		preR13OptsPolylineHasMVerts|preR13OptsPolylineHasNVerts,
-		gap2R11Body(gap2R11LE(uint16(4)), gap2R11LE(uint16(6)))).(*entPolylinePface)
-	if !ok || ep.numVertices != 4 || ep.numFaces != 6 {
+		gap2R11Body(gap2R11LE(uint16(4)), gap2R11LE(uint16(6)))).(*entity.EntPolylinePface)
+	if !ok || ep.NumVertices != 4 || ep.NumFaces != 6 {
 		t.Errorf("期望 POLYLINE_PFACE，得到 %T", ep)
 	}
 }
@@ -1665,16 +1666,16 @@ func TestSynthPreR13Vertex(t *testing.T) {
 	for _, tc := range cases {
 		data, h := build(tc.vflag, optsAll)
 		e := decodePreR13Vertex(data, h, container.VerR11)
-		b := entBase(e)
-		if b == nil || b.typeName != tc.want {
-			t.Errorf("vflag %X: 得到 %v，期望 %s", tc.vflag, b.typeName, tc.want)
+		b := entity.EntityBase(e)
+		if b == nil || b.TypeName != tc.want {
+			t.Errorf("vflag %X: 得到 %v，期望 %s", tc.vflag, b.TypeName, tc.want)
 		}
 	}
 	// 2D 变体字段断言
 	data, h := build(0, optsAll)
-	v := decodePreR13Vertex(data, h, container.VerR11).(*entVertex2d)
-	if v.bulge != 0.25 || v.startWidth != 0.5 {
-		t.Errorf("2D bulge/width = %v/%v", v.bulge, v.startWidth)
+	v := decodePreR13Vertex(data, h, container.VerR11).(*entity.EntVertex2d)
+	if v.Bulge != 0.25 || v.StartWidth != 0.5 {
+		t.Errorf("2D bulge/width = %v/%v", v.Bulge, v.StartWidth)
 	}
 	// PFACE_FACE 变体：无 point/widths 前缀（HasNotXY 置位），body 为
 	// flag + 4 个索引
@@ -1697,9 +1698,9 @@ func TestSynthPreR13Vertex(t *testing.T) {
 		startOff: 0, rawType: preR13TypeVertex, typ: preR13TypeVertex,
 		flag: 0, size: uint16(len(faceData)), opts: optsFace,
 	}
-	f := decodePreR13Vertex(faceData, faceHead, container.VerR11).(*entVertexPfaceFace)
-	if f.vertind[3] != 4 {
-		t.Errorf("PFACE_FACE vertind = %v", f.vertind)
+	f := decodePreR13Vertex(faceData, faceHead, container.VerR11).(*entity.EntVertexPfaceFace)
+	if f.Vertind[3] != 4 {
+		t.Errorf("PFACE_FACE vertind = %v", f.Vertind)
 	}
 }
 
@@ -1877,36 +1878,36 @@ func TestSynthR2013BHead(t *testing.T) {
 	// 短格式 ByLayer
 	w := bitstream.NewEncWriter()
 	gap2WriteR2013BHead(w, 0, -1, 0, true)
-	head, err := parseCommonEntityHeadR2013B(bitstream.NewBitStream(w.Bytes()), end)
+	head, err := entity.ParseCommonEntityHeadR2013B(bitstream.NewBitStream(w.Bytes()), end)
 	if err != nil {
 		t.Fatalf("短格式: %v", err)
 	}
-	if head.color.index != 256 || head.color.flag != 1 {
-		t.Errorf("ByLayer index/flag = %d/%d", head.color.index, head.color.flag)
+	if head.Color.Index != 256 || head.Color.Flag != 1 {
+		t.Errorf("ByLayer index/flag = %d/%d", head.Color.Index, head.Color.Flag)
 	}
 	// 短格式 ByBlock
 	w = bitstream.NewEncWriter()
 	gap2WriteR2013BHead(w, 0, -1, 0, false)
-	if head, err = parseCommonEntityHeadR2013B(bitstream.NewBitStream(w.Bytes()), end); err != nil || head.color.index != 0 {
-		t.Errorf("ByBlock: %v index=%d", err, head.color.index)
+	if head, err = entity.ParseCommonEntityHeadR2013B(bitstream.NewBitStream(w.Bytes()), end); err != nil || head.Color.Index != 0 {
+		t.Errorf("ByBlock: %v index=%d", err, head.Color.Index)
 	}
 	// 详细 ACI
 	w = bitstream.NewEncWriter()
 	gap2WriteR2013BHead(w, 0, 1, 0, false)
-	if head, err = parseCommonEntityHeadR2013B(bitstream.NewBitStream(w.Bytes()), end); err != nil || head.color.index != 3 {
-		t.Errorf("ACI: %v index=%d", err, head.color.index)
+	if head, err = entity.ParseCommonEntityHeadR2013B(bitstream.NewBitStream(w.Bytes()), end); err != nil || head.Color.Index != 3 {
+		t.Errorf("ACI: %v index=%d", err, head.Color.Index)
 	}
 	// 详细真彩 + alpha + preview 图像
 	w = bitstream.NewEncWriter()
 	gap2WriteR2013BHead(w, 4, 0, 0x8000|0x2000, false)
-	if head, err = parseCommonEntityHeadR2013B(bitstream.NewBitStream(w.Bytes()), end); err != nil {
+	if head, err = entity.ParseCommonEntityHeadR2013B(bitstream.NewBitStream(w.Bytes()), end); err != nil {
 		t.Fatalf("真彩: %v", err)
 	}
-	if !head.color.hasTrue || !head.color.hasAlpha {
-		t.Errorf("hasTrue=%v hasAlpha=%v", head.color.hasTrue, head.color.hasAlpha)
+	if !head.Color.HasTrue || !head.Color.HasAlpha {
+		t.Errorf("hasTrue=%v hasAlpha=%v", head.Color.HasTrue, head.Color.HasAlpha)
 	}
-	if !head.previewExists || len(head.preview) != 4 {
-		t.Errorf("preview = %v/%d", head.previewExists, len(head.preview))
+	if !head.PreviewExists || len(head.Preview) != 4 {
+		t.Errorf("preview = %v/%d", head.PreviewExists, len(head.Preview))
 	}
 }
 
@@ -2098,17 +2099,17 @@ func TestSynthMLeaderContextFull(t *testing.T) {
 	gap2Write3BD(w) // baseDir
 	gap2Write3BD(w) // baseVert
 	w.WriteB(true)  // isNormalReversed
-	m := &entMLeader{}
-	if err := decodeMLeaderContext(bitstream.NewBitStream(w.Bytes()), m, container.VerR2004, 0, nil); err != nil {
+	m := &entity.EntMLeader{}
+	if err := entity.DecodeMLeaderContext(bitstream.NewBitStream(w.Bytes()), m, container.VerR2004, 0, nil); err != nil {
 		t.Fatalf("txt ctx: %v", err)
 	}
-	if m.ctx.txt.defaultText != "hello" {
-		t.Errorf("defaultText = %q", m.ctx.txt.defaultText)
+	if m.Ctx.Txt.DefaultText != "hello" {
+		t.Errorf("defaultText = %q", m.Ctx.Txt.DefaultText)
 	}
-	if len(m.ctx.txt.colSizes) != 1 || m.ctx.txt.colSizes[0] != 9 {
-		t.Errorf("colSizes = %v", m.ctx.txt.colSizes)
+	if len(m.Ctx.Txt.ColSizes) != 1 || m.Ctx.Txt.ColSizes[0] != 9 {
+		t.Errorf("colSizes = %v", m.Ctx.Txt.ColSizes)
 	}
-	if !m.ctx.isNormalReversed {
+	if !m.Ctx.IsNormalReversed {
 		t.Error("isNormalReversed 应为 true")
 	}
 
@@ -2139,19 +2140,19 @@ func TestSynthMLeaderContextFull(t *testing.T) {
 	gap2Write3BD(w)
 	gap2Write3BD(w)
 	w.WriteB(false)
-	m = &entMLeader{}
-	if err := decodeMLeaderContext(bitstream.NewBitStream(w.Bytes()), m, container.VerR2004, 0, nil); err != nil {
+	m = &entity.EntMLeader{}
+	if err := entity.DecodeMLeaderContext(bitstream.NewBitStream(w.Bytes()), m, container.VerR2004, 0, nil); err != nil {
 		t.Fatalf("blk ctx: %v", err)
 	}
-	if !m.ctx.hasContentBlk || m.ctx.blk.rotation != 0.5 {
-		t.Errorf("blk = %v/%v", m.ctx.hasContentBlk, m.ctx.blk.rotation)
+	if !m.Ctx.HasContentBlk || m.Ctx.Blk.Rotation != 0.5 {
+		t.Errorf("blk = %v/%v", m.Ctx.HasContentBlk, m.Ctx.Blk.Rotation)
 	}
 }
 
 // TestDecodeSolidTolerantPaths SOLID 容忍解码三出口：首遍 sane、错位
 // 回退重试、起点在位 0 无法回退。
 func TestDecodeSolidTolerantPaths(t *testing.T) {
-	head := &commonEntityHead{handle: 0x2B, objSizeBit: 1 << 30}
+	head := &entity.CommonEntityHead{Handle: 0x2B, ObjSizeBit: 1 << 30}
 	build := func(xs ...float64) []byte {
 		w := bitstream.NewEncWriter()
 		w.WriteB(false) // thickness flag（0 → 后跟 BD）
@@ -2171,31 +2172,31 @@ func TestDecodeSolidTolerantPaths(t *testing.T) {
 	}
 	// 首遍 sane：正常坐标直接返回
 	r := bitstream.NewBitStream(build())
-	ent, err := decodeSolidTolerant(r, head, false)
+	ent, err := entity.DecodeSolidTolerant(r, head, false)
 	if err != nil {
 		t.Fatalf("sane: %v", err)
 	}
-	if s, ok := ent.(*entSolid); !ok || s.p1.x != 1 {
+	if s, ok := ent.(*entity.EntSolid); !ok || s.P1.X != 1 {
 		t.Errorf("sane 结果 = %T/%v", ent, ent)
 	}
 	// 首遍 denormal（p1.x=1e-40 非 0 且 <1e-30）→ 回退 1 位重试
 	r = bitstream.NewBitStream(build(1e-40))
-	ent, err = decodeSolidTolerant(r, head, false)
+	ent, err = entity.DecodeSolidTolerant(r, head, false)
 	if err != nil {
 		t.Fatalf("回退: %v", err)
 	}
-	if _, ok := ent.(*entSolid); !ok {
+	if _, ok := ent.(*entity.EntSolid); !ok {
 		t.Errorf("回退结果类型 = %T", ent)
 	}
 	// 起点在位 0：decodeSolidTolerant 直接返回首遍结果
 	data := build()
 	r2 := bitstream.NewBitStream(data)
 	// 人为把读取器推进到字节 0 位 0 等价起点（newBitStream 本身即 0/0）
-	ent2, err := decodeSolidTolerant(r2, head, false)
+	ent2, err := entity.DecodeSolidTolerant(r2, head, false)
 	if err != nil {
 		t.Fatalf("位 0: %v", err)
 	}
-	if _, ok := ent2.(*entSolid); !ok {
+	if _, ok := ent2.(*entity.EntSolid); !ok {
 		t.Errorf("位 0 结果类型 = %T", ent2)
 	}
 }

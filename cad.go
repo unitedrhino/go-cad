@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -38,9 +40,9 @@ type box2 struct {
 type Document struct {
 	version     container.DwgVersion
 	codepage    uint16
-	modelSpace  []any                 // 模型空间图元（entmode==2）
-	blocks      map[uint64][]any      // 块定义：BLOCK_HEADER handle → 块内图元
-	attribs     map[uint64]*entAttrib // ATTRIB handle → 属性
+	modelSpace  []any                        // 模型空间图元（entmode==2）
+	blocks      map[uint64][]any             // 块定义：BLOCK_HEADER handle → 块内图元
+	attribs     map[uint64]*entity.EntAttrib // ATTRIB handle → 属性
 	layerColors map[uint64]layerColor
 	// lightingUnits NOD 字典 LIGHTINGUNITS 条目的 DICTIONARYVAR 值（预扫描
 	// 产物，主循环前探测），=="2" 时 LIGHT 实体按光度分支解码
@@ -77,8 +79,8 @@ type Document struct {
 	// extMin/extMax 图幅范围（JSON HEADER EXTMIN/EXTMAX，渲染视口可用）；
 	// insbase 插入基点（INSBASE）；ltscale 全局线型比例（LTSCALE）。
 	// 与 HeaderVars 同源，仅 ParseJSON 路径填充。
-	extMin, extMax point3
-	insbase        point3
+	extMin, extMax entity.Point3
+	insbase        entity.Point3
 	ltscale        float64
 }
 
@@ -141,7 +143,7 @@ func Parse(data []byte) (*Document, error) {
 		version:         version,
 		codepage:        container.ReadCodepage(data),
 		blocks:          make(map[uint64][]any),
-		attribs:         make(map[uint64]*entAttrib),
+		attribs:         make(map[uint64]*entity.EntAttrib),
 		layerColors:     make(map[uint64]layerColor),
 		dictionaries:    make(map[uint64]*objDictionary),
 		xrecords:        make(map[uint64]*objXrecord),
@@ -299,7 +301,7 @@ func (d *Document) decodeObjects(fileData []byte) error {
 			d.classify(ent)
 			continue
 		}
-		ent, err := decodeEntityFieldsVer(r, h, ref.Handle, h.Rec.Size, objrec.EntityTypeName(h.TypeCode, dynamicTypes), h.TypeCode, d.version, d.codepage, dynamicTypes, d.lightingUnits)
+		ent, err := entity.DecodeEntityFieldsVer(r, h, ref.Handle, h.Rec.Size, objrec.EntityTypeName(h.TypeCode, dynamicTypes), h.TypeCode, d.version, d.codepage, dynamicTypes, d.lightingUnits)
 		if err != nil {
 			d.failBy(ref, fmt.Errorf("%s: %w", objrec.EntityTypeName(h.TypeCode, dynamicTypes), err))
 			d.skipped++
@@ -314,26 +316,26 @@ func (d *Document) decodeObjects(fileData []byte) error {
 
 // classify 按实体归属归类：entmode==2 → 模型空间；否则按 owner 归属块定义。
 func (d *Document) classify(ent any) {
-	ec, ok := ent.(entityCommon)
+	ec, ok := ent.(entity.EntityCommon)
 	if !ok {
 		return
 	}
 	if d.entityByHandle == nil {
 		d.entityByHandle = make(map[uint64]any)
 	}
-	if h := ec.common().handle; h != 0 {
+	if h := ec.Common().Handle; h != 0 {
 		d.entityByHandle[h] = ent
 	}
 	switch e := ent.(type) {
-	case *entAttrib:
-		d.attribs[e.handle] = e
+	case *entity.EntAttrib:
+		d.attribs[e.Handle] = e
 	}
 	switch {
-	case ec.common().mode == 1:
+	case ec.Common().Mode == 1:
 		// 图纸空间实体：不进模型空间渲染
-	case ec.common().mode == 0:
+	case ec.Common().Mode == 0:
 		// 块定义内容：按 owner 归属（模型空间块头的内容渲染时按最大块启发式并入）
-		if owner := ec.common().owner; owner != 0 {
+		if owner := ec.Common().Owner; owner != 0 {
 			d.blocks[owner] = append(d.blocks[owner], ent)
 		} else {
 			d.modelSpace = append(d.modelSpace, ent)
@@ -344,14 +346,6 @@ func (d *Document) classify(ent any) {
 	}
 }
 
-// entBase 提取实体公共字段。
-func entBase(ent any) *baseEntity {
-	if ec, ok := ent.(entityCommon); ok {
-		return ec.common()
-	}
-	return nil
-}
-
 // Texts 提取图纸全部文本：模型空间直接文本 + INSERT 属性文本（递归展开块）。
 func (d *Document) Texts() []TextInfo {
 	var out []TextInfo
@@ -359,26 +353,26 @@ func (d *Document) Texts() []TextInfo {
 	var collect func(ent any)
 	collect = func(ent any) {
 		switch e := ent.(type) {
-		case *entText:
-			out = append(out, TextInfo{Text: stripMTextFormat(e.text), Layer: e.layer, X: e.insertion.x, Y: e.insertion.y})
-		case *entMText:
-			out = append(out, TextInfo{Text: stripMTextFormat(e.text), Layer: e.layer, X: e.insertion.x, Y: e.insertion.y})
-		case *entAttrib:
-			if !seen[e.handle] {
-				seen[e.handle] = true
-				out = append(out, TextInfo{Text: stripMTextFormat(e.text), Layer: e.layer, X: e.insertion.x, Y: e.insertion.y})
+		case *entity.EntText:
+			out = append(out, TextInfo{Text: stripMTextFormat(e.Text), Layer: e.Layer, X: e.Insertion.X, Y: e.Insertion.Y})
+		case *entity.EntMText:
+			out = append(out, TextInfo{Text: stripMTextFormat(e.Text), Layer: e.Layer, X: e.Insertion.X, Y: e.Insertion.Y})
+		case *entity.EntAttrib:
+			if !seen[e.Handle] {
+				seen[e.Handle] = true
+				out = append(out, TextInfo{Text: stripMTextFormat(e.Text), Layer: e.Layer, X: e.Insertion.X, Y: e.Insertion.Y})
 			}
-		case *entInsert:
-			if seen[e.handle] {
+		case *entity.EntInsert:
+			if seen[e.Handle] {
 				return
 			}
-			seen[e.handle] = true
-			for _, ah := range e.attribs {
+			seen[e.Handle] = true
+			for _, ah := range e.Attribs {
 				if a, ok := d.attribs[ah]; ok {
 					collect(a)
 				}
 			}
-			for _, inner := range d.blocks[e.blockHeader] {
+			for _, inner := range d.blocks[e.BlockHeader] {
 				collect(inner)
 			}
 		}
@@ -444,20 +438,84 @@ func decodeVersionedEntity(r *bitstream.BitStream, h objrec.ObjHeader, objHandle
 	dataEnd := h.Rec.DataEndBit()
 	startByte, startBit := r.Cursor()
 	base := uint64(startByte)*8 + uint64(startBit)
-	parsers := headParsersForVersion(ver)
-	ent, _, err := scanEntityBest(r, base, dataEnd, hdlSizeFieldBits(h), parsers, objHandle, h.Rec.Size, typeName, h.TypeCode, func(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
+	parsers := entity.HeadParsersForVersion(ver)
+	ent, _, err := entity.ScanEntityBest(r, base, dataEnd, entity.HdlSizeFieldBits(h), parsers, objHandle, h.Rec.Size, typeName, h.TypeCode, func(r *bitstream.BitStream, head *entity.CommonEntityHead) (any, error) {
 		switch typeName {
 		case "WIPEOUT":
-			return decodeWipeoutVer(r, head, ver)
+			return entity.DecodeWipeoutVer(r, head, ver)
 		case "TOLERANCE":
-			return decodeToleranceVer(r, head, ver)
+			return entity.DecodeToleranceVer(r, head, ver)
 		case "VIEWPORT":
-			return decodeViewportVer(r, head, ver)
+			return entity.DecodeViewportVer(r, head, ver)
 		}
-		return decodeAcisVer(r, head, typeName, ver, ver)
+		return entity.DecodeAcisVer(r, head, typeName, ver, ver)
 	})
-	attachEntityRecordMeta(ent, h.Rec)
+	entity.AttachEntityRecordMeta(ent, h.Rec)
 	return ent, err
+}
+
+// assemblePolylineChildren 将顶点子实体聚合到所属多段线（渲染/对照用），
+// 在 classify 之后由 decodeObjects 统一调用。
+// R2004+ 的顶点句柄已在 decodePolyline* 的 handle 流中解码（ownedHandles
+// 非空，按流内顺序），不重复聚合；R13~R2000 通过 VERTEX.owner 归属收集，
+// 按 handle 升序排列（顶点句柄连续分配，升序即 first→last 链序）。
+func (d *Document) assemblePolylineChildren() {
+	parent2 := map[uint64]*entity.EntPolyline2d{}
+	parent3 := map[uint64]*entity.EntPolyline3d{}
+	link := func(list []any) {
+		for _, e := range list {
+			switch t := e.(type) {
+			case *entity.EntPolyline2d:
+				parent2[t.Handle] = t
+			case *entity.EntPolyline3d:
+				parent3[t.Handle] = t
+			}
+		}
+	}
+	link(d.modelSpace)
+	for _, list := range d.blocks {
+		link(list)
+	}
+	// verts2d/verts3d 按 owner 收集顶点句柄（升序由最终 sort 保证）
+	verts2d := map[uint64][]uint64{}
+	verts3d := map[uint64][]uint64{}
+	gather := func(list []any) {
+		for _, e := range list {
+			switch v := e.(type) {
+			case *entity.EntVertex2d:
+				if v.Owner != 0 {
+					verts2d[v.Owner] = append(verts2d[v.Owner], v.Handle)
+				}
+			case *entity.EntVertex3d:
+				if v.Owner != 0 {
+					verts3d[v.Owner] = append(verts3d[v.Owner], v.Handle)
+				}
+			}
+		}
+	}
+	gather(d.modelSpace)
+	for _, list := range d.blocks {
+		gather(list)
+	}
+	for h, p := range parent2 {
+		if len(p.OwnedHandles) > 0 {
+			continue
+		}
+		p.OwnedHandles = append(p.OwnedHandles, verts2d[h]...)
+		sortHandles(p.OwnedHandles)
+	}
+	for h, p := range parent3 {
+		if len(p.OwnedHandles) > 0 {
+			continue
+		}
+		p.OwnedHandles = append(p.OwnedHandles, verts3d[h]...)
+		sortHandles(p.OwnedHandles)
+	}
+}
+
+// sortHandles 句柄升序排序（顶点句柄连续分配时等价于 first→last 链序）。
+func sortHandles(hs []uint64) {
+	sort.Slice(hs, func(i, j int) bool { return hs[i] < hs[j] })
 }
 
 // stripMTextFormat 剥离 MTEXT 行内格式控制码（\\P 换行、{...} 分组、\\X 等）。
@@ -530,7 +588,7 @@ func parseR2000Document(data []byte) (*Document, error) {
 		version:     version,
 		codepage:    container.ReadCodepage(data),
 		blocks:      make(map[uint64][]any),
-		attribs:     make(map[uint64]*entAttrib),
+		attribs:     make(map[uint64]*entity.EntAttrib),
 		layerColors: make(map[uint64]layerColor),
 	}
 	doc.dictionaries = make(map[uint64]*objDictionary)
@@ -622,7 +680,7 @@ func parseR2000Document(data []byte) (*Document, error) {
 			doc.classify(ent)
 			continue
 		}
-		ent, err := decodeEntityFieldsVer(r, h, ref.Handle, h.Rec.Size, objrec.EntityTypeName(h.TypeCode, dynamicTypes), h.TypeCode, doc.version, doc.codepage, dynamicTypes, doc.lightingUnits)
+		ent, err := entity.DecodeEntityFieldsVer(r, h, ref.Handle, h.Rec.Size, objrec.EntityTypeName(h.TypeCode, dynamicTypes), h.TypeCode, doc.version, doc.codepage, dynamicTypes, doc.lightingUnits)
 		if err != nil {
 			doc.failBy(ref, fmt.Errorf("%s: %w", objrec.EntityTypeName(h.TypeCode, dynamicTypes), err))
 			doc.skipped++
@@ -693,8 +751,8 @@ func DebugLines(data []byte) map[uint64][6]float64 {
 	var walk func(ents []any)
 	walk = func(ents []any) {
 		for _, e := range ents {
-			if l, ok := e.(*entLine); ok {
-				out[l.handle] = [6]float64{l.start.x, l.start.y, l.start.z, l.end.x, l.end.y, l.end.z}
+			if l, ok := e.(*entity.EntLine); ok {
+				out[l.Handle] = [6]float64{l.Start.X, l.Start.Y, l.Start.Z, l.End.X, l.End.Y, l.End.Z}
 			}
 		}
 	}
@@ -943,7 +1001,7 @@ func expandAuditKeys(ent any, patterns []string) []string {
 func expandOneKey(ent any, pattern string) []string {
 	if !strings.Contains(pattern, "[i]") && !strings.Contains(pattern, "[j]") &&
 		!strings.Contains(pattern, "[k]") {
-		if entityField(ent, pattern) == nil {
+		if entity.EntityField(ent, pattern) == nil {
 			return nil
 		}
 		return []string{pattern}
@@ -978,14 +1036,14 @@ func expandOneKey(ent any, pattern string) []string {
 }
 
 // colorResolved 计算解析后的颜色（实体颜色优先，其次图层颜色）。
-func (d *Document) colorResolved(base *baseEntity) (any, any) {
-	if base.color.hasTrue {
-		return nil, base.color.trueColor & 0x00FFFFFF
+func (d *Document) colorResolved(base *entity.BaseEntity) (any, any) {
+	if base.Color.HasTrue {
+		return nil, base.Color.TrueColor & 0x00FFFFFF
 	}
-	if base.color.hasIndex && base.color.index != 0 && base.color.index != 256 && base.color.index != 257 {
-		return int64(base.color.index), nil
+	if base.Color.HasIndex && base.Color.Index != 0 && base.Color.Index != 256 && base.Color.Index != 257 {
+		return int64(base.Color.Index), nil
 	}
-	if lc, ok := d.layerColors[base.layer]; ok {
+	if lc, ok := d.layerColors[base.Layer]; ok {
 		if lc.hasTrue {
 			return nil, lc.trueColor & 0x00FFFFFF
 		}
@@ -997,17 +1055,17 @@ func (d *Document) colorResolved(base *baseEntity) (any, any) {
 }
 
 // commonDXF 公共字段。
-func (d *Document) commonDXF(base *baseEntity) map[string]any {
+func (d *Document) commonDXF(base *entity.BaseEntity) map[string]any {
 	owner := any(nil)
-	if base.owner != 0 {
-		owner = base.owner
+	if base.Owner != 0 {
+		owner = base.Owner
 	}
 	ci, tc := d.colorResolved(base)
 	return map[string]any{
 		"owner_handle": owner,
 		"color_index":  ci,
 		"true_color":   tc,
-		"layer_handle": base.layer,
+		"layer_handle": base.Layer,
 	}
 }
 
@@ -1034,12 +1092,12 @@ func DumpEntitiesDoc(doc *Document) (string, error) {
 func dumpEntities(doc *Document) (string, error) {
 	rows := make([]DumpEntityRow, 0, len(doc.modelSpace)+len(doc.blocks)+64)
 	for _, ent := range doc.modelSpaceEntities() {
-		base := entBase(ent)
+		base := entity.EntityBase(ent)
 		if base == nil {
 			continue
 		}
-		row := DumpEntityRow{Handle: base.handle, DXF: dxfOf(doc, ent, base)}
-		if t := dimGoldEntityName(base.typeName); t != "" {
+		row := DumpEntityRow{Handle: base.Handle, DXF: dxfOf(doc, ent, base)}
+		if t := entity.DimGoldEntityName(base.TypeName); t != "" {
 			row.Type = t
 		} else {
 			row.Type = "UNKNOWN"
@@ -1086,7 +1144,7 @@ func sanitizeJSONFloats(v any) any {
 // dxfOf 组装实体与参考实现对齐的字段集：gold 全键（entityGoldKeys +
 // 公共键序列）经 entityField 导出，另保留本库自有口径键（text/insert/
 // xscale 等既有消费方依赖）。
-func dxfOf(d *Document, ent any, base *baseEntity) map[string]any {
+func dxfOf(d *Document, ent any, base *entity.BaseEntity) map[string]any {
 	dxf := d.commonDXF(base)
 	// gold 全键：公共序列 + per-type 序列（[i] 占位按实体数组展开）
 	keys := make([]string, 0, len(dumpEntityCommonKeys)+48)
@@ -1100,72 +1158,72 @@ func dxfOf(d *Document, ent any, base *baseEntity) map[string]any {
 	for _, k := range dumpEntityCommonKeys {
 		add(k)
 	}
-	if tk, ok := entityGoldKeys[dimGoldEntityName(base.typeName)]; ok {
+	if tk, ok := entityGoldKeys[entity.DimGoldEntityName(base.TypeName)]; ok {
 		for _, k := range tk {
 			add(k)
 		}
 	}
 	for _, k := range expandAuditKeys(ent, keys) {
-		if v := entityField(ent, k); v != nil {
+		if v := entity.EntityField(ent, k); v != nil {
 			dxf[k] = v
 		}
 	}
 	// 自有口径键（既有消费方：文本提取一致性、几何渲染消费）
 	switch e := ent.(type) {
-	case *entLine:
-		dxf["start"] = p3slice(e.start)
-		dxf["end"] = p3slice(e.end)
-	case *entCircle:
-		dxf["center"] = p3slice(e.center)
-		dxf["radius"] = e.radius
-	case *entArc:
-		dxf["center"] = p3slice(e.center)
-		dxf["radius"] = e.radius
-		dxf["angle_start"] = rad2deg(e.angleStart)
-		dxf["angle_end"] = rad2deg(e.angleEnd)
-	case *entPoint:
-		dxf["location"] = p3slice(e.location)
-	case *entEllipse:
-		dxf["center"] = p3slice(e.center)
-		dxf["major_axis"] = p3slice(e.majorAxis)
-		dxf["axis_ratio"] = e.ratio
-	case *entLwPolyline:
-		pts := make([][]float64, 0, len(e.vertices))
-		for _, v := range e.vertices {
-			pts = append(pts, []float64{v.x, v.y, 0})
+	case *entity.EntLine:
+		dxf["start"] = p3slice(e.Start)
+		dxf["end"] = p3slice(e.End)
+	case *entity.EntCircle:
+		dxf["center"] = p3slice(e.Center)
+		dxf["radius"] = e.Radius
+	case *entity.EntArc:
+		dxf["center"] = p3slice(e.Center)
+		dxf["radius"] = e.Radius
+		dxf["angle_start"] = rad2deg(e.AngleStart)
+		dxf["angle_end"] = rad2deg(e.AngleEnd)
+	case *entity.EntPoint:
+		dxf["location"] = p3slice(e.Location)
+	case *entity.EntEllipse:
+		dxf["center"] = p3slice(e.Center)
+		dxf["major_axis"] = p3slice(e.MajorAxis)
+		dxf["axis_ratio"] = e.Ratio
+	case *entity.EntLwPolyline:
+		pts := make([][]float64, 0, len(e.Vertices))
+		for _, v := range e.Vertices {
+			pts = append(pts, []float64{v.X, v.Y, 0})
 		}
 		dxf["own_points"] = pts
-		dxf["own_flags"] = int64(e.flags)
-		dxf["closed"] = e.isClosedByGeometry()
-	case *entText:
-		dxf["text"] = e.text
-		dxf["insert"] = p3slice(e.insertion)
-		dxf["height"] = e.height
-		dxf["rotation_deg"] = rad2deg(e.rotation)
-	case *entMText:
-		dxf["own_text"] = stripMTextFormat(e.text)
-		dxf["insert"] = p3slice(e.insertion)
-		dxf["own_text_height"] = e.textHeight
-		dxf["own_rect_width"] = e.rectWidth
-	case *entInsert:
-		dxf["own_insert"] = p3slice(e.position)
-		dxf["xscale"] = e.scale.x
-		dxf["yscale"] = e.scale.y
-		dxf["zscale"] = e.scale.z
-		dxf["rotation_deg"] = rad2deg(e.rotation)
-	case *entAttrib:
-		dxf["own_text"] = e.text
-		dxf["own_insert"] = p3slice(e.insertion)
-		dxf["own_height"] = e.height
+		dxf["own_flags"] = int64(e.Flags)
+		dxf["closed"] = e.IsClosedByGeometry()
+	case *entity.EntText:
+		dxf["text"] = e.Text
+		dxf["insert"] = p3slice(e.Insertion)
+		dxf["height"] = e.Height
+		dxf["rotation_deg"] = rad2deg(e.Rotation)
+	case *entity.EntMText:
+		dxf["own_text"] = stripMTextFormat(e.Text)
+		dxf["insert"] = p3slice(e.Insertion)
+		dxf["own_text_height"] = e.TextHeight
+		dxf["own_rect_width"] = e.RectWidth
+	case *entity.EntInsert:
+		dxf["own_insert"] = p3slice(e.Position)
+		dxf["xscale"] = e.Scale.X
+		dxf["yscale"] = e.Scale.Y
+		dxf["zscale"] = e.Scale.Z
+		dxf["rotation_deg"] = rad2deg(e.Rotation)
+	case *entity.EntAttrib:
+		dxf["own_text"] = e.Text
+		dxf["own_insert"] = p3slice(e.Insertion)
+		dxf["own_height"] = e.Height
 	}
 	return dxf
 }
 
 // p3slice 3D 点转数组。
-func p3slice(p point3) []float64 { return []float64{p.x, p.y, p.z} }
+func p3slice(p entity.Point3) []float64 { return []float64{p.X, p.Y, p.Z} }
 
 // p2slice 2D 点转数组。
-func p2slice(p point2) []float64 { return []float64{p.x, p.y} }
+func p2slice(p entity.Point2) []float64 { return []float64{p.X, p.Y} }
 
 // rad2deg 弧度转角度（参考实现以角度对外）。
 func rad2deg(rad float64) float64 { return rad * 180 / math.Pi }
@@ -1227,12 +1285,12 @@ func DebugScanGoldLines(data []byte, gold map[uint64][6]float64) []string {
 		}
 		r := rec.BodyBitStream()
 		r.SetBitPos(h.DataStartBit)
-		ent, err := decodeEntityFieldsVer(r, h, ref.Handle, h.Rec.Size, "LINE", 30, container.VerR2018, 0, nil, "")
+		ent, err := entity.DecodeEntityFieldsVer(r, h, ref.Handle, h.Rec.Size, "LINE", 30, container.VerR2018, 0, nil, "")
 		if err != nil {
 			continue
 		}
-		line := ent.(*entLine)
-		if near(line.start.x, g[0]) && near(line.start.y, g[1]) && near(line.end.x, g[3]) && near(line.end.y, g[4]) {
+		line := ent.(*entity.EntLine)
+		if entity.Near(line.Start.X, g[0]) && entity.Near(line.Start.Y, g[1]) && entity.Near(line.End.X, g[3]) && entity.Near(line.End.Y, g[4]) {
 			out = append(out, fmt.Sprintf("handle=%d offset=%d 匹配", ref.Handle, ref.Offset))
 		}
 	}

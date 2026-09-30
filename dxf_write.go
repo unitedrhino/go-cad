@@ -35,6 +35,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"io"
 	"math"
 	"strconv"
@@ -77,17 +78,17 @@ func WriteDXF(doc *Document, w io.Writer) error {
 func dedupeByHandle(prev, base []any) []any {
 	seen := map[uint64]bool{}
 	for _, e := range prev {
-		if b := entBase(e); b != nil {
-			seen[b.handle] = true
+		if b := entity.EntityBase(e); b != nil {
+			seen[b.Handle] = true
 		}
 	}
 	var out []any
 	for _, e := range base {
-		b := entBase(e)
-		if b == nil || seen[b.handle] {
+		b := entity.EntityBase(e)
+		if b == nil || seen[b.Handle] {
 			continue
 		}
-		seen[b.handle] = true
+		seen[b.Handle] = true
 		out = append(out, e)
 	}
 	return out
@@ -212,23 +213,23 @@ func (x *dxfWriter) hex(code int, h uint64) {
 }
 
 // pt3 写 3D 点三行（10/20/30 起按偏移）。
-func (x *dxfWriter) pt3(code int, p point3) {
-	x.flt(code, p.x)
-	x.flt(code+10, p.y)
-	x.flt(code+20, p.z)
+func (x *dxfWriter) pt3(code int, p entity.Point3) {
+	x.flt(code, p.X)
+	x.flt(code+10, p.Y)
+	x.flt(code+20, p.Z)
 }
 
 // pt2 写 2D 点两行（10/20 起按偏移）。
-func (x *dxfWriter) pt2(code int, p point2) {
-	x.flt(code, p.x)
-	x.flt(code+10, p.y)
+func (x *dxfWriter) pt2(code int, p entity.Point2) {
+	x.flt(code, p.X)
+	x.flt(code+10, p.Y)
 }
 
 // vec3 写方向/挤出向量三行（210/220/230 起按偏移）。
-func (x *dxfWriter) vec3(code int, p point3) {
-	x.flt(code, p.x)
-	x.flt(code+10, p.y)
-	x.flt(code+20, p.z)
+func (x *dxfWriter) vec3(code int, p entity.Point3) {
+	x.flt(code, p.X)
+	x.flt(code+10, p.Y)
+	x.flt(code+20, p.Z)
 }
 
 // radDeg 写角度组码（50-54）：弧度 → 度（对齐 VALUE_BD 的 rad2deg 分支）。
@@ -248,13 +249,13 @@ func (x *dxfWriter) writeHeader(doc *Document) {
 	x.str(9, "$DWGCODEPAGE")
 	x.str(3, dxfCodepageName(doc.codepage))
 	x.str(9, "$INSBASE")
-	x.pt3(10, point3{})
+	x.pt3(10, entity.Point3{})
 
 	minX, minY, maxX, maxY := docBounds(doc)
 	x.str(9, "$EXTMIN")
-	x.pt3(10, point3{minX, minY, 0})
+	x.pt3(10, entity.Point3{minX, minY, 0})
 	x.str(9, "$EXTMAX")
-	x.pt3(10, point3{maxX, maxY, 0})
+	x.pt3(10, entity.Point3{maxX, maxY, 0})
 
 	x.str(0, "ENDSEC")
 }
@@ -395,25 +396,25 @@ func (x *dxfWriter) blockName(h uint64) string {
 
 // blockBasePoint 块定义句柄 → BLOCK_HEADER 基点（组码 10/20/30）；
 // 未解析（含全零）返回原点。JSON 来源的 base_pt 为 []any 数组形态。
-func (x *dxfWriter) blockBasePoint(h uint64) point3 {
+func (x *dxfWriter) blockBasePoint(h uint64) entity.Point3 {
 	g := x.doc.internalObjects[h]
 	if g == nil {
-		return point3{}
+		return entity.Point3{}
 	}
 	switch v := g.Field("base_pt").(type) {
 	case []float64:
 		if len(v) == 3 {
-			return point3{v[0], v[1], v[2]}
+			return entity.Point3{v[0], v[1], v[2]}
 		}
 	case []any:
 		if len(v) == 3 {
 			x0, _ := v[0].(float64)
 			y0, _ := v[1].(float64)
 			z0, _ := v[2].(float64)
-			return point3{x0, y0, z0}
+			return entity.Point3{x0, y0, z0}
 		}
 	}
-	return point3{}
+	return entity.Point3{}
 }
 
 // dxfCollectLayers 汇总 LAYER 表条目：先保证 0 层，再收解析到的颜色表与
@@ -444,8 +445,8 @@ func dxfCollectLayers(doc *Document) []dxfLayerRecord {
 		add(h)
 	}
 	for _, ent := range doc.modelSpaceEntities() {
-		if b := entBase(ent); b != nil {
-			add(b.layer)
+		if b := entity.EntityBase(ent); b != nil {
+			add(b.Layer)
 		}
 	}
 	return out
@@ -498,15 +499,15 @@ func newDXFHandleAlloc(doc *Document) *dxfHandleAlloc {
 	}
 	for _, list := range [][]any{doc.modelSpace, doc.pspaceSpace} {
 		for _, ent := range list {
-			if b := entBase(ent); b != nil {
-				bump(b.handle)
+			if b := entity.EntityBase(ent); b != nil {
+				bump(b.Handle)
 			}
 		}
 	}
 	for _, list := range doc.blocks {
 		for _, ent := range list {
-			if b := entBase(ent); b != nil {
-				bump(b.handle)
+			if b := entity.EntityBase(ent); b != nil {
+				bump(b.Handle)
 			}
 		}
 	}
@@ -539,7 +540,7 @@ func (x *dxfWriter) writeBlocks(doc *Document) {
 	x.str(2, "BLOCKS")
 
 	// *Model_Space：内容在 ENTITIES 段，块对恒空（对齐 dwg2dxf）
-	x.blockBegin(x.alloc.take(), x.alloc.msRecord, "*Model_Space", point3{})
+	x.blockBegin(x.alloc.take(), x.alloc.msRecord, "*Model_Space", entity.Point3{})
 	x.blockEnd(x.alloc.take(), x.alloc.msRecord)
 
 	largest := doc.largestBlockHeader()
@@ -566,9 +567,9 @@ func dxfPseudoBlockKeys(doc *Document) map[uint64]bool {
 	for _, list := range [][]any{doc.modelSpace, doc.pspaceSpace} {
 		for _, ent := range list {
 			switch ent.(type) {
-			case *entPolyline2d, *entPolyline3d, *entPolylinePface, *entPolylineMesh:
-				if b := entBase(ent); b != nil {
-					out[b.handle] = true
+			case *entity.EntPolyline2d, *entity.EntPolyline3d, *entity.EntPolylinePface, *entity.EntPolylineMesh:
+				if b := entity.EntityBase(ent); b != nil {
+					out[b.Handle] = true
 				}
 			}
 		}
@@ -577,7 +578,7 @@ func dxfPseudoBlockKeys(doc *Document) map[uint64]bool {
 }
 
 // blockBegin 输出 BLOCK 头（base 为 BLOCK_HEADER 解析基点，组码 10/20/30）。
-func (x *dxfWriter) blockBegin(handle, ownerRecord uint64, name string, base point3) {
+func (x *dxfWriter) blockBegin(handle, ownerRecord uint64, name string, base entity.Point3) {
 	x.str(0, "BLOCK")
 	x.hex(5, handle)
 	x.hex(330, ownerRecord)
@@ -618,32 +619,32 @@ func (x *dxfWriter) writeEntityList(list []any, pspace bool) {
 	owned := map[uint64]bool{}
 	for _, ent := range list {
 		switch e := ent.(type) {
-		case *entPolyline2d:
-			for _, h := range e.ownedHandles {
+		case *entity.EntPolyline2d:
+			for _, h := range e.OwnedHandles {
 				owned[h] = true
 			}
-		case *entPolyline3d:
-			for _, h := range e.ownedHandles {
+		case *entity.EntPolyline3d:
+			for _, h := range e.OwnedHandles {
 				owned[h] = true
 			}
-		case *entPolylineMesh:
-			for _, h := range e.ownedHandles {
+		case *entity.EntPolylineMesh:
+			for _, h := range e.OwnedHandles {
 				owned[h] = true
 			}
 		}
 	}
 	seen := map[uint64]bool{}
 	for _, ent := range list {
-		b := entBase(ent)
+		b := entity.EntityBase(ent)
 		if b == nil {
 			continue
 		}
-		if owned[b.handle] || seen[b.handle] {
+		if owned[b.Handle] || seen[b.Handle] {
 			continue // 顶点已由所属 POLYLINE 输出；重复句柄只输出一次
 		}
-		seen[b.handle] = true
+		seen[b.Handle] = true
 		switch ent.(type) {
-		case *entBlockLike, *entVertexPface, *entVertexPfaceFace:
+		case *entity.EntBlockLike, *entity.EntVertexPface, *entity.EntVertexPfaceFace:
 			// 块结构标记由块段/POLYLINE 聚合生成；PFACE 顶点随其 POLYLINE 跳过
 			continue
 		}
@@ -652,38 +653,38 @@ func (x *dxfWriter) writeEntityList(list []any, pspace bool) {
 }
 
 // entityHead 实体公共头（0/5/330/100 AcDbEntity/[67]/8），record 为 DXF 记录名。
-func (x *dxfWriter) entityHead(base *baseEntity, record string, pspace bool) {
+func (x *dxfWriter) entityHead(base *entity.BaseEntity, record string, pspace bool) {
 	x.str(0, record)
-	x.hex(5, base.handle)
+	x.hex(5, base.Handle)
 	x.hex(330, x.dxfOwnerRecord(base, pspace))
 	x.str(100, "AcDbEntity")
-	if pspace || base.mode == 1 {
+	if pspace || base.Mode == 1 {
 		x.int(67, 1)
 	}
-	x.str(8, x.layerName(base.layer))
+	x.str(8, x.layerName(base.Layer))
 	x.colorWrite(base)
 }
 
 // dxfOwnerRecord 实体的 330 归属：块内实体指 BLOCK_HEADER 句柄，
 // 图纸/模型空间实体指合成的 BLOCK_RECORD。
-func (x *dxfWriter) dxfOwnerRecord(base *baseEntity, pspace bool) uint64 {
-	if pspace || base.mode == 1 {
+func (x *dxfWriter) dxfOwnerRecord(base *entity.BaseEntity, pspace bool) uint64 {
+	if pspace || base.Mode == 1 {
 		return x.alloc.psRecord
 	}
-	if base.mode == 0 && base.owner != 0 {
-		return base.owner
+	if base.Mode == 0 && base.Owner != 0 {
+		return base.Owner
 	}
 	return x.alloc.msRecord
 }
 
 // colorWrite 输出实体颜色（true color 420 优先，其次 ACI 62；ByLayer 不输出）。
-func (x *dxfWriter) colorWrite(base *baseEntity) {
-	if base.color.hasTrue {
-		x.int(420, int64(base.color.trueColor&0x00FFFFFF))
+func (x *dxfWriter) colorWrite(base *entity.BaseEntity) {
+	if base.Color.HasTrue {
+		x.int(420, int64(base.Color.TrueColor&0x00FFFFFF))
 		return
 	}
-	if base.color.hasIndex && base.color.index != 256 {
-		x.int(62, int64(base.color.index))
+	if base.Color.HasIndex && base.Color.Index != 256 {
+		x.int(62, int64(base.Color.Index))
 	}
 }
 
@@ -702,291 +703,291 @@ func (x *dxfWriter) writeEntity(ent any, pspace bool) {
 	if x.err != nil {
 		return
 	}
-	base := entBase(ent)
+	base := entity.EntityBase(ent)
 	if base == nil {
 		return
 	}
 	switch e := ent.(type) {
-	case *entLine:
+	case *entity.EntLine:
 		x.entityHead(base, "LINE", pspace)
 		x.subclass("AcDbLine")
-		x.pt3(10, e.start)
-		x.pt3(11, e.end)
-	case *entCircle:
+		x.pt3(10, e.Start)
+		x.pt3(11, e.End)
+	case *entity.EntCircle:
 		x.entityHead(base, "CIRCLE", pspace)
 		x.subclass("AcDbCircle")
-		x.pt3(10, e.center)
-		x.flt(40, e.radius)
-	case *entArc:
+		x.pt3(10, e.Center)
+		x.flt(40, e.Radius)
+	case *entity.EntArc:
 		x.entityHead(base, "ARC", pspace)
 		x.subclass("AcDbCircle")
-		x.pt3(10, e.center)
-		x.flt(40, e.radius)
+		x.pt3(10, e.Center)
+		x.flt(40, e.Radius)
 		x.subclass("AcDbArc")
-		x.radDeg(50, e.angleStart)
-		x.radDeg(51, e.angleEnd)
-	case *entPoint:
+		x.radDeg(50, e.AngleStart)
+		x.radDeg(51, e.AngleEnd)
+	case *entity.EntPoint:
 		x.entityHead(base, "POINT", pspace)
 		x.subclass("AcDbPoint")
-		x.pt3(10, e.location)
-		x.radDeg(50, e.rotation)
-	case *entEllipse:
+		x.pt3(10, e.Location)
+		x.radDeg(50, e.Rotation)
+	case *entity.EntEllipse:
 		x.entityHead(base, "ELLIPSE", pspace)
 		x.subclass("AcDbEllipse")
-		x.pt3(10, e.center)
-		x.pt3(11, e.majorAxis)
-		x.flt(40, e.ratio)
-		x.flt(41, e.startAng)
-		x.flt(42, e.endAng)
-	case *entLwPolyline:
+		x.pt3(10, e.Center)
+		x.pt3(11, e.MajorAxis)
+		x.flt(40, e.Ratio)
+		x.flt(41, e.StartAng)
+		x.flt(42, e.EndAng)
+	case *entity.EntLwPolyline:
 		x.entityHead(base, "LWPOLYLINE", pspace)
 		x.subclass("AcDbPolyline")
-		x.int(90, int64(len(e.vertices)))
+		x.int(90, int64(len(e.Vertices)))
 		closed := int64(0)
-		if e.isClosedByGeometry() {
+		if e.IsClosedByGeometry() {
 			closed = 1
 		}
 		x.int(70, closed)
-		x.flt(43, e.constWidth)
-		if e.elevation != 0 {
-			x.flt(38, e.elevation)
+		x.flt(43, e.ConstWidth)
+		if e.Elevation != 0 {
+			x.flt(38, e.Elevation)
 		}
-		if e.thickness != 0 {
-			x.flt(39, e.thickness)
+		if e.Thickness != 0 {
+			x.flt(39, e.Thickness)
 		}
-		for i, v := range e.vertices {
+		for i, v := range e.Vertices {
 			x.pt2(10, v)
-			if i < len(e.bulges) && e.bulges[i] != 0 {
-				x.flt(42, e.bulges[i])
+			if i < len(e.Bulges) && e.Bulges[i] != 0 {
+				x.flt(42, e.Bulges[i])
 			}
 		}
-	case *entText:
+	case *entity.EntText:
 		x.entityHead(base, "TEXT", pspace)
 		x.subclass("AcDbText")
-		x.pt3(10, e.insertion)
-		x.flt(40, e.height)
-		x.str(1, e.text)
-		if e.rotation != 0 {
-			x.radDeg(50, e.rotation)
+		x.pt3(10, e.Insertion)
+		x.flt(40, e.Height)
+		x.str(1, e.Text)
+		if e.Rotation != 0 {
+			x.radDeg(50, e.Rotation)
 		}
 		x.styleWrite()
-		if e.gen != 0 {
-			x.int(71, int64(e.gen))
+		if e.Gen != 0 {
+			x.int(71, int64(e.Gen))
 		}
-		if e.hAlign != 0 {
-			x.int(72, int64(e.hAlign))
+		if e.HAlign != 0 {
+			x.int(72, int64(e.HAlign))
 		}
-		if e.alignPt != nil {
-			x.pt2(11, *e.alignPt)
+		if e.AlignPt != nil {
+			x.pt2(11, *e.AlignPt)
 			x.flt(31, 0)
 		} else {
-			x.pt2(11, point2{})
+			x.pt2(11, entity.Point2{})
 			x.flt(31, 0)
 		}
 		x.subclass("AcDbText") // ACAD 兼容：对齐点后重复一次子类标记
-		if e.vAlign != 0 {
-			x.int(73, int64(e.vAlign))
+		if e.VAlign != 0 {
+			x.int(73, int64(e.VAlign))
 		}
-	case *entMText:
+	case *entity.EntMText:
 		x.entityHead(base, "MTEXT", pspace)
 		x.subclass("AcDbMText")
-		x.pt3(10, e.insertion)
-		x.pt3(11, e.xAxisDir)
-		x.flt(40, e.textHeight)
-		x.flt(41, e.rectWidth)
-		x.int(71, int64(e.attachment))
-		x.dxfLongText(e.text)
+		x.pt3(10, e.Insertion)
+		x.pt3(11, e.XAxisDir)
+		x.flt(40, e.TextHeight)
+		x.flt(41, e.RectWidth)
+		x.int(71, int64(e.Attachment))
+		x.dxfLongText(e.Text)
 		x.styleWrite()
-	case *entInsert:
+	case *entity.EntInsert:
 		x.entityHead(base, "INSERT", pspace)
 		x.subclass("AcDbBlockReference")
-		x.str(2, x.blockName(e.blockHeader))
-		x.pt3(10, e.position)
-		x.flt(41, e.scale.x)
-		x.flt(42, e.scale.y)
-		x.flt(43, e.scale.z)
-		x.radDeg(50, e.rotation)
-	case *entAttrib:
+		x.str(2, x.blockName(e.BlockHeader))
+		x.pt3(10, e.Position)
+		x.flt(41, e.Scale.X)
+		x.flt(42, e.Scale.Y)
+		x.flt(43, e.Scale.Z)
+		x.radDeg(50, e.Rotation)
+	case *entity.EntAttrib:
 		x.entityHead(base, "ATTRIB", pspace)
 		x.subclass("AcDbAttribute")
-		x.pt3(10, e.insertion)
-		x.flt(40, e.height)
-		x.str(2, e.tag)
-		x.str(1, e.text)
-		if e.rotation != 0 {
-			x.radDeg(50, e.rotation)
+		x.pt3(10, e.Insertion)
+		x.flt(40, e.Height)
+		x.str(2, e.Tag)
+		x.str(1, e.Text)
+		if e.Rotation != 0 {
+			x.radDeg(50, e.Rotation)
 		}
 		x.styleWrite()
-		if e.gen != 0 {
-			x.int(71, int64(e.gen))
+		if e.Gen != 0 {
+			x.int(71, int64(e.Gen))
 		}
-		if e.hAlign != 0 {
-			x.int(72, int64(e.hAlign))
+		if e.HAlign != 0 {
+			x.int(72, int64(e.HAlign))
 		}
-		if e.vAlign != 0 {
-			x.int(74, int64(e.vAlign))
+		if e.VAlign != 0 {
+			x.int(74, int64(e.VAlign))
 		}
-	case *entSolid:
+	case *entity.EntSolid:
 		record := "SOLID"
-		if e.trace {
+		if e.Trace {
 			record = "TRACE"
 		}
 		x.entityHead(base, record, pspace)
 		x.subclass("AcDbTrace")
-		if e.elevation != 0 {
-			x.flt(38, e.elevation)
+		if e.Elevation != 0 {
+			x.flt(38, e.Elevation)
 		}
-		if e.thickness != 0 {
-			x.flt(39, e.thickness)
+		if e.Thickness != 0 {
+			x.flt(39, e.Thickness)
 		}
-		x.pt2(10, e.p1)
-		x.pt2(11, e.p2)
-		x.pt2(12, e.p3)
-		x.pt2(13, e.p4)
-		x.vec3(210, e.extrusion)
-	case *entFace3d:
+		x.pt2(10, e.P1)
+		x.pt2(11, e.P2)
+		x.pt2(12, e.P3)
+		x.pt2(13, e.P4)
+		x.vec3(210, e.Extrusion)
+	case *entity.EntFace3d:
 		x.entityHead(base, "3DFACE", pspace)
 		x.subclass("AcDbFace")
-		x.pt3(10, e.p1)
-		x.pt3(11, e.p2)
-		x.pt3(12, e.p3)
-		x.pt3(13, e.p4)
-		if e.invisibleEdgeFlags != 0 {
-			x.int(70, int64(e.invisibleEdgeFlags))
+		x.pt3(10, e.P1)
+		x.pt3(11, e.P2)
+		x.pt3(12, e.P3)
+		x.pt3(13, e.P4)
+		if e.InvisibleEdgeFlags != 0 {
+			x.int(70, int64(e.InvisibleEdgeFlags))
 		}
-	case *entRay:
+	case *entity.EntRay:
 		record := "RAY"
 		sub := "AcDbRay"
-		if e.xline {
+		if e.Xline {
 			record = "XLINE"
 			sub = "AcDbXline"
 		}
 		x.entityHead(base, record, pspace)
 		x.subclass(sub)
-		x.pt3(10, e.start)
-		x.pt3(11, e.unitVector)
-	case *entSpline:
+		x.pt3(10, e.Start)
+		x.pt3(11, e.UnitVector)
+	case *entity.EntSpline:
 		x.entityHead(base, "SPLINE", pspace)
 		x.subclass("AcDbSpline")
-		x.vec3(210, point3{0, 0, 1})
+		x.vec3(210, entity.Point3{0, 0, 1})
 		flag := int64(0)
-		if e.closed {
+		if e.Closed {
 			flag |= 1
 		}
-		if e.periodic {
+		if e.Periodic {
 			flag |= 2
 		}
-		if e.rational {
+		if e.Rational {
 			flag |= 4
 		}
 		x.int(70, flag)
-		x.int(71, int64(e.degree))
-		x.int(72, int64(len(e.knots)))
-		x.int(73, int64(len(e.controlPoints)))
-		x.int(74, int64(len(e.fitPoints)))
-		if e.fitTolerance != 0 {
-			x.flt(42, e.fitTolerance)
+		x.int(71, int64(e.Degree))
+		x.int(72, int64(len(e.Knots)))
+		x.int(73, int64(len(e.ControlPoints)))
+		x.int(74, int64(len(e.FitPoints)))
+		if e.FitTolerance != 0 {
+			x.flt(42, e.FitTolerance)
 		}
-		if e.knotTolerance != 0 {
-			x.flt(43, e.knotTolerance)
+		if e.KnotTolerance != 0 {
+			x.flt(43, e.KnotTolerance)
 		}
-		if e.ctrlTolerance != 0 {
-			x.flt(44, e.ctrlTolerance)
+		if e.CtrlTolerance != 0 {
+			x.flt(44, e.CtrlTolerance)
 		}
-		for _, k := range e.knots {
+		for _, k := range e.Knots {
 			x.flt(40, k)
 		}
-		for _, w := range e.weights {
+		for _, w := range e.Weights {
 			if w != 0 {
 				x.flt(41, w)
 			}
 		}
-		for _, p := range e.controlPoints {
+		for _, p := range e.ControlPoints {
 			x.pt3(10, p)
 		}
-		for _, p := range e.fitPoints {
+		for _, p := range e.FitPoints {
 			x.pt3(11, p)
 		}
-	case *entHatch:
+	case *entity.EntHatch:
 		x.writeHatch(e, pspace)
-	case *entDimension:
+	case *entity.EntDimension:
 		x.writeDimension(e, pspace)
-	case *entLeader:
+	case *entity.EntLeader:
 		x.entityHead(base, "LEADER", pspace)
 		x.subclass("AcDbLeader")
-		x.int(73, int64(e.annotationType))
-		x.int(72, int64(e.pathType))
-		x.int(76, int64(len(e.points)))
-		for _, p := range e.points {
+		x.int(73, int64(e.AnnotationType))
+		x.int(72, int64(e.PathType))
+		x.int(76, int64(len(e.Points)))
+		for _, p := range e.Points {
 			x.pt3(10, p)
 		}
-	case *entMLine:
+	case *entity.EntMLine:
 		x.entityHead(base, "MLINE", pspace)
 		x.subclass("AcDbMline")
-		if e.styleHandle != 0 {
-			x.hex(340, e.styleHandle)
+		if e.StyleHandle != 0 {
+			x.hex(340, e.StyleHandle)
 		}
-		x.flt(40, e.scale)
-		x.int(70, int64(e.justification))
-		x.pt3(10, point3{}) // 基点未解析，输出原点
-		x.vec3(210, point3{0, 0, 1})
-		x.int(71, int64(e.openClosed))
-		x.int(73, int64(e.linesInStyle))
-		x.int(72, int64(len(e.vertices)))
-		for _, v := range e.vertices {
-			x.pt3(11, v.position)
-			x.pt3(12, v.direction)
-			x.pt3(13, v.miter)
+		x.flt(40, e.Scale)
+		x.int(70, int64(e.Justification))
+		x.pt3(10, entity.Point3{}) // 基点未解析，输出原点
+		x.vec3(210, entity.Point3{0, 0, 1})
+		x.int(71, int64(e.OpenClosed))
+		x.int(73, int64(e.LinesInStyle))
+		x.int(72, int64(len(e.Vertices)))
+		for _, v := range e.Vertices {
+			x.pt3(11, v.Position)
+			x.pt3(12, v.Direction)
+			x.pt3(13, v.Miter)
 		}
-	case *entPolyline2d:
+	case *entity.EntPolyline2d:
 		x.writePolyline2d(e, pspace)
-	case *entPolyline3d:
+	case *entity.EntPolyline3d:
 		x.writePolyline3d(e, pspace)
-	case *entPolylinePface:
+	case *entity.EntPolylinePface:
 		x.writePolylinePface(e, pspace)
-	case *entPolylineMesh:
+	case *entity.EntPolylineMesh:
 		x.writePolylineMesh(e, pspace)
-	case *entShape:
+	case *entity.EntShape:
 		x.entityHead(base, "SHAPE", pspace)
 		x.subclass("AcDbShape")
-		x.pt3(10, e.insertion)
-		x.flt(40, e.scale)
-		if e.rotation != 0 {
-			x.radDeg(50, e.rotation)
+		x.pt3(10, e.Insertion)
+		x.flt(40, e.Scale)
+		if e.Rotation != 0 {
+			x.radDeg(50, e.Rotation)
 		}
-		if e.widthFactor != 1 {
-			x.flt(41, e.widthFactor)
+		if e.WidthFactor != 1 {
+			x.flt(41, e.WidthFactor)
 		}
-		if e.oblique != 0 {
-			x.radDeg(51, e.oblique)
+		if e.Oblique != 0 {
+			x.radDeg(51, e.Oblique)
 		}
-		if e.thickness != 0 {
-			x.flt(39, e.thickness)
+		if e.Thickness != 0 {
+			x.flt(39, e.Thickness)
 		}
-		x.vec3(210, e.extrusion)
-	case *entTolerance:
+		x.vec3(210, e.Extrusion)
+	case *entity.EntTolerance:
 		x.entityHead(base, "TOLERANCE", pspace)
 		x.subclass("AcDbFcf")
-		x.pt3(10, e.insertion)
-		x.pt3(11, e.xDirection)
-		x.str(1, e.text)
-	case *entImage:
-		x.writeRasterImage("IMAGE", "AcDbRasterImage", e.classVersion,
-			e.pt0, e.uvec, e.vvec, e.imageSize, e.displayProps, e.clipping,
-			e.brightness, e.contrast, e.fade, e.clipMode, e.clipBoundaryType,
-			e.clipVerts, e.imageDef, e.imageDefReactor, base, pspace)
-	case *entWipeout:
-		x.writeRasterImage("WIPEOUT", "AcDbWipeout", e.classVersion,
-			e.pt0, e.uvec, e.vvec, e.imageSize, e.displayProps, e.clipping,
-			e.brightness, e.contrast, e.fade, e.clipMode, e.clipBoundaryType,
-			e.clipVerts, e.imageDef, e.imageDefReactor, base, pspace)
-	case *entViewport:
+		x.pt3(10, e.Insertion)
+		x.pt3(11, e.XDirection)
+		x.str(1, e.Text)
+	case *entity.EntImage:
+		x.writeRasterImage("IMAGE", "AcDbRasterImage", e.ClassVersion,
+			e.Pt0, e.Uvec, e.Vvec, e.ImageSize, e.DisplayProps, e.Clipping,
+			e.Brightness, e.Contrast, e.Fade, e.ClipMode, e.ClipBoundaryType,
+			e.ClipVerts, e.ImageDef, e.ImageDefReactor, base, pspace)
+	case *entity.EntWipeout:
+		x.writeRasterImage("WIPEOUT", "AcDbWipeout", e.ClassVersion,
+			e.Pt0, e.Uvec, e.Vvec, e.ImageSize, e.DisplayProps, e.Clipping,
+			e.Brightness, e.Contrast, e.Fade, e.ClipMode, e.ClipBoundaryType,
+			e.ClipVerts, e.ImageDef, e.ImageDefReactor, base, pspace)
+	case *entity.EntViewport:
 		x.writeViewport(e, pspace)
-	case *entAcis:
+	case *entity.EntAcis:
 		x.writeAcis(e, pspace)
-	case *entOle2Frame:
+	case *entity.EntOle2Frame:
 		x.writeOle2Frame(e, pspace)
-	case *entProxyEntity:
+	case *entity.EntProxyEntity:
 		x.writeProxyEntity(e, pspace)
 	}
 }
@@ -1016,17 +1017,17 @@ func (x *dxfWriter) dxfBinaryChunks(code int, data []byte) {
 // 对角点（宿主 OLE 头未解析，输出原点）/71 类型/72 tile_mode/73
 // lock_aspect/90 数据大小/310 二进制块/1 "OLE" 固定标记。oleclient
 // （组码 3）依赖 OLE 头解析，省略。
-func (x *dxfWriter) writeOle2Frame(e *entOle2Frame, pspace bool) {
-	x.entityHead(&e.baseEntity, "OLE2FRAME", pspace)
+func (x *dxfWriter) writeOle2Frame(e *entity.EntOle2Frame, pspace bool) {
+	x.entityHead(&e.BaseEntity, "OLE2FRAME", pspace)
 	x.subclass("AcDbOle2Frame")
 	x.int(70, 2)
-	x.pt3(10, point3{})
-	x.pt3(11, point3{})
-	x.int(71, int64(e.oleType))
-	x.int(72, int64(e.mode))
-	x.int(73, int64(e.lockAspect))
-	x.int(90, int64(e.dataSize))
-	x.dxfBinaryChunks(310, e.data)
+	x.pt3(10, entity.Point3{})
+	x.pt3(11, entity.Point3{})
+	x.int(71, int64(e.OleType))
+	x.int(72, int64(e.Mode))
+	x.int(73, int64(e.LockAspect))
+	x.int(90, int64(e.DataSize))
+	x.dxfBinaryChunks(310, e.Data)
 	x.str(1, "OLE")
 }
 
@@ -1034,20 +1035,20 @@ func (x *dxfWriter) writeOle2Frame(e *entOle2Frame, pspace bool) {
 // dwg.spec DWG_ENTITY (PROXY_ENTITY) 的 DXF 分支——90 proxy_id/95
 // 版本/70 原始数据格式/92+310 代理图形数据/93+310 原始数据位串。
 // class_id（91）与 objids 尾表不在本库模型中，省略。
-func (x *dxfWriter) writeProxyEntity(e *entProxyEntity, pspace bool) {
-	x.entityHead(&e.baseEntity, "PROXY_ENTITY", pspace)
+func (x *dxfWriter) writeProxyEntity(e *entity.EntProxyEntity, pspace bool) {
+	x.entityHead(&e.BaseEntity, "PROXY_ENTITY", pspace)
 	x.subclass("AcDbProxyEntity")
-	x.int(90, int64(e.proxyID))
-	version := e.version
+	x.int(90, int64(e.ProxyID))
+	version := e.Version
 	if x.doc != nil && x.doc.version >= container.VerR2018 {
-		version = (e.maintVersion << 8) | e.dwgVersionNum
+		version = (e.MaintVersion << 8) | e.DwgVersionNum
 	}
 	x.int(95, int64(version))
-	x.int(70, boolToInt(e.fromDxf))
-	x.int(92, int64(e.proxyDataSize))
-	x.dxfBinaryChunks(310, e.proxyData)
-	x.int(93, int64(e.dataNumBits))
-	x.dxfBinaryChunks(310, e.data)
+	x.int(70, boolToInt(e.FromDxf))
+	x.int(92, int64(e.ProxyDataSize))
+	x.dxfBinaryChunks(310, e.ProxyData)
+	x.int(93, int64(e.DataNumBits))
+	x.dxfBinaryChunks(310, e.Data)
 }
 
 // writeAcis REGION/3DSOLID/BODY 写出（极限批次 A 补齐）：组码对照
@@ -1057,24 +1058,24 @@ func (x *dxfWriter) writeProxyEntity(e *entProxyEntity, pspace bool) {
 // （b≤32 保留、否则 159-b）再加密后输出，行内 '^' 转义为 "^ "（in_dxf
 // 读回还原为明文 'A'）。version=2（SAB 二进制）需完整 ACIS 编解码器
 // 才能转 SAT1，如实跳过数据段（实体骨架保留）。
-func (x *dxfWriter) writeAcis(e *entAcis, pspace bool) {
-	record := e.kind
+func (x *dxfWriter) writeAcis(e *entity.EntAcis, pspace bool) {
+	record := e.Kind
 	if record == "" {
 		record = "3DSOLID"
 	}
-	x.entityHead(&e.baseEntity, record, pspace)
+	x.entityHead(&e.BaseEntity, record, pspace)
 	x.subclass("AcDbModelerGeometry")
-	x.int(290, boolToInt(e.acisEmpty))
-	if e.acisEmpty || e.version == 2 {
+	x.int(290, boolToInt(e.AcisEmpty))
+	if e.AcisEmpty || e.Version == 2 {
 		return
 	}
 	x.int(70, 1)
-	for _, line := range strings.Split(string(e.acisData), "\n") {
+	for _, line := range strings.Split(string(e.AcisData), "\n") {
 		line = strings.TrimSuffix(line, "\r")
 		if line == "" {
 			continue
 		}
-		enc := acisDeobfuscate([]byte(line))
+		enc := entity.AcisDeobfuscate([]byte(line))
 		enc = []byte(strings.ReplaceAll(string(enc), "^", "^ "))
 		for len(enc) > 255 {
 			x.val(1, strings.TrimRight(string(enc[:255]), "\x00"))
@@ -1090,50 +1091,50 @@ func (x *dxfWriter) writeAcis(e *entAcis, pspace bool) {
 // 42-45 镜头前后裁剪视高/50-51 角度（度）/72 圆缩放/90 状态/1 样式表/
 // 281 渲染模式/71/74 UCS 标志/110-112 UCS 三轴/79 正交视图/146 标高；
 // 170 阴影模式与 61 网格主数非零才输出（版本条件组码，对齐 SINCE 分支）。
-func (x *dxfWriter) writeViewport(e *entViewport, pspace bool) {
-	x.entityHead(&e.baseEntity, "VIEWPORT", pspace)
+func (x *dxfWriter) writeViewport(e *entity.EntViewport, pspace bool) {
+	x.entityHead(&e.BaseEntity, "VIEWPORT", pspace)
 	x.subclass("AcDbViewport")
-	x.pt3(10, e.center)
-	x.flt(40, e.width)
-	x.flt(41, e.height)
+	x.pt3(10, e.Center)
+	x.flt(40, e.Width)
+	x.flt(41, e.Height)
 	// 68/69：无归属（owner=0，paperspace 总视口）恒 0；其余 on_off=1、
 	// id 按 R2000+ 口径自增（对齐 spec DXF 分支 last_viewport_id）
 	onOff, id := 0, 0
-	if e.owner != 0 {
+	if e.Owner != 0 {
 		onOff = 1
 		x.vpID++
 		id = int(x.vpID)
 	}
 	x.int(68, int64(onOff))
 	x.int(69, int64(id))
-	x.pt2(12, e.viewCtr)
-	x.pt2(13, e.snapBase)
-	x.pt2(14, e.snapUnit)
-	x.pt2(15, e.gridUnit)
-	x.pt3(16, e.viewDir)
-	x.pt3(17, e.viewTarget)
-	x.flt(42, e.lensLength)
-	x.flt(43, e.frontZ)
-	x.flt(44, e.backZ)
-	x.flt(45, e.viewSize)
-	x.radDeg(50, e.snapAng)
-	x.radDeg(51, e.viewTwist)
-	x.int(72, int64(e.circleZoom))
-	x.int(90, int64(e.statusFlag))
-	x.val(1, dxfSanitizeText(e.styleSheet))
-	x.int(281, int64(e.renderMode))
-	x.int(71, boolToInt(e.ucsVP))
-	x.int(74, boolToInt(e.ucsAtOrigin))
-	x.pt3(110, e.ucsorg)
-	x.pt3(111, e.ucsxdir)
-	x.pt3(112, e.ucsydir)
-	x.int(79, int64(e.ucsOrthoView))
-	x.flt(146, e.ucsElevation)
-	if e.shadeplotMode != 0 {
-		x.int(170, int64(e.shadeplotMode))
+	x.pt2(12, e.ViewCtr)
+	x.pt2(13, e.SnapBase)
+	x.pt2(14, e.SnapUnit)
+	x.pt2(15, e.GridUnit)
+	x.pt3(16, e.ViewDir)
+	x.pt3(17, e.ViewTarget)
+	x.flt(42, e.LensLength)
+	x.flt(43, e.FrontZ)
+	x.flt(44, e.BackZ)
+	x.flt(45, e.ViewSize)
+	x.radDeg(50, e.SnapAng)
+	x.radDeg(51, e.ViewTwist)
+	x.int(72, int64(e.CircleZoom))
+	x.int(90, int64(e.StatusFlag))
+	x.val(1, dxfSanitizeText(e.StyleSheet))
+	x.int(281, int64(e.RenderMode))
+	x.int(71, boolToInt(e.UcsVP))
+	x.int(74, boolToInt(e.UcsAtOrigin))
+	x.pt3(110, e.Ucsorg)
+	x.pt3(111, e.Ucsxdir)
+	x.pt3(112, e.Ucsydir)
+	x.int(79, int64(e.UcsOrthoView))
+	x.flt(146, e.UcsElevation)
+	if e.ShadeplotMode != 0 {
+		x.int(170, int64(e.ShadeplotMode))
 	}
-	if e.gridMajor != 0 {
-		x.int(61, int64(e.gridMajor))
+	if e.GridMajor != 0 {
+		x.int(61, int64(e.GridMajor))
 	}
 }
 
@@ -1143,17 +1144,17 @@ func (x *dxfWriter) writeViewport(e *entViewport, pspace bool) {
 // 280 裁剪/281-283 亮度对比淡出/360 IMAGEDEF_REACTOR/71 边界类型/
 // 91+14/24 裁剪顶点/290 裁剪模式（R2010+ 才输出，对齐 spec SINCE 分支）。
 func (x *dxfWriter) writeRasterImage(record, subclass string, classVersion uint32,
-	pt0, uvec, vvec point3, imageSize point2, displayProps uint16, clipping bool,
+	pt0, uvec, vvec entity.Point3, imageSize entity.Point2, displayProps uint16, clipping bool,
 	brightness, contrast, fade uint8, clipMode uint8, clipBoundaryType uint16,
-	clipVerts []point2, imageDef, imageDefReactor uint64, base *baseEntity, pspace bool) {
+	clipVerts []entity.Point2, imageDef, imageDefReactor uint64, base *entity.BaseEntity, pspace bool) {
 	x.entityHead(base, record, pspace)
 	x.subclass(subclass)
 	x.int(90, int64(classVersion))
 	x.pt3(10, pt0)
 	x.pt3(11, uvec)
 	x.pt3(12, vvec)
-	x.flt(13, imageSize.x)
-	x.flt(23, imageSize.y)
+	x.flt(13, imageSize.X)
+	x.flt(23, imageSize.Y)
 	x.hex(340, imageDef)
 	x.int(70, int64(displayProps))
 	x.int(280, boolToInt(clipping))
@@ -1166,8 +1167,8 @@ func (x *dxfWriter) writeRasterImage(record, subclass string, classVersion uint3
 		x.int(91, int64(len(clipVerts)))
 	}
 	for _, v := range clipVerts {
-		x.flt(14, v.x)
-		x.flt(24, v.y)
+		x.flt(14, v.X)
+		x.flt(24, v.Y)
 	}
 	if clipMode != 0 && x.doc != nil && x.doc.version >= container.VerR2010 {
 		x.int(290, int64(clipMode))
@@ -1195,8 +1196,8 @@ func (x *dxfWriter) dxfLongText(text string) {
 
 // dxfVertexIndex 全文档 2D/3D 顶点索引（POLYLINE 聚合用）。
 type dxfVertexIndex struct {
-	v2 map[uint64]*entVertex2d
-	v3 map[uint64]*entVertex3d
+	v2 map[uint64]*entity.EntVertex2d
+	v3 map[uint64]*entity.EntVertex3d
 	// PFACE/MESH 顶点按宿主句柄分组（entVertexPface 定位顶点 +
 	// entVertexPfaceFace 面记录），与 vpAll 句柄索引互为补充
 	vp    map[uint64][]any
@@ -1206,28 +1207,28 @@ type dxfVertexIndex struct {
 // newDXFVertexIndex 收集模型空间/块/图纸空间全部顶点实体。
 func newDXFVertexIndex(doc *Document) *dxfVertexIndex {
 	idx := &dxfVertexIndex{
-		v2:    map[uint64]*entVertex2d{},
-		v3:    map[uint64]*entVertex3d{},
+		v2:    map[uint64]*entity.EntVertex2d{},
+		v3:    map[uint64]*entity.EntVertex3d{},
 		vp:    map[uint64][]any{},
 		vpAll: map[uint64]any{},
 	}
 	add := func(list []any) {
 		for _, e := range list {
 			switch t := e.(type) {
-			case *entVertex2d:
-				idx.v2[t.handle] = t
-			case *entVertex3d:
-				idx.v3[t.handle] = t
-			case *entVertexPface:
-				if t.owner != 0 {
-					idx.vp[t.owner] = append(idx.vp[t.owner], t)
+			case *entity.EntVertex2d:
+				idx.v2[t.Handle] = t
+			case *entity.EntVertex3d:
+				idx.v3[t.Handle] = t
+			case *entity.EntVertexPface:
+				if t.Owner != 0 {
+					idx.vp[t.Owner] = append(idx.vp[t.Owner], t)
 				}
-				idx.vpAll[t.handle] = t
-			case *entVertexPfaceFace:
-				if t.owner != 0 {
-					idx.vp[t.owner] = append(idx.vp[t.owner], t)
+				idx.vpAll[t.Handle] = t
+			case *entity.EntVertexPfaceFace:
+				if t.Owner != 0 {
+					idx.vp[t.Owner] = append(idx.vp[t.Owner], t)
 				}
-				idx.vpAll[t.handle] = t
+				idx.vpAll[t.Handle] = t
 			}
 		}
 	}
@@ -1240,72 +1241,72 @@ func newDXFVertexIndex(doc *Document) *dxfVertexIndex {
 }
 
 // writePolyline2d 二维多段线：POLYLINE 头 + VERTEX 序列 + SEQEND。
-func (x *dxfWriter) writePolyline2d(e *entPolyline2d, pspace bool) {
-	x.entityHead(&e.baseEntity, "POLYLINE", pspace)
+func (x *dxfWriter) writePolyline2d(e *entity.EntPolyline2d, pspace bool) {
+	x.entityHead(&e.BaseEntity, "POLYLINE", pspace)
 	x.subclass("AcDb2dPolyline")
 	x.int(66, 1) // 顶点跟随标志
 	x.flt(10, 0)
 	x.flt(20, 0)
-	x.flt(30, e.elevation)
+	x.flt(30, e.Elevation)
 	closed := int64(0)
-	if e.flags&2 != 0 {
+	if e.Flags&2 != 0 {
 		closed = 1
 	}
 	x.int(70, closed)
-	if e.thickness != 0 {
-		x.flt(39, e.thickness)
+	if e.Thickness != 0 {
+		x.flt(39, e.Thickness)
 	}
-	if e.widthStart != 0 {
-		x.flt(40, e.widthStart)
+	if e.WidthStart != 0 {
+		x.flt(40, e.WidthStart)
 	}
-	if e.widthEnd != 0 {
-		x.flt(41, e.widthEnd)
+	if e.WidthEnd != 0 {
+		x.flt(41, e.WidthEnd)
 	}
-	for _, h := range e.ownedHandles {
+	for _, h := range e.OwnedHandles {
 		v, ok := x.verts.v2[h]
 		if !ok {
 			continue
 		}
-		x.entityHead(&v.baseEntity, "VERTEX", pspace)
+		x.entityHead(&v.BaseEntity, "VERTEX", pspace)
 		x.subclass("AcDbVertex")
 		x.subclass("AcDb2dVertex")
-		x.pt3(10, v.position)
-		if v.startWidth != 0 {
-			x.flt(40, v.startWidth)
+		x.pt3(10, v.Position)
+		if v.StartWidth != 0 {
+			x.flt(40, v.StartWidth)
 		}
-		if v.endWidth != 0 {
-			x.flt(41, v.endWidth)
+		if v.EndWidth != 0 {
+			x.flt(41, v.EndWidth)
 		}
-		if v.bulge != 0 {
-			x.flt(42, v.bulge)
+		if v.Bulge != 0 {
+			x.flt(42, v.Bulge)
 		}
-		x.int(70, int64(v.flags))
+		x.int(70, int64(v.Flags))
 	}
 	x.seqend(pspace)
 }
 
 // writePolyline3d 三维多段线：POLYLINE 头（70 恒含 8=3D 位）+ VERTEX（70=32）+ SEQEND。
-func (x *dxfWriter) writePolyline3d(e *entPolyline3d, pspace bool) {
-	x.entityHead(&e.baseEntity, "POLYLINE", pspace)
+func (x *dxfWriter) writePolyline3d(e *entity.EntPolyline3d, pspace bool) {
+	x.entityHead(&e.BaseEntity, "POLYLINE", pspace)
 	x.subclass("AcDb3dPolyline")
 	x.int(66, 1)
 	x.flt(10, 0)
 	x.flt(20, 0)
 	x.flt(30, 0)
 	flag := int64(8)
-	if e.flags70&1 != 0 {
+	if e.Flags70&1 != 0 {
 		flag |= 1
 	}
 	x.int(70, flag)
-	for _, h := range e.ownedHandles {
+	for _, h := range e.OwnedHandles {
 		v, ok := x.verts.v3[h]
 		if !ok {
 			continue
 		}
-		x.entityHead(&v.baseEntity, "VERTEX", pspace)
+		x.entityHead(&v.BaseEntity, "VERTEX", pspace)
 		x.subclass("AcDbVertex")
 		x.subclass("AcDb3dPolylineVertex")
-		x.pt3(10, v.position)
+		x.pt3(10, v.Position)
 		x.int(70, 32)
 	}
 	x.seqend(pspace)
@@ -1316,34 +1317,34 @@ func (x *dxfWriter) writePolyline3d(e *entPolyline3d, pspace bool) {
 // 70=流内 flag，DWG 实测 192）+ 面记录（AcDbFaceRecord，70=128 +
 // 71-74 顶点索引）+ SEQEND。顶点实体按 owner 归属分组消费，组码对照
 // dwg.spec POLYLINE_PFACE/VERTEX_PFACE/VERTEX_PFACE_FACE 的 DXF 分支。
-func (x *dxfWriter) writePolylinePface(e *entPolylinePface, pspace bool) {
-	x.entityHead(&e.baseEntity, "POLYLINE", pspace)
+func (x *dxfWriter) writePolylinePface(e *entity.EntPolylinePface, pspace bool) {
+	x.entityHead(&e.BaseEntity, "POLYLINE", pspace)
 	x.subclass("AcDbPolyFaceMesh")
 	x.int(66, 1)
 	x.flt(10, 0)
 	x.flt(20, 0)
 	x.flt(30, 0)
 	x.int(70, 64)
-	x.int(71, int64(e.numVertices))
-	x.int(72, int64(e.numFaces))
-	for _, v := range x.verts.vp[e.handle] {
+	x.int(71, int64(e.NumVertices))
+	x.int(72, int64(e.NumFaces))
+	for _, v := range x.verts.vp[e.Handle] {
 		switch t := v.(type) {
-		case *entVertexPface:
-			x.entityHead(&t.baseEntity, "VERTEX", pspace)
+		case *entity.EntVertexPface:
+			x.entityHead(&t.BaseEntity, "VERTEX", pspace)
 			x.subclass("AcDbVertex")
 			x.subclass("AcDbPolyFaceMeshVertex")
-			x.pt3(10, t.position)
-			x.int(70, int64(t.flag))
-		case *entVertexPfaceFace:
-			x.entityHead(&t.baseEntity, "VERTEX", pspace)
+			x.pt3(10, t.Position)
+			x.int(70, int64(t.Flag))
+		case *entity.EntVertexPfaceFace:
+			x.entityHead(&t.BaseEntity, "VERTEX", pspace)
 			x.subclass("AcDbVertex")
 			x.subclass("AcDbFaceRecord")
-			x.pt3(10, point3{})
+			x.pt3(10, entity.Point3{})
 			x.int(70, 128)
-			x.int(71, int64(t.vertind[0]))
-			x.int(72, int64(t.vertind[1]))
-			x.int(73, int64(t.vertind[2]))
-			x.int(74, int64(t.vertind[3]))
+			x.int(71, int64(t.Vertind[0]))
+			x.int(72, int64(t.Vertind[1]))
+			x.int(73, int64(t.Vertind[2]))
+			x.int(74, int64(t.Vertind[3]))
 		}
 	}
 	x.seqend(pspace)
@@ -1353,41 +1354,41 @@ func (x *dxfWriter) writePolylinePface(e *entPolylinePface, pspace bool) {
 // 71-75 M/N 顶点数与密度、曲面类型）+ VERTEX（AcDbPolyFaceMeshVertex，
 // 按 ownedHandles 顺序展开）+ SEQEND。组码对照 dwg.spec POLYLINE_MESH
 // 的 DXF 分支（closed 位并入 flag 低位）。
-func (x *dxfWriter) writePolylineMesh(e *entPolylineMesh, pspace bool) {
-	x.entityHead(&e.baseEntity, "POLYLINE", pspace)
+func (x *dxfWriter) writePolylineMesh(e *entity.EntPolylineMesh, pspace bool) {
+	x.entityHead(&e.BaseEntity, "POLYLINE", pspace)
 	x.subclass("AcDbPolygonMesh")
 	x.int(66, 1)
 	x.flt(10, 0)
 	x.flt(20, 0)
 	x.flt(30, 0)
 	flag := int64(16)
-	if e.flags&1 != 0 {
+	if e.Flags&1 != 0 {
 		flag |= 1
 	}
 	x.int(70, flag)
-	x.int(71, int64(e.mVertexCount))
-	x.int(72, int64(e.nVertexCount))
-	x.int(73, int64(e.mDensity))
-	x.int(74, int64(e.nDensity))
-	x.int(75, int64(e.curveType))
-	for _, h := range e.ownedHandles {
+	x.int(71, int64(e.MVertexCount))
+	x.int(72, int64(e.NVertexCount))
+	x.int(73, int64(e.MDensity))
+	x.int(74, int64(e.NDensity))
+	x.int(75, int64(e.CurveType))
+	for _, h := range e.OwnedHandles {
 		switch t := x.verts.vpAll[h].(type) {
-		case *entVertexPface:
-			x.entityHead(&t.baseEntity, "VERTEX", pspace)
+		case *entity.EntVertexPface:
+			x.entityHead(&t.BaseEntity, "VERTEX", pspace)
 			x.subclass("AcDbVertex")
 			x.subclass("AcDbPolyFaceMeshVertex")
-			x.pt3(10, t.position)
-			x.int(70, int64(t.flag))
-		case *entVertexPfaceFace:
-			x.entityHead(&t.baseEntity, "VERTEX", pspace)
+			x.pt3(10, t.Position)
+			x.int(70, int64(t.Flag))
+		case *entity.EntVertexPfaceFace:
+			x.entityHead(&t.BaseEntity, "VERTEX", pspace)
 			x.subclass("AcDbVertex")
 			x.subclass("AcDbFaceRecord")
-			x.pt3(10, point3{})
+			x.pt3(10, entity.Point3{})
 			x.int(70, 128)
-			x.int(71, int64(t.vertind[0]))
-			x.int(72, int64(t.vertind[1]))
-			x.int(73, int64(t.vertind[2]))
-			x.int(74, int64(t.vertind[3]))
+			x.int(71, int64(t.Vertind[0]))
+			x.int(72, int64(t.Vertind[1]))
+			x.int(73, int64(t.Vertind[2]))
+			x.int(74, int64(t.Vertind[3]))
 		}
 	}
 	x.seqend(pspace)
@@ -1412,51 +1413,51 @@ func (x *dxfWriter) seqend(pspace bool) {
 // 点列）写出；图案定义按解析结果输出（solidFill 时读者无需图案段）。
 // 组码顺序对齐 dwg.spec 的 DXF 分支：92(bit1=polyline)/72/73/93/10+20/97，
 // 尾随 75/76 与图案段 52/41/77/78/53/43/44/45/46/79/49。
-func (x *dxfWriter) writeHatch(e *entHatch, pspace bool) {
-	x.entityHead(&e.baseEntity, "HATCH", pspace)
+func (x *dxfWriter) writeHatch(e *entity.EntHatch, pspace bool) {
+	x.entityHead(&e.BaseEntity, "HATCH", pspace)
 	x.subclass("AcDbHatch")
 	x.flt(10, 0)
 	x.flt(20, 0)
-	x.flt(30, e.elevation)
-	x.vec3(210, e.extrusion)
-	if e.solidFill {
+	x.flt(30, e.Elevation)
+	x.vec3(210, e.Extrusion)
+	if e.SolidFill {
 		x.str(2, "SOLID")
 	} else {
-		x.str(2, e.name)
+		x.str(2, e.Name)
 	}
-	x.int(70, boolToInt(e.solidFill))
-	x.int(71, boolToInt(e.associative))
-	x.int(91, int64(len(e.paths)))
-	for _, p := range e.paths {
+	x.int(70, boolToInt(e.SolidFill))
+	x.int(71, boolToInt(e.Associative))
+	x.int(91, int64(len(e.Paths)))
+	for _, p := range e.Paths {
 		// LibreDWG 以 bit1 判定 polyline 路径（非 DXF 文档的 bit0）；
 		// 清 bit2（derived）避免读者期待随后的 47 pixel_size
-		x.int(92, (int64(p.flag)|2)&^4)
+		x.int(92, (int64(p.Flag)|2)&^4)
 		x.int(72, 0) // bulges_present=0：细分点列不携带 bulge
-		x.int(73, boolToInt(p.closed))
-		x.int(93, int64(len(p.points)))
-		for _, v := range p.points {
+		x.int(73, boolToInt(p.Closed))
+		x.int(93, int64(len(p.Points)))
+		for _, v := range p.Points {
 			x.pt2(10, v)
 		}
 		x.int(97, 0) // 源边界对象数
 	}
-	x.int(75, int64(e.style))
-	x.int(76, int64(e.patternType))
-	if !e.solidFill {
-		x.flt(52, e.angle)
-		if e.scaleSpacing != 1 {
-			x.flt(41, e.scaleSpacing)
+	x.int(75, int64(e.Style))
+	x.int(76, int64(e.PatternType))
+	if !e.SolidFill {
+		x.flt(52, e.Angle)
+		if e.ScaleSpacing != 1 {
+			x.flt(41, e.ScaleSpacing)
 		}
-		x.int(77, boolToInt(e.doubleFlag))
-		x.int(78, int64(len(e.deflines)))
-		for _, d := range e.deflines {
+		x.int(77, boolToInt(e.DoubleFlag))
+		x.int(78, int64(len(e.Deflines)))
+		for _, d := range e.Deflines {
 			// 2BD_1 组码：y 值组码为 x 组码 +1（43/44、45/46）
-			x.flt(53, d.angle)
-			x.flt(43, d.pt0.x)
-			x.flt(44, d.pt0.y)
-			x.flt(45, d.offset.x)
-			x.flt(46, d.offset.y)
-			x.int(79, int64(len(d.dashes)))
-			for _, dash := range d.dashes {
+			x.flt(53, d.Angle)
+			x.flt(43, d.Pt0.X)
+			x.flt(44, d.Pt0.Y)
+			x.flt(45, d.Offset.X)
+			x.flt(46, d.Offset.Y)
+			x.int(79, int64(len(d.Dashes)))
+			for _, dash := range d.Dashes {
 				x.flt(49, dash)
 			}
 		}
@@ -1465,30 +1466,30 @@ func (x *dxfWriter) writeHatch(e *entHatch, pspace bool) {
 	// 未建模）。组码与顺序对照 dwg.spec HATCH 主体尾部与
 	// _HATCH_gradientfill（out_dxf 同序）：98 → 450/451/460/461/452/
 	// 462/453/463+63/421 逐色 → 470。
-	x.int(98, int64(len(e.seeds)))
-	for _, s := range e.seeds {
+	x.int(98, int64(len(e.Seeds)))
+	for _, s := range e.Seeds {
 		x.pt2(10, s)
 	}
-	if e.isGradientFill != 0 {
-		x.int(450, int64(e.isGradientFill))
-		x.int(451, int64(e.reserved))
-		x.radDeg(460, e.gradientAngle) // 模型侧弧度 → DXF 度
-		x.flt(461, e.gradientShift)
-		x.int(452, int64(e.singleColorGradient))
-		x.flt(462, e.gradientTint)
-		x.int(453, int64(len(e.colors)))
-		for _, c := range e.colors {
-			x.flt(463, c.shiftValue)
-			x.int(63, c.colorIndex)
+	if e.IsGradientFill != 0 {
+		x.int(450, int64(e.IsGradientFill))
+		x.int(451, int64(e.Reserved))
+		x.radDeg(460, e.GradientAngle) // 模型侧弧度 → DXF 度
+		x.flt(461, e.GradientShift)
+		x.int(452, int64(e.SingleColorGradient))
+		x.flt(462, e.GradientTint)
+		x.int(453, int64(len(e.Colors)))
+		for _, c := range e.Colors {
+			x.flt(463, c.ShiftValue)
+			x.int(63, c.ColorIndex)
 			// CMC rgb 的 method 高字节为 0xc2（真彩无 index 混合）时
 			// out_dxf 不输出 421，其余按 63+420-62=421 输出完整 32 位
-			if rgb, err := strconv.ParseUint(c.colorRGB, 16, 32); err == nil {
+			if rgb, err := strconv.ParseUint(c.ColorRGB, 16, 32); err == nil {
 				if rgb>>24 != 0xc2 {
 					x.int(421, int64(rgb))
 				}
 			}
 		}
-		x.str(470, e.gradientName)
+		x.str(470, e.GradientName)
 	}
 }
 
@@ -1525,54 +1526,54 @@ func dxfDimSubclass(flag uint8) string {
 // writeDimension 标注：公共段（AcDbDimension）+ 类型专属子类段。
 // 定义点映射与 dxf_cross_test 对齐：非 ANG2LN 的 10=point10；
 // ANG2LN 的 10=（point16x,p16y）、16=point10。
-func (x *dxfWriter) writeDimension(e *entDimension, pspace bool) {
-	sub := dxfDimSubclass(e.dimFlag)
+func (x *dxfWriter) writeDimension(e *entity.EntDimension, pspace bool) {
+	sub := dxfDimSubclass(e.DimFlag)
 	ang2ln := sub == "AcDb2LineAngularDimension"
-	x.entityHead(&e.baseEntity, "DIMENSION", pspace)
+	x.entityHead(&e.BaseEntity, "DIMENSION", pspace)
 	x.subclass("AcDbDimension")
 	if ang2ln {
-		x.flt(10, e.point16x)
-		x.flt(20, e.p16y)
+		x.flt(10, e.Point16x)
+		x.flt(20, e.P16y)
 		x.flt(30, 0)
 	} else {
-		x.pt3(10, e.point10)
+		x.pt3(10, e.Point10)
 	}
-	x.pt3(11, e.textMidpoint)
-	x.int(70, int64(e.dimFlag))
-	if e.userText != "" {
-		x.str(1, e.userText)
+	x.pt3(11, e.TextMidpoint)
+	x.int(70, int64(e.DimFlag))
+	if e.UserText != "" {
+		x.str(1, e.UserText)
 	}
-	if e.attachmentPoint != 0 {
-		x.int(71, int64(e.attachmentPoint))
+	if e.AttachmentPoint != 0 {
+		x.int(71, int64(e.AttachmentPoint))
 	}
-	if e.actualMeasurement != 0 {
-		x.flt(42, e.actualMeasurement)
+	if e.ActualMeasurement != 0 {
+		x.flt(42, e.ActualMeasurement)
 	}
-	if e.insertRotation != 0 {
-		x.radDeg(54, e.insertRotation)
+	if e.InsertRotation != 0 {
+		x.radDeg(54, e.InsertRotation)
 	}
-	if e.horizontalDir != 0 {
-		x.radDeg(51, e.horizontalDir)
+	if e.HorizontalDir != 0 {
+		x.radDeg(51, e.HorizontalDir)
 	}
-	if e.textRotation != 0 {
-		x.radDeg(53, e.textRotation)
+	if e.TextRotation != 0 {
+		x.radDeg(53, e.TextRotation)
 	}
-	x.pt3(13, e.point13)
-	x.pt3(14, e.point14)
+	x.pt3(13, e.Point13)
+	x.pt3(14, e.Point14)
 
 	x.subclass(sub)
 	switch sub {
 	case "AcDb2LineAngularDimension":
-		x.pt3(15, e.point15)
-		x.pt3(16, e.point10)
+		x.pt3(15, e.Point15)
+		x.pt3(16, e.Point10)
 	case "AcDb3PointAngularDimension":
-		x.pt3(15, e.point15)
+		x.pt3(15, e.Point15)
 	case "AcDbRotatedDimension", "AcDbAlignedDimension":
-		if e.dimRotation != 0 {
-			x.radDeg(50, e.dimRotation)
+		if e.DimRotation != 0 {
+			x.radDeg(50, e.DimRotation)
 		}
-		if e.extLineRotation != 0 {
-			x.radDeg(52, e.extLineRotation)
+		if e.ExtLineRotation != 0 {
+			x.radDeg(52, e.ExtLineRotation)
 		}
 	}
 }

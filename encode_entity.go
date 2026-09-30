@@ -13,49 +13,8 @@ import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
-	"github.com/unitedrhino/go-cad/internal/objrec"
+	"github.com/unitedrhino/go-cad/internal/entity"
 )
-
-// collectEntityRawBits 收集实体 round-trip 回放所需的原始位串（解码侧）：
-// preBits = [body 局部 0, startBit)（MS 后填充、类型码与扫描跳过位），
-// headRawBits = [startBit, handle 流起点)（公共头与专有字段，含流内
-// RL objSize 原值），RawHandleBits = [handle 流起点, 记录尾)（handle 流、
-// R2007+ 字符串区与 R2010+ 尾部 UMC）。handle 流起点取公共头解析结果
-// head.objSizeBit（objSizeInSub 布局为流内 RL 值，externalSize 布局为
-// dataEndBit，均为 body 局部坐标）；结构异常（handle 流起点越出候选起点
-// 与数据区末尾之间）时放弃收集，回放端按缺少位串处理。
-func collectEntityRawBits(r *bitstream.BitStream, b *baseEntity, head *commonEntityHead, startBit, dataEnd uint64) {
-	if b == nil || head == nil {
-		return
-	}
-	total := uint64(len(r.Src)) * 8
-	hdStart := head.objSizeBit
-	if hdStart < startBit || hdStart > dataEnd || dataEnd > total {
-		return
-	}
-	b.preBits = bitstream.CollectBits(r, 0, startBit)
-	b.headRawBits = bitstream.CollectBits(r, startBit, hdStart)
-	b.RawHandleBits = bitstream.CollectBits(r, hdStart, total)
-}
-
-// attachEntityRecordMeta 回填源记录元数据（解码侧挂载）：重解码端重建
-// objectRecord 时需要 MS size 与 R2010+ 的 UMC 元数据（dataEndBit 推导
-// 依赖 size/handleSizeFieldBits/handleStreamSizeBits/bodyBitOffset），
-// 这些值无法在 scanEntityBest 内部获得，由版本化解码入口补记。
-func attachEntityRecordMeta(ent any, rec *objrec.ObjectRecord) {
-	if ent == nil || rec == nil {
-		return
-	}
-	b := entBase(ent)
-	if b == nil {
-		return
-	}
-	b.r2010Plus = rec.R2010Plus
-	b.sizeBytes = rec.Size
-	b.hSizeField = rec.HandleSizeFieldBits
-	b.hssBits = rec.HandleStreamSizeBits
-	b.bodyBitOff = rec.BodyBitOffset
-}
 
 // encodeEntityR200x 将实体重编码为完整记录 body 位流（R13-R2018 家族
 // 通用）：preBits + headRawBits + RawHandleBits 三段原样回放，返回 body
@@ -64,13 +23,13 @@ func attachEntityRecordMeta(ent any, rec *objrec.ObjectRecord) {
 // 能力边界处理。
 func encodeEntityR200x(ent any, ver container.DwgVersion) ([]byte, uint64, error) {
 	_ = ver // 回放方案与版本无关：位串原样保留全部版本差异
-	b := entBase(ent)
-	if b == nil || b.headRawBits == "" || b.RawHandleBits == "" {
+	b := entity.EntityBase(ent)
+	if b == nil || b.HeadRawBits == "" || b.RawHandleBits == "" {
 		return nil, 0, fmt.Errorf("cad: 实体 round-trip 缺少位串收集")
 	}
 	w := bitstream.NewEncWriter()
-	w.WriteBitsString(b.preBits)
-	w.WriteBitsString(b.headRawBits)
+	w.WriteBitsString(b.PreBits)
+	w.WriteBitsString(b.HeadRawBits)
 	datEnd := w.TellBits()
 	w.WriteBitsString(b.RawHandleBits)
 	return w.Bytes(), datEnd, nil

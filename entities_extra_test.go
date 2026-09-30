@@ -5,6 +5,7 @@ package cad
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
@@ -29,27 +30,27 @@ func writeMTextR2004Body(w *testsupport.BitWriter, text string) {
 }
 
 func TestDecodeMTextR2004FromBits(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x2C)
-	writeCommonHead(w, 21, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x2C)
+	testsupport.WriteCommonHead(w, 21, 2)
 	writeMTextR2004Body(w, "Hello MText")
 	r := bitstream.NewBitStream(w.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
-	ent, err := decodeMTextVer(r, &head, 30, false, false, container.VerR2000)
+	head, _ := entity.ParseEntityHead(r, 0, entity.FeatMaterialFlags|entity.FeatVisualStyles|entity.FeatDSBinary)
+	ent, err := entity.DecodeMTextVer(r, &head, 30, false, false, container.VerR2000)
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := ent.(*entMText)
-	if m.text != "Hello MText" || m.insertion.x != 1 || m.rectWidth != 50 || m.textHeight != 3 {
-		t.Fatalf("MTEXT: %q ins=%v w=%v h=%v", m.text, m.insertion, m.rectWidth, m.textHeight)
+	m := ent.(*entity.EntMText)
+	if m.Text != "Hello MText" || m.Insertion.X != 1 || m.RectWidth != 50 || m.TextHeight != 3 {
+		t.Fatalf("MTEXT: %q ins=%v w=%v h=%v", m.Text, m.Insertion, m.RectWidth, m.TextHeight)
 	}
 }
 
 func TestDecodeMTextR2018FromBits(t *testing.T) {
 	// R2007+ 布局：rect_height + TU 文本 + 行距 + 背景标志
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x2C)
-	writeCommonHead(w, 22, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x2C)
+	testsupport.WriteCommonHead(w, 22, 2)
 	w.B3BD(1, 2, 0)
 	w.B3BD(0, 0, 1)
 	w.B3BD(1, 0, 0)
@@ -68,23 +69,23 @@ func TestDecodeMTextR2018FromBits(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
-	ent, err := decodeMText(r, &head, 30, container.VerR2007)
+	head, _ := entity.ParseEntityHead(r, 0, entity.FeatMaterialFlags|entity.FeatVisualStyles|entity.FeatDSBinary)
+	ent, err := entity.DecodeMText(r, &head, 30, container.VerR2007)
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := ent.(*entMText)
-	if m.text != "你好MText" || m.insertion.x != 1 {
-		t.Fatalf("MTEXT R2018: %q", m.text)
+	m := ent.(*entity.EntMText)
+	if m.Text != "你好MText" || m.Insertion.X != 1 {
+		t.Fatalf("MTEXT R2018: %q", m.Text)
 	}
 }
 
 func TestDecodeAttribFromBits(t *testing.T) {
 	// ATTRIB 复用 TEXT 布局 + 尾部 tag 串
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x02)
-	writeCommonHead(w, 23, 2)
-	flags := uint8(textFlagNoElevation | textFlagNoAlign | textFlagNoOblique | textFlagNoWidth |
-		textFlagNoGen | textFlagNoHAlign | textFlagNoVAlign)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x02)
+	testsupport.WriteCommonHead(w, 23, 2)
+	flags := uint8(entity.TextFlagNoElevation | entity.TextFlagNoAlign | entity.TextFlagNoOblique | entity.TextFlagNoWidth |
+		entity.TextFlagNoGen | entity.TextFlagNoHAlign | entity.TextFlagNoVAlign)
 	w.RC(flags)
 	w.RD(1.0)
 	w.RD(2.0)
@@ -97,26 +98,26 @@ func TestDecodeAttribFromBits(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
-	ent, err := decodeAttribVer(r, &head, 30, true, container.VerR2018, false)
+	head, _ := entity.ParseEntityHead(r, 0, entity.FeatMaterialFlags|entity.FeatVisualStyles|entity.FeatDSBinary)
+	ent, err := entity.DecodeAttribVer(r, &head, 30, true, container.VerR2018, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := ent.(*entAttrib)
-	if a.text != "ATTR-VALUE" || a.height != 1.5 {
-		t.Fatalf("ATTRIB: %q h=%v", a.text, a.height)
+	a := ent.(*entity.EntAttrib)
+	if a.Text != "ATTR-VALUE" || a.Height != 1.5 {
+		t.Fatalf("ATTRIB: %q h=%v", a.Text, a.Height)
 	}
 }
 
 // TestDecodeInsertWithHandleStream INSERT 完整测试：几何 + handle 流（owner/xdic/layer/块头）。
 func TestDecodeInsertWithHandleStream(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x07)
-	writeCommonHead(w, 30, 0) // entmode=0 → 有 owner 句柄
-	w.B3BD(1, 1, 0)           // position（短格式 BD：1→2 位、0→2 位）
-	w.BB(0x03)                // scale 全 1
-	w.BD(0)                   // rotation
-	w.B3BD(0, 0, 1)           // extrusion
-	w.B(0)                    // 无 attribs
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x07)
+	testsupport.WriteCommonHead(w, 30, 0) // entmode=0 → 有 owner 句柄
+	w.B3BD(1, 1, 0)                       // position（短格式 BD：1→2 位、0→2 位）
+	w.BB(0x03)                            // scale 全 1
+	w.BD(0)                               // rotation
+	w.B3BD(0, 0, 1)                       // extrusion
+	w.B(0)                                // 无 attribs
 	// 几何结束位：前缀 18 位（UMC 8 + OT 10）+ 公共头 40 位 + 几何 17 位
 	// （pos B3BD(1,1,0)=6 位、scale BB=2、rotation BD(0)=2、extrusion B3BD(0,0,1)=6、attribs B=1）
 	const dataEndBit = uint64(18 + 40 + 17)
@@ -134,52 +135,52 @@ func TestDecodeInsertWithHandleStream(t *testing.T) {
 	r := bitstream.NewBitStream(body)
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, herr := parseEntityHead(r, dataEndBit, featMaterialFlags|featVisualStyles|featDSBinary)
+	head, herr := entity.ParseEntityHead(r, dataEndBit, entity.FeatMaterialFlags|entity.FeatVisualStyles|entity.FeatDSBinary)
 	if herr != nil {
 		t.Fatal(herr)
 	}
 	_ = rec // 记录元数据由 head 携带
-	ent, derr := decodeInsert(r, &head, container.VerR2013)
+	ent, derr := entity.DecodeInsert(r, &head, container.VerR2013)
 	if derr != nil {
 		t.Fatalf("INSERT 解码失败: %v", derr)
 	}
-	ins := ent.(*entInsert)
-	if ins.position.x != 1 || ins.blockHeader != 77 {
-		t.Fatalf("INSERT: pos=%v block=%d", ins.position, ins.blockHeader)
+	ins := ent.(*entity.EntInsert)
+	if ins.Position.X != 1 || ins.BlockHeader != 77 {
+		t.Fatalf("INSERT: pos=%v block=%d", ins.Position, ins.BlockHeader)
 	}
 }
 
 func TestClassifyEntityModes(t *testing.T) {
 	d := &Document{
 		blocks:  map[uint64][]any{},
-		attribs: map[uint64]*entAttrib{},
+		attribs: map[uint64]*entity.EntAttrib{},
 	}
 	// mode=2 → 模型空间
-	line := &entLine{baseEntity: baseEntity{handle: 1, mode: 2}}
+	line := &entity.EntLine{BaseEntity: entity.BaseEntity{Handle: 1, Mode: 2}}
 	d.classify(line)
 	if len(d.modelSpace) != 1 {
 		t.Fatalf("mode2 应进模型空间: %d", len(d.modelSpace))
 	}
 	// mode=0 + owner → 块定义
-	line2 := &entLine{baseEntity: baseEntity{handle: 2, mode: 0, owner: 77}}
+	line2 := &entity.EntLine{BaseEntity: entity.BaseEntity{Handle: 2, Mode: 0, Owner: 77}}
 	d.classify(line2)
 	if len(d.blocks[77]) != 1 {
 		t.Fatalf("mode0+owner 应进块定义: %v", d.blocks[77])
 	}
 	// mode=1 → 图纸空间，不进任何容器
-	line3 := &entLine{baseEntity: baseEntity{handle: 3, mode: 1}}
+	line3 := &entity.EntLine{BaseEntity: entity.BaseEntity{Handle: 3, Mode: 1}}
 	d.classify(line3)
 	if len(d.modelSpace) != 1 || len(d.blocks[77]) != 1 {
 		t.Fatal("mode1 不应进模型空间或块")
 	}
 	// mode=3 → 模型空间（对齐参考实现）
-	line4 := &entLine{baseEntity: baseEntity{handle: 4, mode: 3}}
+	line4 := &entity.EntLine{BaseEntity: entity.BaseEntity{Handle: 4, Mode: 3}}
 	d.classify(line4)
 	if len(d.modelSpace) != 2 {
 		t.Fatalf("mode3 应进模型空间: %d", len(d.modelSpace))
 	}
 	// ATTRIB 注册
-	attrib := &entAttrib{baseEntity: baseEntity{handle: 5, mode: 2}}
+	attrib := &entity.EntAttrib{BaseEntity: entity.BaseEntity{Handle: 5, Mode: 2}}
 	d.classify(attrib)
 	if d.attribs[5] != attrib {
 		t.Fatal("ATTRIB 应注册到 attribs")
@@ -189,18 +190,18 @@ func TestClassifyEntityModes(t *testing.T) {
 func TestDocumentTextsDedupAndBlocks(t *testing.T) {
 	d := &Document{
 		blocks:  map[uint64][]any{},
-		attribs: map[uint64]*entAttrib{},
+		attribs: map[uint64]*entity.EntAttrib{},
 	}
 	// 块内文本 + 引用它的 INSERT
 	d.blocks[77] = []any{
-		&entText{baseEntity: baseEntity{handle: 2}, text: "BLOCK-TEXT", insertion: point3{1, 1, 0}},
+		&entity.EntText{BaseEntity: entity.BaseEntity{Handle: 2}, Text: "BLOCK-TEXT", Insertion: entity.Point3{1, 1, 0}},
 	}
-	ins := &entInsert{
-		baseEntity:  baseEntity{handle: 3, mode: 2},
-		blockHeader: 77,
-		attribs:     []uint64{9},
+	ins := &entity.EntInsert{
+		BaseEntity:  entity.BaseEntity{Handle: 3, Mode: 2},
+		BlockHeader: 77,
+		Attribs:     []uint64{9},
 	}
-	d.modelSpace = []any{ins, &entAttrib{baseEntity: baseEntity{handle: 9, mode: 2}, text: "ATTRIB-TEXT"}}
+	d.modelSpace = []any{ins, &entity.EntAttrib{BaseEntity: entity.BaseEntity{Handle: 9, Mode: 2}, Text: "ATTRIB-TEXT"}}
 	d.classify(d.modelSpace[1]) // 注册 attrib
 
 	texts := d.Texts()
@@ -251,8 +252,8 @@ func TestRad2Deg(t *testing.T) {
 
 func TestParseCommonEntityHeadLayoutVariants(t *testing.T) {
 	// 布局候选应能解析 writeCommonHead 构造的标准流
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x13)
-	writeCommonHead(w, 55, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x13)
+	testsupport.WriteCommonHead(w, 55, 2)
 	w.B(1)
 	w.RD(1)
 	w.DD(2, 1)
@@ -264,20 +265,20 @@ func TestParseCommonEntityHeadLayoutVariants(t *testing.T) {
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
 	// 第一个候选布局应成功且字段正确
-	parsers := headParsersForVersion(container.VerR2018)
+	parsers := entity.HeadParsersForVersion(container.VerR2018)
 	if len(parsers) == 0 {
 		t.Fatal("R2018 应有候选布局")
 	}
-	head, err := parsers[0].parse(r, 0)
+	head, err := parsers[0].Parse(r, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if head.handle != 55 || head.entityMode != 2 || head.ltypeScale != 1 {
-		t.Fatalf("布局解析: handle=%d entmode=%d lts=%v", head.handle, head.entityMode, head.ltypeScale)
+	if head.Handle != 55 || head.EntityMode != 2 || head.LtypeScale != 1 {
+		t.Fatalf("布局解析: handle=%d entmode=%d lts=%v", head.Handle, head.EntityMode, head.LtypeScale)
 	}
 	// 各版本候选集非空且名称唯一
 	for _, v := range []container.DwgVersion{container.VerR2000, container.VerR2004, container.VerR2010, container.VerR2013, container.VerR2018} {
-		ps := headParsersForVersion(v)
+		ps := entity.HeadParsersForVersion(v)
 		if len(ps) == 0 {
 			t.Fatalf("版本 %v 候选为空", v)
 		}

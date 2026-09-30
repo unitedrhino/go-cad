@@ -3,7 +3,7 @@
 // （entity/bitsize/size/entmode/color/ltype_scale/linewt/z_is_zero/
 // thickness/start/end/extrusion 等），供 TestAlignmentAudit 扩展后
 // 对实体做与内部对象同口径的值级审计。
-package cad
+package entity
 
 import (
 	"fmt"
@@ -17,156 +17,156 @@ import (
 // handle/bitsize/size/entmode/color/ltype_scale/ltype_flags/
 // plotstyle_flags/invisible/linewt；per-type 几何键按类型分发。
 // 未建模键返回 nil（审计侧按缺失处理）。
-func entityField(ent any, key string) any {
-	ec, ok := ent.(entityCommon)
+func EntityField(ent any, key string) any {
+	ec, ok := ent.(EntityCommon)
 	if !ok {
 		return nil
 	}
-	b := ec.common()
-	hd := b.head
+	b := ec.Common()
+	hd := b.Head
 	// DIMENSION 的 gold entity 键是全名（DIMENSION_LINEAR 等），内部短名
 	// （DIM_LINEAR）需在此映射；公共 case 返回原始 typeName 不适用。
-	if _, ok := ent.(*entDimension); ok && key == "entity" {
-		return dimGoldEntityName(b.typeName)
+	if _, ok := ent.(*EntDimension); ok && key == "entity" {
+		return DimGoldEntityName(b.TypeName)
 	}
 	// UNKNOWN_ENT 兜底实体的 gold entity 键强制 UNKNOWN_ENT（b.typeName
 	// 保留原始动态类名如 ACAD_TABLE，fillMeta 覆盖后无法直接输出兜底名）。
-	if _, ok := ent.(*entUnknownEnt); ok && key == "entity" {
+	if _, ok := ent.(*EntUnknownEnt); ok && key == "entity" {
 		return "UNKNOWN_ENT"
 	}
 	// LIGHT 的 spec 自带 type 字段（70 组码）在 gold JSON 中覆盖顶层类型码键
 	// （out_json 顶层先输出 type，专有字段同名后写覆盖），故 type 键返回
 	// 光类型值而非流内类型码；MULTILEADER 同理（BS 170 的 type 字段）。
-	if l, ok := ent.(*entLight); ok && key == "type" {
-		return int64(l.lightType)
+	if l, ok := ent.(*EntLight); ok && key == "type" {
+		return int64(l.LightType)
 	}
-	if m, ok := ent.(*entMLeader); ok && key == "type" {
-		return int64(m.mleaderType)
+	if m, ok := ent.(*EntMLeader); ok && key == "type" {
+		return int64(m.MleaderType)
 	}
 	// OLE2FRAME 实体内 BS type 与公共实体 type 同名，gold JSON 重复键
 	// 后写覆盖为实体内的 type 值（如 2=Embedded）
-	if o, ok := ent.(*entOle2Frame); ok && key == "type" {
-		return int64(o.oleType)
+	if o, ok := ent.(*EntOle2Frame); ok && key == "type" {
+		return int64(o.OleType)
 	}
 	if strings.HasPrefix(key, "eed[") {
 		return eedFieldValue(b.eed, key)
 	}
 	switch key {
 	case "handle":
-		return b.handle
+		return b.Handle
 	case "entmode":
-		return int64(b.mode)
+		return int64(b.Mode)
 	case "color":
-		return colorAuditValue(b.color)
+		return colorAuditValue(b.Color)
 	case "color.index":
 		// gold color 为嵌套对象时（R2007+ CMC）展平出 color.index 等子键；
 		// gold 仅在 index 非 0 时输出该键，index=0（ByBlock）返回 nil
-		if b.color.hasIndex && b.color.index != 0 {
-			return int64(b.color.index)
+		if b.Color.HasIndex && b.Color.Index != 0 {
+			return int64(b.Color.Index)
 		}
 		return nil
 	case "color.rgb":
 		// gold 的 rgb 为 %06x 完整值（LibreDWG 不截断：32 位值含首字节
 		// 索引/alpha 时输出 8 位 hex，纯 24 位时 6 位）
-		return fmt.Sprintf("%06x", b.color.trueColor)
+		return fmt.Sprintf("%06x", b.Color.TrueColor)
 	case "color.flag":
 		// gold 仅在 flag 非 0 时输出该键
-		if b.color.flag != 0 {
-			return int64(b.color.flag)
+		if b.Color.Flag != 0 {
+			return int64(b.Color.Flag)
 		}
 		return nil
 	case "color.alpha_raw":
-		if b.color.hasAlpha {
-			return int64(b.color.alphaRaw)
+		if b.Color.HasAlpha {
+			return int64(b.Color.alphaRaw)
 		}
 		return nil
 	case "color.alpha_type":
-		if b.color.hasAlpha {
-			return int64(b.color.alphaType)
+		if b.Color.HasAlpha {
+			return int64(b.Color.alphaType)
 		}
 		return nil
 	case "color.alpha":
-		if b.color.hasAlpha {
-			return int64(b.color.alpha)
+		if b.Color.HasAlpha {
+			return int64(b.Color.alpha)
 		}
 		return nil
 	case "bitsize":
-		return float64(b.objSizeBit)
+		return float64(b.ObjSizeBit)
 	case "size":
-		return float64(b.recSize)
+		return float64(b.RecSize)
 	case "entity":
-		if b.typeName != "" {
+		if b.TypeName != "" {
 			// gold 对标注类实体输出 DIMENSION_ 前缀（内部类型名为 DIM_*）
-			if strings.HasPrefix(b.typeName, "DIM_") {
-				return "DIMENSION_" + b.typeName[4:]
+			if strings.HasPrefix(b.TypeName, "DIM_") {
+				return "DIMENSION_" + b.TypeName[4:]
 			}
-			return b.typeName
+			return b.TypeName
 		}
 		return nil
 	case "type":
 		// gold 的 type 键是数字类号（如 LINE=19），类名字符串只通过 entity 键导出
-		if b.typeCode > 0 {
-			return int64(b.typeCode)
+		if b.TypeCode > 0 {
+			return int64(b.TypeCode)
 		}
 		return nil
 	case "nolinks":
-		return b2int(b.nolinks)
+		return B2int(b.Nolinks)
 	case "isbylayerlt":
-		return b2int(b.isbylayerlt)
+		return B2int(b.Isbylayerlt)
 	case "preview_exists":
-		return b2int(b.previewExists)
+		return B2int(b.PreviewExists)
 	case "preview_is_proxy":
 		// LibreDWG 由 proxy 类（is_zombie）推导；常规解码恒 0
-		if b.previewExists {
+		if b.PreviewExists {
 			return int64(0)
 		}
 		return nil
 	case "preview_size":
-		if hd != nil && b.previewExists && hd.preview != nil {
-			return int64(len(hd.preview))
+		if hd != nil && b.PreviewExists && hd.Preview != nil {
+			return int64(len(hd.Preview))
 		}
 		return nil
 	case "preview":
-		if hd != nil && b.previewExists && hd.preview != nil {
-			return fmt.Sprintf("%X", hd.preview)
+		if hd != nil && b.PreviewExists && hd.Preview != nil {
+			return fmt.Sprintf("%X", hd.Preview)
 		}
 		return nil
 	}
 	if hd != nil {
 		switch key {
 		case "ltype_scale":
-			return hd.ltypeScale
+			return hd.LtypeScale
 		case "ltype_flags":
-			return int64(hd.ltypeFlags)
+			return int64(hd.LtypeFlags)
 		case "plotstyle_flags":
-			return int64(hd.plotstyleFlgs)
+			return int64(hd.PlotstyleFlgs)
 		case "material_flags":
-			return int64(hd.materialFlags)
+			return int64(hd.MaterialFlags)
 		case "invisible":
-			return int64(hd.invisible)
+			return int64(hd.Invisible)
 		case "linewt":
-			return int64(hd.linewt)
+			return int64(hd.Linewt)
 		case "shadow_flags":
-			return int64(hd.shadowFlags)
+			return int64(hd.ShadowFlags)
 		case "has_full_visualstyle":
-			return b2int(hd.visualStyle[0])
+			return B2int(hd.VisualStyle[0])
 		case "has_face_visualstyle":
-			return b2int(hd.visualStyle[1])
+			return B2int(hd.VisualStyle[1])
 		case "has_edge_visualstyle":
-			return b2int(hd.visualStyle[2])
+			return B2int(hd.VisualStyle[2])
 		case "is_xdic_missing":
-			return b2int(hd.xdicMissing)
+			return B2int(hd.XdicMissing)
 		case "has_ds_data":
-			return b2int(hd.hasDsBinary)
+			return B2int(hd.HasDsBinary)
 		// 公共 handle 流次级句柄（批次 B 建模；gold 句柄为 0 时不输出键）
 		case "ownerhandle":
-			if b.owner != 0 {
-				return b.owner
+			if b.Owner != 0 {
+				return b.Owner
 			}
 			return nil
 		case "layer":
-			if b.layer != 0 {
-				return b.layer
+			if b.Layer != 0 {
+				return b.Layer
 			}
 			return nil
 		case "prev_entity":
@@ -191,16 +191,16 @@ func entityField(ent any, key string) any {
 			return nil
 		}
 	}
-	if b.extra != nil {
-		if v, ok := b.extra[key]; ok {
+	if b.Extra != nil {
+		if v, ok := b.Extra[key]; ok {
 			return v
 		}
 	}
 	// DIMENSION 族：body 标量键与 dwg.spec 字段一一对应。
-	if d, ok := ent.(*entDimension); ok {
+	if d, ok := ent.(*EntDimension); ok {
 		switch key {
 		case "entity":
-			return dimGoldEntityName(b.typeName)
+			return DimGoldEntityName(b.TypeName)
 		// 公共点组与句柄系（批次 B 补齐；ORDINATE 专属点组为
 		// def_pt(10)/feature_location_pt(13)/leader_endpt(14)，与
 		// readDimSpecific 的 dimLayoutOrdinate 布局一一对应）
@@ -208,200 +208,200 @@ func entityField(ent any, key string) any {
 			// def_pt（10 组码）：ARC_DIMENSION 的专用 defPt 优先（与
 			// point10 同源）；ANG2LN 为 2RD 形态（p16x/p16y，R13~R2018
 			// trace 实证 clone_ins_pt 后紧跟 def_pt 2RD）
-			if b.typeName == "DIM_ANG2LN" {
-				return []float64{d.point16x, d.p16y}
+			if b.TypeName == "DIM_ANG2LN" {
+				return []float64{d.Point16x, d.P16y}
 			}
-			if d.defPt != (point3{}) {
-				return point3Arr(d.defPt)
+			if d.DefPt != (Point3{}) {
+				return point3Arr(d.DefPt)
 			}
-			return point3Arr(d.point10)
+			return point3Arr(d.Point10)
 		case "feature_location_pt":
-			if b.typeName == "DIM_ORDINATE" {
-				return point3Arr(d.point13)
+			if b.TypeName == "DIM_ORDINATE" {
+				return point3Arr(d.Point13)
 			}
 			return nil
 		case "leader_endpt":
-			if b.typeName == "DIM_ORDINATE" {
-				return point3Arr(d.point14)
+			if b.TypeName == "DIM_ORDINATE" {
+				return point3Arr(d.Point14)
 			}
 			return nil
 		case "xline1start_pt":
-			if b.typeName == "DIM_ANG2LN" {
-				return point3Arr(d.point13)
+			if b.TypeName == "DIM_ANG2LN" {
+				return point3Arr(d.Point13)
 			}
 			return nil
 		case "xline1end_pt":
-			if b.typeName == "DIM_ANG2LN" {
-				return point3Arr(d.point14)
+			if b.TypeName == "DIM_ANG2LN" {
+				return point3Arr(d.Point14)
 			}
 			return nil
 		case "xline2start_pt":
-			if b.typeName == "DIM_ANG2LN" {
-				return point3Arr(d.point15)
+			if b.TypeName == "DIM_ANG2LN" {
+				return point3Arr(d.Point15)
 			}
 			return nil
 		case "xline2end_pt":
-			if b.typeName == "DIM_ANG2LN" {
-				return point3Arr(d.point10)
+			if b.TypeName == "DIM_ANG2LN" {
+				return point3Arr(d.Point10)
 			}
 			return nil
 		case "xline1_pt":
-			if b.typeName != "DIM_ORDINATE" && b.typeName != "DIM_ANG2LN" {
-				return point3Arr(d.point13)
+			if b.TypeName != "DIM_ORDINATE" && b.TypeName != "DIM_ANG2LN" {
+				return point3Arr(d.Point13)
 			}
 			return nil
 		case "xline2_pt":
-			if b.typeName != "DIM_ORDINATE" && b.typeName != "DIM_ANG2LN" {
-				return point3Arr(d.point14)
+			if b.TypeName != "DIM_ORDINATE" && b.TypeName != "DIM_ANG2LN" {
+				return point3Arr(d.Point14)
 			}
 			return nil
 		case "clone_ins_pt":
 			// clone_ins_pt（2RD，全维度族公共）：解码侧存入 insertPoint 的
 			// x/y（gold 形态为二元组）
-			if d.hasInsertPoint {
-				return []float64{d.insertPoint.x, d.insertPoint.y}
+			if d.HasInsertPoint {
+				return []float64{d.InsertPoint.X, d.InsertPoint.Y}
 			}
 			return nil
 		case "center_pt":
 			// ARC_DIMENSION 中心点（15 组码，dimLayoutArc 第三点）
-			if b.typeName == "ARC_DIMENSION" {
-				return point3Arr(d.point15)
+			if b.TypeName == "ARC_DIMENSION" {
+				return point3Arr(d.Point15)
 			}
 			return nil
 		case "leader1_pt":
-			return point3Arr(d.leader1Pt)
+			return point3Arr(d.Leader1Pt)
 		case "leader2_pt":
-			return point3Arr(d.leader2Pt)
+			return point3Arr(d.Leader2Pt)
 		case "text_midpt":
-			return point3Arr(d.textMidpoint)
+			return point3Arr(d.TextMidpoint)
 		case "extrusion":
-			return vec3Arr(d.extrusion)
+			return Vec3Arr(d.Extrusion)
 		case "ins_scale":
-			return vec3Arr(d.insertScale)
+			return Vec3Arr(d.InsertScale)
 		case "dimstyle":
-			if d.dimstyleHandle != 0 {
-				return d.dimstyleHandle
+			if d.DimstyleHandle != 0 {
+				return d.DimstyleHandle
 			}
 			return nil
 		case "block":
-			if d.anonymousBlock != 0 {
-				return d.anonymousBlock
+			if d.AnonymousBlock != 0 {
+				return d.AnonymousBlock
 			}
 			return nil
 		case "class_version":
-			return int64(d.classVersion)
+			return int64(d.ClassVersion)
 		case "elevation":
-			return d.elevation
+			return d.Elevation
 		case "flag":
-			return int64(d.dimFlag)
+			return int64(d.DimFlag)
 		case "flag1":
-			return int64(d.dimFlags)
+			return int64(d.DimFlags)
 		case "flag2":
-			return int64(d.flag2)
+			return int64(d.Flag2)
 		case "user_text":
-			return d.userText
+			return d.UserText
 		case "text_rotation":
-			return d.textRotation
+			return d.TextRotation
 		case "horiz_dir":
-			return d.horizontalDir
+			return d.HorizontalDir
 		case "ins_rotation":
-			return d.insertRotation
+			return d.InsertRotation
 		case "attachment":
-			return int64(d.attachmentPoint)
+			return int64(d.AttachmentPoint)
 		case "lspace_style":
-			return int64(d.lineSpacingStyle)
+			return int64(d.LineSpacingStyle)
 		case "lspace_factor":
-			return d.lineSpacingFactor
+			return d.LineSpacingFactor
 		case "act_measurement":
-			return d.actualMeasurement
+			return d.ActualMeasurement
 		case "unknown":
-			return b2int(d.unknownFlag)
+			return B2int(d.unknownFlag)
 		case "flip_arrow1":
-			return b2int(d.flipArrow1)
+			return B2int(d.flipArrow1)
 		case "flip_arrow2":
-			return b2int(d.flipArrow2)
+			return B2int(d.flipArrow2)
 		case "oblique_angle":
-			return d.extLineRotation
+			return d.ExtLineRotation
 		case "dim_rotation":
-			return d.dimRotation
+			return d.DimRotation
 		case "is_partial":
-			return b2int(d.isPartial)
+			return B2int(d.IsPartial)
 		case "arc_start_param":
-			return d.arcStartParam
+			return d.ArcStartParam
 		case "arc_end_param":
-			return d.arcEndParam
+			return d.ArcEndParam
 		case "has_leader":
-			return b2int(d.hasLeader)
+			return B2int(d.HasLeader)
 		case "leader_len":
-			return d.leaderLen
+			return d.LeaderLen
 		}
 	}
 	switch e := ent.(type) {
-	case *entLine:
+	case *EntLine:
 		switch key {
 		case "start":
-			return point3Arr(e.start)
+			return point3Arr(e.Start)
 		case "end":
-			return point3Arr(e.end)
+			return point3Arr(e.End)
 		}
-	case *entCircle:
+	case *EntCircle:
 		switch key {
 		case "center":
-			return point3Arr(e.center)
+			return point3Arr(e.Center)
 		case "radius":
-			return e.radius
+			return e.Radius
 		}
-	case *entArc:
+	case *EntArc:
 		switch key {
 		case "center":
-			return point3Arr(e.center)
+			return point3Arr(e.Center)
 		case "radius":
-			return e.radius
+			return e.Radius
 		case "start_angle":
-			return e.angleStart
+			return e.AngleStart
 		case "end_angle":
-			return e.angleEnd
+			return e.AngleEnd
 		}
-	case *entPoint:
+	case *EntPoint:
 		switch key {
 		case "location":
-			return point3Arr(e.location)
+			return point3Arr(e.Location)
 		case "rotation", "x_ang":
 			// gold 的 x_ang 即 x 轴角度（解码侧 rotation）
-			return e.rotation
+			return e.Rotation
 		case "x":
-			return e.location.x
+			return e.Location.X
 		case "y":
-			return e.location.y
+			return e.Location.Y
 		case "z":
-			return e.location.z
+			return e.Location.Z
 		}
-	case *entEllipse:
+	case *EntEllipse:
 		switch key {
 		case "center":
-			return point3Arr(e.center)
+			return point3Arr(e.Center)
 		case "major_axis", "sm_axis":
 			// gold 键名 sm_axis（本库自有口径 major_axis 双键导出）
-			return vec3Arr(e.majorAxis)
+			return Vec3Arr(e.MajorAxis)
 		case "extrusion":
-			return vec3Arr(e.extrusion)
+			return Vec3Arr(e.Extrusion)
 		case "ratio", "axis_ratio":
 			// gold 键名为 axis_ratio（流内 BD 40 原值，无倒数换算）
-			return e.ratio
+			return e.Ratio
 		case "start_angle":
-			return e.startAng
+			return e.StartAng
 		case "end_angle":
-			return e.endAng
+			return e.EndAng
 		}
-	case *entLwPolyline:
+	case *EntLwPolyline:
 		if idx, rest, ok := auditArrayIndex(key, "widths"); ok {
 			// gold 的 widths 为 {start,end} 对象数组，展平出 widths[i].start/end
-			if idx >= 0 && idx < len(e.widths) {
+			if idx >= 0 && idx < len(e.Widths) {
 				switch rest {
 				case "start":
-					return e.widths[idx].start
+					return e.Widths[idx].Start
 				case "end":
-					return e.widths[idx].end
+					return e.Widths[idx].End
 				}
 			}
 			return nil
@@ -409,376 +409,376 @@ func entityField(ent any, key string) any {
 		switch key {
 		case "flags", "flag":
 			// gold 的 LWPOLYLINE 标志键名为 flag
-			return int64(e.flags)
+			return int64(e.Flags)
 		case "elevation":
 			// flag&8 时输出标高；无标志段 gold 也不输出该键（返回 0 不参与）
-			return e.elevation
+			return e.Elevation
 		case "const_width":
 			// flag&4 时的常量宽度（同 elevation 模式）
-			return e.constWidth
+			return e.ConstWidth
 		case "thickness":
 			// flag&2 时的厚度（同 elevation 模式）
-			return e.thickness
+			return e.Thickness
 		case "vertices", "points":
 			// gold 键名 points（展平 [[x,y],...] 嵌套形态由测试侧展开）
-			return pt2Arr(e.vertices)
+			return Pt2Arr(e.Vertices)
 		case "bulges":
-			return f64Arr(e.bulges)
+			return F64Arr(e.Bulges)
 		case "vertexids":
 			return nil // gold 顶点索引数组（本库未建模）
 		case "widths":
 			return nil
 		}
-	case *entText:
+	case *EntText:
 		switch key {
 		case "text", "text_value":
 			// gold 的 text_value 即显示文本
-			return e.text
+			return e.Text
 		case "insertion", "ins_pt":
 			// gold 的 ins_pt 即插入点
-			return point3Arr(e.insertion)
+			return point3Arr(e.Insertion)
 		case "height":
-			return e.height
+			return e.Height
 		case "rotation":
-			return e.rotation
+			return e.Rotation
 		case "h_align", "horiz_alignment":
 			// gold 的 horiz_alignment 即水平对齐（解码侧 hAlign）
-			return int64(e.hAlign)
+			return int64(e.HAlign)
 		case "v_align", "vert_alignment":
 			// gold 的 vert_alignment 即垂直对齐（解码侧 vAlign）
-			return int64(e.vAlign)
+			return int64(e.VAlign)
 		case "generation":
-			return int64(e.gen)
+			return int64(e.Gen)
 		case "alignment_pt":
-			if e.alignPt != nil {
-				return point2Arr(*e.alignPt)
+			if e.AlignPt != nil {
+				return Point2Arr(*e.AlignPt)
 			}
 			return nil
 		case "extrusion":
-			return vec3Arr(e.extrusion)
+			return Vec3Arr(e.Extrusion)
 		case "style":
 			// 文本样式句柄（handle 流专有段首项；gold 句柄为 0 时不输出键）
-			if e.styleHandle != 0 {
-				return e.styleHandle
+			if e.StyleHandle != 0 {
+				return e.StyleHandle
 			}
 			return nil
 		}
-	case *entMText:
+	case *EntMText:
 		switch key {
 		case "insertion", "ins_pt":
 			// gold 的 ins_pt 即插入点
-			return point3Arr(e.insertion)
+			return point3Arr(e.Insertion)
 		case "x_axis_dir":
-			return vec3Arr(e.xAxisDir)
+			return Vec3Arr(e.XAxisDir)
 		case "rect_width":
-			return e.rectWidth
+			return e.RectWidth
 		case "text_height":
-			return e.textHeight
+			return e.TextHeight
 		case "attachment":
-			return int64(e.attachment)
+			return int64(e.Attachment)
 		case "extrusion":
-			return vec3Arr(e.extrusion)
+			return Vec3Arr(e.Extrusion)
 		case "style":
 			// 文本样式句柄（handle 流专有段；gold 句柄为 0 时不输出键）
-			if e.styleHandle != 0 {
-				return e.styleHandle
+			if e.StyleHandle != 0 {
+				return e.StyleHandle
 			}
 			return nil
 		case "text":
 			// gold 输出经 bit_TV_to_utf8 的 \U+XXXX 展开（AutoCAD 内联转义）
-			return expandUnicodeEscapes(e.text)
+			return expandUnicodeEscapes(e.Text)
 		}
-	case *entInsert:
+	case *EntInsert:
 		switch key {
 		case "insertion", "position", "ins_pt":
 			// gold 的 ins_pt 即插入点
-			return point3Arr(e.position)
+			return point3Arr(e.Position)
 		case "scale":
-			return vec3Arr(e.scale)
+			return Vec3Arr(e.Scale)
 		case "rotation":
-			return e.rotation
+			return e.Rotation
 		case "block_header":
-			return e.blockHeader
+			return e.BlockHeader
 		case "extrusion":
-			return vec3Arr(e.extrusion)
+			return Vec3Arr(e.Extrusion)
 		case "seqend":
 			// SEQEND 结束句柄（attribs 后；has_attribs=0 时无该句柄）
-			if e.seqend != 0 {
-				return e.seqend
+			if e.Seqend != 0 {
+				return e.Seqend
 			}
 			return nil
 		case "scale_flag":
-			if v, ok := e.extra["scale_flag"]; ok {
+			if v, ok := e.Extra["scale_flag"]; ok {
 				return v
 			}
 			return nil
 		case "has_attribs":
-			if v, ok := e.extra["has_attribs"]; ok {
+			if v, ok := e.Extra["has_attribs"]; ok {
 				return v
 			}
 			return nil
 		case "attribs":
 			// 关联 ATTRIB 句柄链（ParseJSON 侧经 linkJSONAttribs 回填，
 			// DWG 侧 R2004+ 为 owned 句柄、R13~R2000 为 first/last 对）
-			out := make([]float64, 0, len(e.attribs))
-			for _, ah := range e.attribs {
+			out := make([]float64, 0, len(e.Attribs))
+			for _, ah := range e.Attribs {
 				out = append(out, float64(ah))
 			}
 			return out
 		case "first_attrib":
-			if len(e.attribs) > 0 {
-				return e.attribs[0]
+			if len(e.Attribs) > 0 {
+				return e.Attribs[0]
 			}
 			return nil
 		case "last_attrib":
-			if len(e.attribs) > 0 {
-				return e.attribs[len(e.attribs)-1]
+			if len(e.Attribs) > 0 {
+				return e.Attribs[len(e.Attribs)-1]
 			}
 			return nil
 		}
-	case *entAttrib:
+	case *EntAttrib:
 		switch key {
 		case "text", "text_value", "default_value":
 			// ATTDEF 的 default_value 与 ATTRIB 的 text_value 同为显示文本
-			return e.text
+			return e.Text
 		case "prompt":
 			// gold 仅 ATTDEF 有 prompt 键；ATTRIB 返回 nil 不比对
-			if b.typeCode == 0x03 {
-				return e.prompt
+			if b.TypeCode == 0x03 {
+				return e.Prompt
 			}
 			return nil
 		case "tag":
-			return e.tag
+			return e.Tag
 		case "insertion", "ins_pt":
-			return point3Arr(e.insertion)
+			return point3Arr(e.Insertion)
 		case "height":
-			return e.height
+			return e.Height
 		case "rotation":
-			return e.rotation
+			return e.Rotation
 		case "horiz_alignment":
-			return int64(e.hAlign)
+			return int64(e.HAlign)
 		case "vert_alignment":
-			return int64(e.vAlign)
+			return int64(e.VAlign)
 		case "generation":
-			return int64(e.gen)
+			return int64(e.Gen)
 		case "alignment_pt":
-			if e.alignPt != nil {
-				return point2Arr(*e.alignPt)
+			if e.AlignPt != nil {
+				return Point2Arr(*e.AlignPt)
 			}
 			return nil
 		case "extrusion":
-			return vec3Arr(e.extrusion)
+			return Vec3Arr(e.Extrusion)
 		case "style":
 			// 文本样式句柄（handle 流专有段首项；gold 句柄为 0 时不输出键）
-			if e.styleHandle != 0 {
-				return e.styleHandle
+			if e.StyleHandle != 0 {
+				return e.StyleHandle
 			}
 			return nil
 		}
-	case *entVertex2d:
+	case *EntVertex2d:
 		switch key {
 		case "location", "position", "point":
-			return point3Arr(e.position)
+			return point3Arr(e.Position)
 		case "bulge":
-			return e.bulge
+			return e.Bulge
 		case "flag":
-			return int64(e.flags)
+			return int64(e.Flags)
 		case "id":
 			// R2010+ 顶点标识符（BL0 spec 字段）；pre-R2010 样本 gold
 			// 无 id 键，不会查询此 case
 			return e.id
 		case "tangent_dir":
-			return e.tangentDir
+			return e.TangentDir
 		case "start_width":
-			return e.startWidth
+			return e.StartWidth
 		case "end_width":
-			return e.endWidth
+			return e.EndWidth
 		}
-	case *entVertex3d:
+	case *EntVertex3d:
 		switch key {
 		case "location", "position", "point":
-			return point3Arr(e.position)
+			return point3Arr(e.Position)
 		case "flag":
-			return int64(e.flags)
+			return int64(e.Flags)
 		}
-	case *entVertexPface:
+	case *EntVertexPface:
 		switch key {
 		case "flag":
-			return int64(e.flag)
+			return int64(e.Flag)
 		case "location", "point":
-			return point3Arr(e.position)
+			return point3Arr(e.Position)
 		}
-	case *entVertexPfaceFace:
+	case *EntVertexPfaceFace:
 		switch key {
 		case "flag":
 			// flag 恒为 128，不从流读取（gold 同值输出）
-			return int64(e.flag)
+			return int64(e.Flag)
 		case "vertind":
-			return []float64{float64(e.vertind[0]), float64(e.vertind[1]), float64(e.vertind[2]), float64(e.vertind[3])}
+			return []float64{float64(e.Vertind[0]), float64(e.Vertind[1]), float64(e.Vertind[2]), float64(e.Vertind[3])}
 		}
-	case *entPolyline2d:
+	case *EntPolyline2d:
 		switch key {
 		case "flag":
-			return int64(e.flags)
+			return int64(e.Flags)
 		case "curve_type":
-			return int64(e.curveType)
+			return int64(e.CurveType)
 		case "start_width":
-			return e.widthStart
+			return e.WidthStart
 		case "end_width":
-			return e.widthEnd
+			return e.WidthEnd
 		case "thickness":
-			return e.thickness
+			return e.Thickness
 		case "elevation":
-			return e.elevation
+			return e.Elevation
 		case "extrusion":
-			return vec3Arr(e.extrusion)
+			return Vec3Arr(e.Extrusion)
 		case "first_vertex":
-			if e.firstVertex != 0 {
-				return e.firstVertex
+			if e.FirstVertex != 0 {
+				return e.FirstVertex
 			}
 			return nil
 		case "last_vertex":
-			if e.lastVertex != 0 {
-				return e.lastVertex
+			if e.LastVertex != 0 {
+				return e.LastVertex
 			}
 			return nil
 		case "vertex":
 			// R2004+ owned 顶点句柄数组
-			out := make([]float64, 0, len(e.ownedHandles))
-			for _, vh := range e.ownedHandles {
+			out := make([]float64, 0, len(e.OwnedHandles))
+			for _, vh := range e.OwnedHandles {
 				out = append(out, float64(vh))
 			}
 			return out
 		case "seqend":
-			if e.seqend != 0 {
-				return e.seqend
+			if e.Seqend != 0 {
+				return e.Seqend
 			}
 			return nil
 		}
-	case *entPolyline3d:
+	case *EntPolyline3d:
 		switch key {
 		case "flag":
-			return int64(e.flags70)
+			return int64(e.Flags70)
 		case "curve_type":
-			return int64(e.flags75)
+			return int64(e.Flags75)
 		case "first_vertex":
-			if e.firstVertex != 0 {
-				return e.firstVertex
+			if e.FirstVertex != 0 {
+				return e.FirstVertex
 			}
 			return nil
 		case "last_vertex":
-			if e.lastVertex != 0 {
-				return e.lastVertex
+			if e.LastVertex != 0 {
+				return e.LastVertex
 			}
 			return nil
 		case "vertex":
-			out := make([]float64, 0, len(e.ownedHandles))
-			for _, vh := range e.ownedHandles {
+			out := make([]float64, 0, len(e.OwnedHandles))
+			for _, vh := range e.OwnedHandles {
 				out = append(out, float64(vh))
 			}
 			return out
 		case "seqend":
-			if e.seqend != 0 {
-				return e.seqend
+			if e.Seqend != 0 {
+				return e.Seqend
 			}
 			return nil
 		}
-	case *entPolylinePface:
+	case *EntPolylinePface:
 		switch key {
 		case "numverts":
-			return int64(e.numVertices)
+			return int64(e.NumVertices)
 		case "numfaces":
-			return int64(e.numFaces)
+			return int64(e.NumFaces)
 		case "first_vertex":
 			// R13~R2000 handle 流首顶点句柄（R2004+ 为 owned 向量，无该键）
-			if e.firstVertex != 0 {
-				return e.firstVertex
+			if e.FirstVertex != 0 {
+				return e.FirstVertex
 			}
 			return nil
 		case "last_vertex":
-			if e.lastVertex != 0 {
-				return e.lastVertex
+			if e.LastVertex != 0 {
+				return e.LastVertex
 			}
 			return nil
 		case "vertex":
 			// R2004+ owned 顶点句柄数组
-			out := make([]float64, 0, len(e.ownedHandles))
-			for _, vh := range e.ownedHandles {
+			out := make([]float64, 0, len(e.OwnedHandles))
+			for _, vh := range e.OwnedHandles {
 				out = append(out, float64(vh))
 			}
 			return out
 		case "seqend":
-			if e.seqend != 0 {
-				return e.seqend
+			if e.Seqend != 0 {
+				return e.Seqend
 			}
 			return nil
 		}
-	case *entRay:
+	case *EntRay:
 		switch key {
 		case "start", "point":
-			return point3Arr(e.start)
+			return point3Arr(e.Start)
 		case "direction", "vector":
-			return vec3Arr(e.unitVector)
+			return Vec3Arr(e.UnitVector)
 		}
 
-	case *entBlockLike:
+	case *EntBlockLike:
 		switch key {
 		case "name":
 			// gold 仅 BLOCK 有 name 键（ENDBLK/SEQEND 无该键，返回 nil 不比对）
-			if e.name != "" {
-				return e.name
+			if e.Name != "" {
+				return e.Name
 			}
 			return nil
 		}
-	case *entSolid:
+	case *EntSolid:
 		switch key {
 		case "corner1", "p1":
-			return point2Arr(e.p1)
+			return Point2Arr(e.P1)
 		case "corner2", "p2":
-			return point2Arr(e.p2)
+			return Point2Arr(e.P2)
 		case "corner3", "p3":
-			return point2Arr(e.p3)
+			return Point2Arr(e.P3)
 		case "corner4", "p4":
-			return point2Arr(e.p4)
+			return Point2Arr(e.P4)
 		case "thickness":
-			return e.thickness
+			return e.Thickness
 		case "elevation":
-			return e.elevation
+			return e.Elevation
 		case "extrusion":
-			return vec3Arr(e.extrusion)
+			return Vec3Arr(e.Extrusion)
 		}
-	case *entFace3d:
+	case *EntFace3d:
 		switch key {
 		case "corner1", "p1":
-			return point3Arr(e.p1)
+			return point3Arr(e.P1)
 		case "corner2", "p2":
-			return point3Arr(e.p2)
+			return point3Arr(e.P2)
 		case "corner3", "p3":
-			return point3Arr(e.p3)
+			return point3Arr(e.P3)
 		case "corner4", "p4":
-			return point3Arr(e.p4)
+			return point3Arr(e.P4)
 		case "has_no_flags":
-			return b2int(e.hasNoFlags)
+			return B2int(e.hasNoFlags)
 		case "z_is_zero":
-			return b2int(e.zIsZero)
+			return B2int(e.zIsZero)
 		case "invis_flags":
-			return int64(e.invisibleEdgeFlags)
+			return int64(e.InvisibleEdgeFlags)
 		}
-	case *entMLine:
+	case *EntMLine:
 		switch key {
 		case "scale":
-			return e.scale
+			return e.Scale
 		case "justification":
-			return int64(e.justification)
+			return int64(e.Justification)
 		case "flags":
-			return int64(e.openClosed)
+			return int64(e.OpenClosed)
 		case "base_point":
-			return point3Arr(e.basePoint)
+			return point3Arr(e.BasePoint)
 		case "extrusion":
-			return point3Arr(e.extrusion)
+			return point3Arr(e.Extrusion)
 		case "mlinestyle":
-			if e.styleHandle != 0 {
-				return e.styleHandle
+			if e.StyleHandle != 0 {
+				return e.StyleHandle
 			}
 			return nil
 		}
@@ -786,228 +786,228 @@ func entityField(ent any, key string) any {
 		// verts[i].lines[j].segparms/areafillparms（批次 B：按每线计数从
 		// 扁平参数数组切片；DXF 来源无分组计数，返回 nil）
 		if idx, rest, ok := auditArrayIndex(key, "verts"); ok {
-			if idx < 0 || idx >= len(e.vertices) {
+			if idx < 0 || idx >= len(e.Vertices) {
 				return nil
 			}
-			v := &e.vertices[idx]
+			v := &e.Vertices[idx]
 			switch rest {
 			case "vertex":
-				return point3Arr(v.position)
+				return point3Arr(v.Position)
 			case "vertex_direction":
-				return point3Arr(v.direction)
+				return point3Arr(v.Direction)
 			case "miter_direction":
-				return point3Arr(v.miter)
+				return point3Arr(v.Miter)
 			}
 			if li, sub, ok := auditArrayIndex(rest, "lines"); ok {
 				switch sub {
 				case "segparms":
-					return mlineLineParams(v.segParams, v.segCounts, li)
+					return mlineLineParams(v.SegParams, v.SegCounts, li)
 				case "areafillparms":
-					return mlineLineParams(v.areaParams, v.areaCounts, li)
+					return mlineLineParams(v.AreaParams, v.AreaCounts, li)
 				}
 			}
 			return nil
 		}
-	case *entPolylineMesh:
+	case *EntPolylineMesh:
 		switch key {
 		case "flag":
-			return int64(e.flags)
+			return int64(e.Flags)
 		case "curve_type":
-			return int64(e.curveType)
+			return int64(e.CurveType)
 		case "m_density":
-			return int64(e.mDensity)
+			return int64(e.MDensity)
 		case "n_density":
-			return int64(e.nDensity)
+			return int64(e.NDensity)
 		}
-	case *entSpline:
+	case *EntSpline:
 		// SPLINE 审计键（批次 B 补齐：主体标量 + 点/数组键；R2013+ 的
 		// splineflags/knotparam 为位域合成口径，未导出）
 		switch key {
 		case "scenario":
-			return int64(e.scenario)
+			return int64(e.Scenario)
 		case "degree":
-			return int64(e.degree)
+			return int64(e.Degree)
 		case "fit_tol":
-			return e.fitTolerance
+			return e.FitTolerance
 		case "knot_tol":
-			return e.knotTolerance
+			return e.KnotTolerance
 		case "ctrl_tol":
-			return e.ctrlTolerance
+			return e.CtrlTolerance
 		case "knots":
-			return f64Arr(e.knots)
+			return F64Arr(e.Knots)
 		case "weights":
-			return f64Arr(e.weights)
+			return F64Arr(e.Weights)
 		case "fit_pts":
-			return p3sFlat(e.fitPoints)
+			return p3sFlat(e.FitPoints)
 		case "rational":
-			return b2int(e.rational)
+			return B2int(e.Rational)
 		case "closed_b":
-			return b2int(e.closed)
+			return B2int(e.Closed)
 		case "periodic":
-			return b2int(e.periodic)
+			return B2int(e.Periodic)
 		case "weighted":
-			return b2int(e.weighted)
+			return B2int(e.weighted)
 		}
 		if idx, rest, ok := auditArrayIndex(key, "ctrl_pts"); ok {
-			if idx < 0 || idx >= len(e.controlPoints) {
+			if idx < 0 || idx >= len(e.ControlPoints) {
 				return nil
 			}
 			switch rest {
 			case "x":
-				return e.controlPoints[idx].x
+				return e.ControlPoints[idx].X
 			case "y":
-				return e.controlPoints[idx].y
+				return e.ControlPoints[idx].Y
 			case "z":
-				return e.controlPoints[idx].z
+				return e.ControlPoints[idx].Z
 			}
 			return nil
 		}
 		if key == "style" {
 			// 样式句柄（handle 流，批次 B 建模）
-			if e.styleHandle != 0 {
-				return e.styleHandle
+			if e.StyleHandle != 0 {
+				return e.StyleHandle
 			}
 			return nil
 		}
-	case *entShape:
+	case *EntShape:
 		switch key {
 		case "insertion":
-			return point3Arr(e.insertion)
+			return point3Arr(e.Insertion)
 		case "scale":
-			return e.scale
+			return e.Scale
 		case "rotation":
-			return e.rotation
+			return e.Rotation
 		case "width_factor":
-			return e.widthFactor
+			return e.WidthFactor
 		case "oblique", "oblique_angle":
-			return e.oblique
+			return e.Oblique
 		case "thickness":
-			return e.thickness
+			return e.Thickness
 		case "style_id":
-			return int64(e.styleId)
+			return int64(e.StyleId)
 		}
-	case *entViewport:
+	case *EntViewport:
 		switch key {
 		case "width":
-			return e.width
+			return e.Width
 		case "height":
-			return e.height
+			return e.Height
 		case "center":
-			return point3Arr(e.center)
+			return point3Arr(e.Center)
 		case "view_target":
-			return point3Arr(e.viewTarget)
+			return point3Arr(e.ViewTarget)
 		case "VIEWDIR":
-			return vec3Arr(e.viewDir)
+			return Vec3Arr(e.ViewDir)
 		case "VIEWCTR":
-			return point2Arr(e.viewCtr)
+			return Point2Arr(e.ViewCtr)
 		case "SNAPBASE":
-			return point2Arr(e.snapBase)
+			return Point2Arr(e.SnapBase)
 		case "SNAPUNIT":
-			return point2Arr(e.snapUnit)
+			return Point2Arr(e.SnapUnit)
 		case "GRIDUNIT":
-			return point2Arr(e.gridUnit)
+			return Point2Arr(e.GridUnit)
 		case "UCSORG":
-			return point3Arr(e.ucsorg)
+			return point3Arr(e.Ucsorg)
 		case "UCSXDIR":
-			return point3Arr(e.ucsxdir)
+			return point3Arr(e.Ucsxdir)
 		case "UCSYDIR":
-			return point3Arr(e.ucsydir)
+			return point3Arr(e.Ucsydir)
 		case "VIEWTWIST":
-			return e.viewTwist
+			return e.ViewTwist
 		case "VIEWSIZE":
-			return e.viewSize
+			return e.ViewSize
 		case "LENSLENGTH":
-			return e.lensLength
+			return e.LensLength
 		case "FRONTZ":
-			return e.frontZ
+			return e.FrontZ
 		case "BACKZ":
-			return e.backZ
+			return e.BackZ
 		case "SNAPANG":
-			return e.snapAng
+			return e.SnapAng
 		case "circle_zoom":
-			return int64(e.circleZoom)
+			return int64(e.CircleZoom)
 		case "grid_major":
-			return int64(e.gridMajor)
+			return int64(e.GridMajor)
 		case "status_flag":
-			return int64(e.statusFlag)
+			return int64(e.StatusFlag)
 		case "style_sheet":
-			return e.styleSheet
+			return e.StyleSheet
 		case "render_mode":
-			return int64(e.renderMode)
+			return int64(e.RenderMode)
 		case "UCSVP":
-			return b2int(e.ucsVP)
+			return B2int(e.UcsVP)
 		case "ucs_at_origin":
-			return b2int(e.ucsAtOrigin)
+			return B2int(e.UcsAtOrigin)
 		case "ucs_elevation":
-			return e.ucsElevation
+			return e.UcsElevation
 		case "UCSORTHOVIEW":
-			return int64(e.ucsOrthoView)
+			return int64(e.UcsOrthoView)
 		case "shadeplot_mode":
-			return int64(e.shadeplotMode)
+			return int64(e.ShadeplotMode)
 		case "use_default_lights":
-			return b2int(e.useDefaultLights)
+			return B2int(e.UseDefaultLights)
 		case "default_lighting_type":
-			return int64(e.defaultLightingType)
+			return int64(e.DefaultLightingType)
 		case "brightness":
-			return e.brightness
+			return e.Brightness
 		case "contrast":
-			return e.contrast
+			return e.Contrast
 		case "ambient_color.index":
 			// 对齐 out_json field_cmc：流内 index=0 时按 method 从 rgb
 			// 反查 ACI 调色板（如 0xc2333333 → 灰 250）
 			if e.ambientIndex != 0 {
 				return int64(e.ambientIndex)
 			}
-			return dwgFindColorIndex(e.ambientRGB)
+			return DwgFindColorIndex(e.ambientRGB)
 		case "ambient_color.rgb":
 			return fmt.Sprintf("%08x", e.ambientRGB)
 		case "ambient_color.flag":
 			return int64(0)
 		}
-	case *entTolerance:
+	case *EntTolerance:
 		switch key {
 		case "text_value":
-			return e.text
+			return e.Text
 		case "unknown_short":
-			return int64(e.unknownShort)
+			return int64(e.UnknownShort)
 		case "height":
-			return e.height
+			return e.Height
 		case "dimgap":
-			return e.dimgap
+			return e.Dimgap
 		case "ins_pt", "insertion":
-			return point3Arr(e.insertion)
+			return point3Arr(e.Insertion)
 		case "x_direction":
-			return vec3Arr(e.xDirection)
+			return Vec3Arr(e.XDirection)
 		case "extrusion":
-			return vec3Arr(e.extrusion)
+			return Vec3Arr(e.Extrusion)
 		case "dimstyle":
-			if e.dimstyle != 0 {
-				return e.dimstyle
+			if e.Dimstyle != 0 {
+				return e.Dimstyle
 			}
 			return nil
 		}
-	case *entLeader:
+	case *EntLeader:
 		switch key {
 		case "annot_type", "annotation_type":
-			return int64(e.annotationType)
+			return int64(e.AnnotationType)
 		case "path_type":
-			return int64(e.pathType)
+			return int64(e.PathType)
 		case "unknown_bit_1":
-			return b2int(e.unknownBit1)
+			return B2int(e.UnknownBit1)
 		case "arrowhead_on":
-			return b2int(e.arrowheadOn)
+			return B2int(e.ArrowheadOn)
 		case "arrowhead_type":
-			return int64(e.arrowheadType)
+			return int64(e.ArrowheadType)
 		case "box_height":
-			return e.boxHeight
+			return e.BoxHeight
 		case "box_width":
-			return e.boxWidth
+			return e.BoxWidth
 		case "hookline_dir":
-			return b2int(e.hooklineDir)
+			return B2int(e.HooklineDir)
 		case "hookline_on":
-			return b2int(e.hooklineOn)
+			return B2int(e.hooklineOn)
 		case "dimgap":
-			return e.dimgap
+			return e.Dimgap
 		case "dimasz":
 			return e.dimasz
 		case "unknown_short_1":
@@ -1015,36 +1015,36 @@ func entityField(ent any, key string) any {
 		case "byblock_color":
 			return int64(e.byblockColor)
 		case "unknown_bit_2":
-			return b2int(e.unknownBit2)
+			return B2int(e.unknownBit2)
 		case "unknown_bit_3":
-			return b2int(e.unknownBit3)
+			return B2int(e.unknownBit3)
 		case "unknown_bit_4":
-			return b2int(e.unknownBit4)
+			return B2int(e.UnknownBit4)
 		case "unknown_bit_5":
-			return b2int(e.unknownBit5)
+			return B2int(e.UnknownBit5)
 		}
-	case *entLight:
+	case *EntLight:
 		return lightAuditField(e, key)
-	case *entMLeader:
+	case *EntMLeader:
 		return mleaderAuditField(e, key)
-	case *entHatch:
+	case *EntHatch:
 		return hatchAuditField(e, key)
-	case *entAcis:
+	case *EntAcis:
 		return acisAuditField(e, key)
-	case *entWipeout:
+	case *EntWipeout:
 		return wipeoutAuditField(e, key)
-	case *entImage:
+	case *EntImage:
 		return imageAuditField(e, key)
-	case *entOle2Frame:
-		return ole2FrameAuditField(e, key)
-	case *entOleFrame:
-		return oleFrameAuditField(e, key)
-	case *entProxyEntity:
-		return proxyEntityAuditField(e, key)
-	case *entUnderlay:
+	case *EntOle2Frame:
+		return Ole2FrameAuditField(e, key)
+	case *EntOleFrame:
+		return OleFrameAuditField(e, key)
+	case *EntProxyEntity:
+		return ProxyEntityAuditField(e, key)
+	case *EntUnderlay:
 		return underlayAuditField(e, key)
-	case *entMpolygon:
-		return mpolygonAuditField(e, key)
+	case *EntMpolygon:
+		return MpolygonAuditField(e, key)
 	}
 	return nil
 }
@@ -1055,47 +1055,47 @@ func mlineLineParams(params []float64, counts []int, li int) []float64 {
 	if li < 0 || li >= len(counts) {
 		return nil
 	}
-	start := 0
+	Start := 0
 	for i := 0; i < li; i++ {
-		start += counts[i]
+		Start += counts[i]
 	}
-	end := start + counts[li]
-	if end > len(params) {
+	End := Start + counts[li]
+	if End > len(params) {
 		return nil
 	}
-	return params[start:end]
+	return params[Start:End]
 }
 
 // dimGoldEntityName 内部 DIM 短名映射为 gold JSON 的 DIMENSION 全名；
 // 非 DIMENSION 类型原样返回。
-func dimGoldEntityName(name string) string {
+func DimGoldEntityName(Name string) string {
 	const short = "DIM_"
-	if len(name) > len(short) && name[:len(short)] == short {
-		return "DIMENSION_" + name[len(short):]
+	if len(Name) > len(short) && Name[:len(short)] == short {
+		return "DIMENSION_" + Name[len(short):]
 	}
-	return name
+	return Name
 }
 
 // mleaderCMCAuditValue CMC 键值导出（对齐 out_json field_cmc）：
 // pre-R2004 gold 为标量索引数字（key 键本身），R2004+ 为对象展平子键
 // ——index 仅反查结果非 0 时输出、rgb 恒为完整 32 位 %06x、flag 非 0 才输出。
-func mleaderCMCAuditValue(c mleaderCMC, key string, scalarKey, prefix string) any {
-	if !c.isTrue {
+func mleaderCMCAuditValue(c MleaderCMC, key string, scalarKey, prefix string) any {
+	if !c.IsTrue {
 		if key == scalarKey {
-			return int64(c.index)
+			return int64(c.Index)
 		}
 		return nil
 	}
 	switch key {
 	case prefix + ".index":
-		if c.index != 0 {
-			return int64(c.index)
+		if c.Index != 0 {
+			return int64(c.Index)
 		}
 	case prefix + ".rgb":
-		return fmt.Sprintf("%06x", c.rgb)
+		return fmt.Sprintf("%06x", c.Rgb)
 	case prefix + ".flag":
-		if c.flag != 0 {
-			return int64(c.flag)
+		if c.Flag != 0 {
+			return int64(c.Flag)
 		}
 	}
 	return nil
@@ -1105,68 +1105,68 @@ func mleaderCMCAuditValue(c mleaderCMC, key string, scalarKey, prefix string) an
 // （ctx.leaders[i]…/ctx.leaders[i].lines[j]…，与 gold JSON 展平口径一致）。
 // 点/数组键（content_base、points、breaks、block_scale 等 gold 数组形态）
 // 不参与比对，统一返回 nil。
-func mleaderAuditField(m *entMLeader, key string) any {
+func mleaderAuditField(m *EntMLeader, key string) any {
 	switch key {
 	case "class_version":
-		if m.hasVersion {
-			return int64(m.classVersion)
+		if m.HasVersion {
+			return int64(m.ClassVersion)
 		}
 		return nil
 	case "flags":
-		return int64(m.flags)
+		return int64(m.Flags)
 	case "line_linewt":
-		return int64(m.lineLinewt)
+		return int64(m.LineLinewt)
 	case "has_landing":
-		return b2int(m.hasLanding)
+		return B2int(m.HasLanding)
 	case "has_dogleg":
-		return b2int(m.hasDogleg)
+		return B2int(m.HasDogleg)
 	case "landing_dist":
-		return m.landingDist
+		return m.LandingDist
 	case "arrow_size":
-		return m.arrowSize
+		return m.ArrowSize
 	case "style_content":
-		return int64(m.styleContent)
+		return int64(m.StyleContent)
 	case "text_left":
-		return int64(m.textLeft)
+		return int64(m.TextLeft)
 	case "text_right":
-		return int64(m.textRight)
+		return int64(m.TextRight)
 	case "text_angletype":
-		return int64(m.textAngletype)
+		return int64(m.TextAngletype)
 	case "text_alignment":
-		return int64(m.textAlignment)
+		return int64(m.TextAlignment)
 	case "has_text_frame":
-		return b2int(m.hasTextFrame)
+		return B2int(m.HasTextFrame)
 	case "block_rotation":
-		return m.blockRotation
+		return m.BlockRotation
 	case "style_attachment":
-		return int64(m.styleAttachment)
+		return int64(m.StyleAttachment)
 	case "is_annotative":
-		return b2int(m.isAnnotative)
+		return B2int(m.IsAnnotative)
 	case "is_neg_textdir":
-		return b2int(m.isNegTextdir)
+		return B2int(m.IsNegTextdir)
 	case "ipe_alignment":
-		return int64(m.ipeAlignment)
+		return int64(m.IpeAlignment)
 	case "justification":
-		return int64(m.justification)
+		return int64(m.Justification)
 	case "scale_factor":
-		return m.scaleFactor
+		return m.ScaleFactor
 	case "attach_dir":
-		return int64(m.attachDir)
+		return int64(m.AttachDir)
 	case "attach_top":
-		return int64(m.attachTop)
+		return int64(m.AttachTop)
 	case "attach_bottom":
-		return int64(m.attachBottom)
+		return int64(m.AttachBottom)
 	case "is_text_extended":
-		if m.hasVersion { // R2013b+ 键；gold 仅 R2013/2018 出现
-			return b2int(m.isTextExtended)
+		if m.HasVersion { // R2013b+ 键；gold 仅 R2013/2018 出现
+			return B2int(m.IsTextExtended)
 		}
 		return nil
 	}
 	// 顶层 CMC 双形态（line_color/text_color/block_color）
 	for _, e := range []struct {
-		cmc    mleaderCMC
+		cmc    MleaderCMC
 		prefix string
-	}{{m.lineColor, "line_color"}, {m.textColor, "text_color"}, {m.blockColor, "block_color"}} {
+	}{{m.LineColor, "line_color"}, {m.TextColor, "text_color"}, {m.BlockColor, "block_color"}} {
 		if v := mleaderCMCAuditValue(e.cmc, key, e.prefix, e.prefix); v != nil {
 			return v
 		}
@@ -1174,32 +1174,32 @@ func mleaderAuditField(m *entMLeader, key string) any {
 	// 句柄系（批次 B 补齐：gold 句柄为 0 时不输出键）
 	switch key {
 	case "mleaderstyle":
-		if m.mleaderStyle != 0 {
-			return m.mleaderStyle
+		if m.MleaderStyle != 0 {
+			return m.MleaderStyle
 		}
 		return nil
 	case "arrow_handle":
-		if m.arrowHandle != 0 {
-			return m.arrowHandle
+		if m.ArrowHandle != 0 {
+			return m.ArrowHandle
 		}
 		return nil
 	case "text_style":
-		if m.textStyle != 0 {
-			return m.textStyle
+		if m.TextStyle != 0 {
+			return m.TextStyle
 		}
 		return nil
 	case "block_style":
-		if m.blockStyle != 0 {
-			return m.blockStyle
+		if m.BlockStyle != 0 {
+			return m.BlockStyle
 		}
 		return nil
 	case "line_ltype":
-		if m.lineLtype != 0 {
-			return m.lineLtype
+		if m.LineLtype != 0 {
+			return m.LineLtype
 		}
 		return nil
 	case "block_scale":
-		return vec3Arr(m.blockScale)
+		return Vec3Arr(m.BlockScale)
 	}
 	// ctx.* 键
 	if v, ok := mleaderCtxAuditField(m, key); ok {
@@ -1209,113 +1209,113 @@ func mleaderAuditField(m *entMLeader, key string) any {
 }
 
 // mleaderCtxAuditField ctx 展平键导出；ok=false 表示键不归属 ctx 段。
-func mleaderCtxAuditField(m *entMLeader, key string) (any, bool) {
-	c := &m.ctx
+func mleaderCtxAuditField(m *EntMLeader, key string) (any, bool) {
+	c := &m.Ctx
 	switch key {
 	case "ctx.num_leaders":
-		return int64(c.numLeaders), true
+		return int64(c.NumLeaders), true
 	case "ctx.scale_factor":
-		return c.scaleFactor, true
+		return c.ScaleFactor, true
 	case "ctx.text_height":
-		return c.textHeight, true
+		return c.TextHeight, true
 	case "ctx.arrow_size":
-		return c.arrowSize, true
+		return c.ArrowSize, true
 	case "ctx.landing_gap":
-		return c.landingGap, true
+		return c.LandingGap, true
 	case "ctx.text_left":
-		return int64(c.textLeft), true
+		return int64(c.TextLeft), true
 	case "ctx.text_right":
-		return int64(c.textRight), true
+		return int64(c.TextRight), true
 	case "ctx.text_angletype":
-		return int64(c.textAngletype), true
+		return int64(c.TextAngletype), true
 	case "ctx.text_alignment":
-		return int64(c.textAlignment), true
+		return int64(c.TextAlignment), true
 	case "ctx.has_content_txt":
-		return b2int(c.hasContentTxt), true
+		return B2int(c.HasContentTxt), true
 	case "ctx.has_content_blk":
-		return b2int(c.hasContentBlk), true
+		return B2int(c.HasContentBlk), true
 	case "ctx.is_normal_reversed":
-		return b2int(c.isNormalReversed), true
+		return B2int(c.IsNormalReversed), true
 	case "ctx.text_top":
-		if m.hasVersion {
-			return int64(c.textTop), true
+		if m.HasVersion {
+			return int64(c.TextTop), true
 		}
 		return nil, true
 	case "ctx.text_bottom":
-		if m.hasVersion {
-			return int64(c.textBottom), true
+		if m.HasVersion {
+			return int64(c.TextBottom), true
 		}
 		return nil, true
 	// ctx 点组（批次 B 补齐数组导出）
 	case "ctx.base":
-		return point3Arr(c.base), true
+		return point3Arr(c.Base), true
 	case "ctx.base_dir":
-		return point3Arr(c.baseDir), true
+		return point3Arr(c.BaseDir), true
 	case "ctx.base_vert":
-		return point3Arr(c.baseVert), true
+		return point3Arr(c.BaseVert), true
 	case "ctx.content_base":
-		return point3Arr(c.contentBase), true
+		return point3Arr(c.ContentBase), true
 	case "ctx.content.txt.normal":
-		return point3Arr(c.txt.normal), true
+		return point3Arr(c.Txt.Normal), true
 	case "ctx.content.txt.location":
-		return point3Arr(c.txt.location), true
+		return point3Arr(c.Txt.Location), true
 	case "ctx.content.txt.direction":
-		return point3Arr(c.txt.direction), true
+		return point3Arr(c.Txt.Direction), true
 	case "ctx.content.txt.style":
-		if c.txt.styleHandle != 0 {
-			return c.txt.styleHandle, true
+		if c.Txt.StyleHandle != 0 {
+			return c.Txt.StyleHandle, true
 		}
 		return nil, true
 	case "ctx.content.blk.block_table":
-		if c.blk.blockTable != 0 {
-			return c.blk.blockTable, true
+		if c.Blk.BlockTable != 0 {
+			return c.Blk.BlockTable, true
 		}
 		return nil, true
 	case "ctx.content.blk.normal":
-		return point3Arr(c.blk.normal), true
+		return point3Arr(c.Blk.Normal), true
 	case "ctx.content.blk.location":
-		return point3Arr(c.blk.location), true
+		return point3Arr(c.Blk.Location), true
 	case "ctx.content.blk.scale":
-		return vec3Arr(c.blk.scale), true
+		return Vec3Arr(c.Blk.Scale), true
 	case "ctx.content.blk.transform":
-		return f64Arr(c.blk.transform[:]), true
+		return F64Arr(c.Blk.Transform[:]), true
 	}
 	if idx, rest, ok := auditArrayIndex(key, "ctx.leaders"); ok {
-		if idx < 0 || idx >= len(c.leaders) {
+		if idx < 0 || idx >= len(c.Leaders) {
 			return nil, true
 		}
-		return mleaderNodeAuditField(m, &c.leaders[idx], rest), true
+		return mleaderNodeAuditField(m, &c.Leaders[idx], rest), true
 	}
 	if strings.HasPrefix(key, "ctx.content.txt.") {
-		return mleaderTxtAuditField(&c.txt, strings.TrimPrefix(key, "ctx.content.txt.")), true
+		return mleaderTxtAuditField(&c.Txt, strings.TrimPrefix(key, "ctx.content.txt.")), true
 	}
 	if strings.HasPrefix(key, "ctx.content.blk.") {
-		b := &c.blk
+		b := &c.Blk
 		switch strings.TrimPrefix(key, "ctx.content.blk.") {
 		case "rotation":
-			return b.rotation, true
+			return b.Rotation, true
 		case "color.rgb":
 			// CMC rgb 完整 32 位（对齐 gold %08x/%06x 双形态）
-			return fmt.Sprintf("%06x", b.color.rgb), true
+			return fmt.Sprintf("%06x", b.Color.Rgb), true
 		case "color.index":
-			return int64(b.color.index), true
+			return int64(b.Color.Index), true
 		}
 		// normal/location/scale/transform 为数组键，block_table 为句柄键
 		return nil, true
 	}
 	// blocklabels[i].*（R14-R2007 块标签数组，multileaders 真实样本实证）
 	if idx, rest, ok := auditArrayIndex(key, "blocklabels"); ok {
-		if idx < 0 || idx >= len(m.blocklabels) {
+		if idx < 0 || idx >= len(m.Blocklabels) {
 			return nil, true
 		}
-		bl := &m.blocklabels[idx]
+		bl := &m.Blocklabels[idx]
 		switch rest {
 		case "label_text":
-			return bl.labelText, true
+			return bl.LabelText, true
 		case "ui_index":
-			return int64(bl.uiIndex), true
+			return int64(bl.UiIndex), true
 		case "width":
-			return bl.width, true
+			return bl.Width, true
 		}
 		return nil, true // attdef 句柄键
 	}
@@ -1323,76 +1323,76 @@ func mleaderCtxAuditField(m *entMLeader, key string) (any, bool) {
 }
 
 // mleaderNodeAuditField ctx.leaders[i] 展平键导出（rest 为前缀后的子键）。
-func mleaderNodeAuditField(m *entMLeader, n *mleaderNode, rest string) any {
+func mleaderNodeAuditField(m *EntMLeader, n *MleaderNode, rest string) any {
 	switch rest {
 	case "has_lastleaderlinepoint":
-		return b2int(n.hasLastLeaderLinePoint)
+		return B2int(n.HasLastLeaderLinePoint)
 	case "has_dogleg":
-		return b2int(n.hasDogleg)
+		return B2int(n.HasDogleg)
 	case "branch_index":
-		return int64(n.branchIndex)
+		return int64(n.BranchIndex)
 	case "dogleg_length":
-		return n.doglegLength
+		return n.DoglegLength
 	case "lastleaderlinepoint":
-		if n.hasLastLeaderLinePoint {
-			return point3Arr(n.lastLeaderLinePoint)
+		if n.HasLastLeaderLinePoint {
+			return point3Arr(n.LastLeaderLinePoint)
 		}
 		return nil
 	case "dogleg_vector":
-		if n.hasDogleg {
-			return point3Arr(n.doglegVector)
+		if n.HasDogleg {
+			return point3Arr(n.DoglegVector)
 		}
 		return nil
 	case "attach_dir":
-		if m.hasVersion {
-			return int64(n.attachDir)
+		if m.HasVersion {
+			return int64(n.AttachDir)
 		}
 		return nil
 	}
 	if idx, sub, ok := auditArrayIndex(rest, "lines"); ok {
-		if idx < 0 || idx >= len(n.lines) {
+		if idx < 0 || idx >= len(n.Lines) {
 			return nil
 		}
-		line := &n.lines[idx]
+		line := &n.Lines[idx]
 		switch sub {
 		case "line_index":
-			return int64(line.lineIndex)
+			return int64(line.LineIndex)
 		case "type":
-			if m.hasVersion {
-				return int64(line.mleaderType)
+			if m.HasVersion {
+				return int64(line.MleaderType)
 			}
 			return nil
 		case "linewt":
-			if m.hasVersion {
-				return int64(line.linewt)
+			if m.HasVersion {
+				return int64(line.Linewt)
 			}
 			return nil
 		case "arrow_size":
-			if m.hasVersion {
-				return line.arrowSize
+			if m.HasVersion {
+				return line.ArrowSize
 			}
 			return nil
 		case "flags":
-			if m.hasVersion {
-				return int64(line.flags)
+			if m.HasVersion {
+				return int64(line.Flags)
 			}
 			return nil
 		case "points":
-			return p3sFlat(line.points)
+			return p3sFlat(line.Points)
 		case "ltype":
-			if m.hasVersion && line.ltype != 0 {
+			if m.HasVersion && line.ltype != 0 {
 				return line.ltype
 			}
 			return nil
 		case "arrow_handle":
-			if m.hasVersion && line.arrowHandle != 0 {
-				return line.arrowHandle
+			if m.HasVersion && line.ArrowHandle != 0 {
+				return line.ArrowHandle
 			}
 			return nil
 		}
-		if m.hasVersion && strings.HasPrefix(sub, "color") {
+		if m.HasVersion && strings.HasPrefix(sub, "color") {
 			// R2010b+ 的 lline.color：R2004+ 结构下展平出 color.rgb 等子键
-			return mleaderCMCAuditValue(line.color, sub, "color", "color")
+			return mleaderCMCAuditValue(line.Color, sub, "color", "color")
 		}
 		return nil
 	}
@@ -1403,51 +1403,51 @@ func mleaderNodeAuditField(m *entMLeader, n *mleaderNode, rest string) any {
 func mleaderTxtAuditField(t *mleaderTxtContent, rest string) any {
 	switch rest {
 	case "default_text":
-		return t.defaultText
+		return t.DefaultText
 	case "rotation":
-		return t.rotation
+		return t.Rotation
 	case "width":
-		return t.width
+		return t.Width
 	case "height":
-		return t.height
+		return t.Height
 	case "line_spacing_factor":
-		return t.lineSpacingFactor
+		return t.LineSpacingFactor
 	case "line_spacing_style":
-		return int64(t.lineSpacingStyle)
+		return int64(t.LineSpacingStyle)
 	case "alignment":
-		return int64(t.alignment)
+		return int64(t.Alignment)
 	case "flow":
-		return int64(t.flow)
+		return int64(t.Flow)
 	case "bg_scale":
-		return t.bgScale
+		return t.BgScale
 	case "bg_transparency":
-		return int64(t.bgTransparency)
+		return int64(t.BgTransparency)
 	case "is_bg_fill":
-		return b2int(t.isBgFill)
+		return B2int(t.IsBgFill)
 	case "is_bg_mask_fill":
-		return b2int(t.isBgMaskFill)
+		return B2int(t.IsBgMaskFill)
 	case "col_type":
-		return int64(t.colType)
+		return int64(t.ColType)
 	case "is_height_auto":
-		return b2int(t.isHeightAuto)
+		return B2int(t.IsHeightAuto)
 	case "col_width":
-		return t.colWidth
+		return t.ColWidth
 	case "col_gutter":
-		return t.colGutter
+		return t.ColGutter
 	case "is_col_flow_reversed":
-		return b2int(t.isColFlowReversed)
+		return B2int(t.IsColFlowReversed)
 	case "num_col_sizes":
-		return int64(t.numColSizes)
+		return int64(t.NumColSizes)
 	case "word_break":
-		return b2int(t.wordBreak)
+		return B2int(t.WordBreak)
 	case "unknown":
-		return b2int(t.unknown)
+		return B2int(t.Unknown)
 	}
 	if strings.HasPrefix(rest, "color") {
-		return mleaderCMCAuditValue(t.color, rest, "color", "color")
+		return mleaderCMCAuditValue(t.Color, rest, "color", "color")
 	}
 	if strings.HasPrefix(rest, "bg_color") {
-		return mleaderCMCAuditValue(t.bgColor, rest, "bg_color", "bg_color")
+		return mleaderCMCAuditValue(t.BgColor, rest, "bg_color", "bg_color")
 	}
 	return nil // normal/location/direction/col_sizes/style 数组或句柄键
 }
@@ -1457,85 +1457,85 @@ func mleaderTxtAuditField(t *mleaderTxtContent, rest string) any {
 // R2004+ gold 为对象展平出的 light_color.index/.rgb/.flag 子键——
 // out_json 的 index 键仅在反查结果非 0 时输出，rgb 恒为完整 32 位
 // rgb（含 method 高字节）的 %06x 形态，flag 仅非 0 时输出。
-func lightAuditField(l *entLight, key string) any {
+func lightAuditField(l *EntLight, key string) any {
 	switch key {
 	case "class_version":
-		return int64(l.classVersion)
+		return int64(l.ClassVersion)
 	case "name":
-		return l.name
+		return l.Name
 	case "status":
-		return b2int(l.status)
+		return B2int(l.Status)
 	case "light_color":
-		if !l.hasLightColorTrue {
-			return int64(l.lightColorIndex)
+		if !l.HasLightColorTrue {
+			return int64(l.LightColorIndex)
 		}
 		return nil
 	case "light_color.index":
-		if l.hasLightColorTrue && l.lightColorIndex != 0 {
-			return int64(l.lightColorIndex)
+		if l.HasLightColorTrue && l.LightColorIndex != 0 {
+			return int64(l.LightColorIndex)
 		}
 		return nil
 	case "light_color.rgb":
-		if l.hasLightColorTrue {
-			return fmt.Sprintf("%06x", l.lightColorRGB)
+		if l.HasLightColorTrue {
+			return fmt.Sprintf("%06x", l.LightColorRGB)
 		}
 		return nil
 	case "light_color.flag":
-		if l.hasLightColorTrue && l.lightColorFlag != 0 {
-			return int64(l.lightColorFlag)
+		if l.HasLightColorTrue && l.LightColorFlag != 0 {
+			return int64(l.LightColorFlag)
 		}
 		return nil
 	case "plot_glyph":
-		return b2int(l.plotGlyph)
+		return B2int(l.PlotGlyph)
 	case "intensity":
-		return l.intensity
+		return l.Intensity
 	case "attenuation_type":
-		return int64(l.attenuationType)
+		return int64(l.AttenuationType)
 	case "use_attenuation_limits":
-		return b2int(l.useAttenuationLimits)
+		return B2int(l.UseAttenuationLimits)
 	case "attenuation_start_limit":
-		return l.attenuationStart
+		return l.AttenuationStart
 	case "attenuation_end_limit":
-		return l.attenuationEnd
+		return l.AttenuationEnd
 	case "hotspot_angle":
-		return l.hotspotAngle
+		return l.HotspotAngle
 	case "falloff_angle":
-		return l.falloffAngle
+		return l.FalloffAngle
 	case "cast_shadows":
-		return b2int(l.castShadows)
+		return B2int(l.CastShadows)
 	case "shadow_type":
-		return int64(l.shadowType)
+		return int64(l.ShadowType)
 	case "shadow_map_size":
-		return int64(l.shadowMapSize)
+		return int64(l.ShadowMapSize)
 	case "shadow_map_softness":
-		return int64(l.shadowMapSoftness)
+		return int64(l.ShadowMapSoftness)
 	case "position":
-		return point3Arr(l.position)
+		return point3Arr(l.Position)
 	case "target":
-		return point3Arr(l.target)
+		return point3Arr(l.Target)
 	}
 	return nil // light_color 数组形态等不参与比对
 }
 
 // acisAuditField ACIS 系（REGION/3DSOLID/BODY）审计键导出。
-func acisAuditField(a *entAcis, key string) any {
+func acisAuditField(a *EntAcis, key string) any {
 	switch key {
 	case "acis_empty":
-		return b2int(a.acisEmpty)
+		return B2int(a.AcisEmpty)
 	case "acis_empty_bit":
-		return b2int(a.acisEmptyBit)
+		return B2int(a.AcisEmptyBit)
 	case "unknown":
-		return int64(a.unknown)
+		return int64(a.Unknown)
 	case "version":
-		return int64(a.version)
+		return int64(a.Version)
 	case "wireframe_data_present":
-		return b2int(a.wireframeDataPresent)
+		return B2int(a.WireframeDataPresent)
 	case "point_present":
-		return b2int(a.pointPresent)
+		return B2int(a.PointPresent)
 	case "isolines":
-		return int64(a.isolines)
+		return int64(a.Isolines)
 	case "isoline_present":
-		return b2int(a.isolinePresent)
+		return B2int(a.IsolinePresent)
 	case "num_wires", "num_silhouettes":
 		return nil // 仅 isoline_present=1 时写入 gold，数组宿主键无对照价值
 	case "history_id":
@@ -1577,9 +1577,9 @@ func acisAuditField(a *entAcis, key string) any {
 				case "vp_id":
 					return int64(sil.VpID)
 				case "vp_perspective":
-					return b2int(sil.VpPerspective)
+					return B2int(sil.VpPerspective)
 				case "has_wires":
-					return b2int(sil.HasWires)
+					return B2int(sil.HasWires)
 				}
 				if v, ok := acisWireField(sil.Wires, restKey); ok {
 					return v
@@ -1589,20 +1589,20 @@ func acisAuditField(a *entAcis, key string) any {
 	}
 	switch key {
 	case "has_revision_guid":
-		return b2int(a.hasRevisionGuid)
+		return B2int(a.HasRevisionGuid)
 	case "revision_major":
-		return int64(a.revisionMajor)
+		return int64(a.RevisionMajor)
 	case "revision_minor1":
-		return int64(a.revisionMinor1)
+		return int64(a.RevisionMinor1)
 	case "revision_minor2":
-		return int64(a.revisionMinor2)
+		return int64(a.RevisionMinor2)
 	case "revision_bytes":
 		return fmt.Sprintf("%X", a.revisionBytes)
 	case "end_marker":
-		return int64(a.endMarker)
+		return int64(a.EndMarker)
 	case "point":
 		// point_present=1 时的参考点（COMMON_3DSOLID）
-		if a.pointPresent {
+		if a.PointPresent {
 			return point3Arr(a.point)
 		}
 		return nil
@@ -1636,48 +1636,48 @@ func acisWireField(wires []acisWire, key string) (any, bool) {
 	case "acis_index":
 		return int64(w.AcisIndex), true
 	case "transform_present":
-		return b2int(w.TransformPresent), true
+		return B2int(w.TransformPresent), true
 	case "has_rotation":
-		return b2int(w.HasRotation), true
+		return B2int(w.HasRotation), true
 	case "has_reflection":
-		return b2int(w.HasReflection), true
+		return B2int(w.HasReflection), true
 	case "has_shear":
-		return b2int(w.HasShear), true
+		return B2int(w.HasShear), true
 	}
 	return nil, false // points/axis_* 数组键
 }
 
 // wipeoutAuditField WIPEOUT 审计键导出（IMAGE 布局字段）。
-func wipeoutAuditField(w *entWipeout, key string) any {
+func wipeoutAuditField(w *EntWipeout, key string) any {
 	switch key {
 	case "class_version":
-		return int64(w.classVersion)
+		return int64(w.ClassVersion)
 	case "display_props":
-		return int64(w.displayProps)
+		return int64(w.DisplayProps)
 	case "clipping":
-		return b2int(w.clipping)
+		return B2int(w.Clipping)
 	case "brightness":
-		return int64(w.brightness)
+		return int64(w.Brightness)
 	case "contrast":
-		return int64(w.contrast)
+		return int64(w.Contrast)
 	case "fade":
-		return int64(w.fade)
+		return int64(w.Fade)
 	case "clip_boundary_type":
-		return int64(w.clipBoundaryType)
+		return int64(w.ClipBoundaryType)
 	case "clip_mode":
-		return int64(w.clipMode)
+		return int64(w.ClipMode)
 	case "pt0":
-		return point3Arr(w.pt0)
+		return point3Arr(w.Pt0)
 	case "uvec":
-		return vec3Arr(w.uvec)
+		return Vec3Arr(w.Uvec)
 	case "vvec":
-		return vec3Arr(w.vvec)
+		return Vec3Arr(w.Vvec)
 	case "image_size":
-		return []float64{w.imageSize.x, w.imageSize.y}
+		return []float64{w.ImageSize.X, w.ImageSize.Y}
 	case "clip_verts":
-		out := make([]float64, 0, len(w.clipVerts)*2)
-		for _, cv := range w.clipVerts {
-			out = append(out, cv.x, cv.y)
+		out := make([]float64, 0, len(w.ClipVerts)*2)
+		for _, cv := range w.ClipVerts {
+			out = append(out, cv.X, cv.Y)
 		}
 		return out
 	}
@@ -1687,46 +1687,46 @@ func wipeoutAuditField(w *entWipeout, key string) any {
 // imageAuditField IMAGE 审计键导出（与 WIPEOUT 同布局，标量键同集合；
 // pt0/uvec/vvec/image_size/clip_verts/imagedef 为数组或句柄键，
 // gold 展平口径不进入标量对照）。
-func imageAuditField(img *entImage, key string) any {
+func imageAuditField(img *EntImage, key string) any {
 	switch key {
 	case "class_version":
-		return int64(img.classVersion)
+		return int64(img.ClassVersion)
 	case "display_props":
-		return int64(img.displayProps)
+		return int64(img.DisplayProps)
 	case "clipping":
-		return b2int(img.clipping)
+		return B2int(img.Clipping)
 	case "brightness":
-		return int64(img.brightness)
+		return int64(img.Brightness)
 	case "contrast":
-		return int64(img.contrast)
+		return int64(img.Contrast)
 	case "fade":
-		return int64(img.fade)
+		return int64(img.Fade)
 	case "clip_boundary_type":
-		return int64(img.clipBoundaryType)
+		return int64(img.ClipBoundaryType)
 	case "clip_mode":
-		return int64(img.clipMode)
+		return int64(img.ClipMode)
 	case "pt0":
-		return point3Arr(img.pt0)
+		return point3Arr(img.Pt0)
 	case "uvec":
-		return vec3Arr(img.uvec)
+		return Vec3Arr(img.Uvec)
 	case "vvec":
-		return vec3Arr(img.vvec)
+		return Vec3Arr(img.Vvec)
 	case "image_size":
-		return []float64{img.imageSize.x, img.imageSize.y}
+		return []float64{img.ImageSize.X, img.ImageSize.Y}
 	case "clip_verts":
-		out := make([]float64, 0, len(img.clipVerts)*2)
-		for _, cv := range img.clipVerts {
-			out = append(out, cv.x, cv.y)
+		out := make([]float64, 0, len(img.ClipVerts)*2)
+		for _, cv := range img.ClipVerts {
+			out = append(out, cv.X, cv.Y)
 		}
 		return out
 	case "imagedef":
-		if img.imageDef != 0 {
-			return img.imageDef
+		if img.ImageDef != 0 {
+			return img.ImageDef
 		}
 		return nil
 	case "imagedefreactor":
-		if img.imageDefReactor != 0 {
-			return img.imageDefReactor
+		if img.ImageDefReactor != 0 {
+			return img.ImageDefReactor
 		}
 		return nil
 	}
@@ -1735,29 +1735,29 @@ func imageAuditField(img *entImage, key string) any {
 
 // ole2FrameAuditField OLE2FRAME 审计键导出（gold 标量键 mode/type；
 // data 为超长 hex 字符串，由对照测试直接断言，此处不重复导出）。
-func ole2FrameAuditField(o *entOle2Frame, key string) any {
+func Ole2FrameAuditField(o *EntOle2Frame, key string) any {
 	switch key {
 	case "type":
-		return int64(o.oleType)
+		return int64(o.OleType)
 	case "mode":
-		return int64(o.mode)
+		return int64(o.Mode)
 	case "lock_aspect":
-		return int64(o.lockAspect)
+		return int64(o.LockAspect)
 	case "data":
-		return fmt.Sprintf("%X", o.data)
+		return fmt.Sprintf("%X", o.Data)
 	}
 	return nil
 }
 
 // oleFrameAuditField OLEFRAME 审计键导出。
-func oleFrameAuditField(o *entOleFrame, key string) any {
+func OleFrameAuditField(o *EntOleFrame, key string) any {
 	switch key {
 	case "flag":
-		return int64(o.flag)
+		return int64(o.Flag)
 	case "mode":
-		return int64(o.mode)
+		return int64(o.Mode)
 	case "data":
-		return fmt.Sprintf("%X", o.data)
+		return fmt.Sprintf("%X", o.Data)
 	}
 	return nil
 }
@@ -1765,48 +1765,48 @@ func oleFrameAuditField(o *entOleFrame, key string) any {
 // proxyEntityAuditField PROXY_ENTITY 审计键导出（gold 标量键口径；
 // proxy_data/data/objids 为数组键不进入标量对照，data_numbits 为
 // LibreDWG DXF/JSON 导出键）。
-func proxyEntityAuditField(p *entProxyEntity, key string) any {
+func ProxyEntityAuditField(P *EntProxyEntity, key string) any {
 	switch key {
 	case "proxy_id":
-		return int64(p.proxyID)
+		return int64(P.ProxyID)
 	case "version":
-		return int64(p.version)
+		return int64(P.Version)
 	case "maint_version":
-		return int64(p.maintVersion)
+		return int64(P.MaintVersion)
 	case "dwg_version":
-		return int64(p.dwgVersionNum)
+		return int64(P.DwgVersionNum)
 	case "from_dxf":
-		return b2int(p.fromDxf)
+		return B2int(P.FromDxf)
 	case "data_numbits":
-		return int64(p.dataNumBits)
+		return int64(P.DataNumBits)
 	case "num_objids":
-		return int64(p.numObjids)
+		return int64(P.NumObjids)
 	case "proxy_data_size":
-		return int64(p.proxyDataSize)
+		return int64(P.ProxyDataSize)
 	}
 	return nil
 }
 
 // mpolygonAuditField MPOLYGON 审计键导出：主体标量键（含 HATCH 同构的
 // 渐变/图案字段）+ 路径展平键复用 HATCH 路径导出。
-func mpolygonAuditField(m *entMpolygon, key string) any {
+func MpolygonAuditField(m *EntMpolygon, key string) any {
 	switch key {
 	case "style":
-		return int64(m.style)
+		return int64(m.Style)
 	case "style_tail":
-		return int64(m.styleTail)
+		return int64(m.StyleTail)
 	case "x_dir":
-		return []float64{m.xDir.x, m.xDir.y}
+		return []float64{m.XDir.X, m.XDir.Y}
 	}
-	if v := hatchAuditField(m.hatch, key); v != nil {
+	if v := hatchAuditField(m.Hatch, key); v != nil {
 		return v
 	}
 	// 展平嵌套键：paths[i]…（复用 HATCH 路径导出）
 	if idx, rest, ok := auditArrayIndex(key, "paths"); ok {
-		if idx < 0 || idx >= len(m.hatch.paths) {
+		if idx < 0 || idx >= len(m.Hatch.Paths) {
 			return nil
 		}
-		return hatchPathAuditField(&m.hatch.paths[idx], rest)
+		return HatchPathAuditField(&m.Hatch.Paths[idx], rest)
 	}
 	return nil
 }
@@ -1816,54 +1816,54 @@ func mpolygonAuditField(m *entMpolygon, key string) any {
 // paths[i].polyline_paths[k].bulge、deflines[m].angle 等，与 gold
 // JSON 展平口径一致）。数组键（knots/points/dashes 等）返回 nil，
 // 由审计侧按非标量跳过。
-func hatchAuditField(h *entHatch, key string) any {
+func hatchAuditField(h *EntHatch, key string) any {
 	switch key {
 	case "elevation":
-		return h.elevation
+		return h.Elevation
 	case "extrusion":
-		return vec3Arr(h.extrusion)
+		return Vec3Arr(h.Extrusion)
 	case "name":
-		return h.name
+		return h.Name
 	case "is_solid_fill":
-		return b2int(h.solidFill)
+		return B2int(h.SolidFill)
 	case "is_associative":
-		return b2int(h.associative)
+		return B2int(h.Associative)
 	case "style":
-		return int64(h.style)
+		return int64(h.Style)
 	case "pattern_type":
-		return int64(h.patternType)
+		return int64(h.PatternType)
 	case "angle":
-		return h.angle
+		return h.Angle
 	case "scale_spacing":
-		return h.scaleSpacing
+		return h.ScaleSpacing
 	case "double_flag":
-		return b2int(h.doubleFlag)
+		return B2int(h.DoubleFlag)
 	case "is_gradient_fill":
-		return int64(h.isGradientFill)
+		return int64(h.IsGradientFill)
 	case "reserved":
-		return int64(h.reserved)
+		return int64(h.Reserved)
 	case "gradient_angle":
-		return h.gradientAngle
+		return h.GradientAngle
 	case "gradient_shift":
-		return h.gradientShift
+		return h.GradientShift
 	case "single_color_gradient":
-		return int64(h.singleColorGradient)
+		return int64(h.SingleColorGradient)
 	case "gradient_tint":
-		return h.gradientTint
+		return h.GradientTint
 	case "gradient_name":
-		return h.gradientName
+		return h.GradientName
 	case "has_derived":
-		return b2int(h.hasDerived)
+		return B2int(h.HasDerived)
 	case "pixel_size":
-		if h.hasDerived {
-			return h.pixelSize
+		if h.HasDerived {
+			return h.PixelSize
 		}
 		return nil // gold 仅 has_derived=1 时输出
 	case "seeds":
 		// 种子点数组（gold 形态 [[x,y],...]，2RD 对）
-		out := make([][]float64, 0, len(h.seeds))
-		for _, s := range h.seeds {
-			out = append(out, []float64{s.x, s.y})
+		out := make([][]float64, 0, len(h.Seeds))
+		for _, s := range h.Seeds {
+			out = append(out, []float64{s.X, s.Y})
 		}
 		return out
 	case "num_seeds", "deflines", "paths", "num_paths":
@@ -1873,15 +1873,15 @@ func hatchAuditField(h *entHatch, key string) any {
 		i := strings.Index(rest, "]")
 		if i > 0 {
 			idx, e := strconv.Atoi(rest[:i])
-			if e == nil && idx >= 0 && idx < len(h.colors) {
-				gc := h.colors[idx]
+			if e == nil && idx >= 0 && idx < len(h.Colors) {
+				gc := h.Colors[idx]
 				switch rest[i+2:] {
 				case "shift_value":
-					return gc.shiftValue
+					return gc.ShiftValue
 				case "color.index":
-					return gc.colorIndex
+					return gc.ColorIndex
 				case "color.rgb":
-					return gc.colorRGB
+					return gc.ColorRGB
 				}
 			}
 		}
@@ -1889,167 +1889,167 @@ func hatchAuditField(h *entHatch, key string) any {
 	}
 	// 展平嵌套键：paths[i]… / deflines[i]…
 	if idx, rest, ok := auditArrayIndex(key, "paths"); ok {
-		if idx < 0 || idx >= len(h.paths) {
+		if idx < 0 || idx >= len(h.Paths) {
 			return nil
 		}
-		return hatchPathAuditField(&h.paths[idx], rest)
+		return HatchPathAuditField(&h.Paths[idx], rest)
 	}
 	if idx, rest, ok := auditArrayIndex(key, "deflines"); ok {
-		if idx < 0 || idx >= len(h.deflines) {
+		if idx < 0 || idx >= len(h.Deflines) {
 			return nil
 		}
-		return hatchDefLineAuditField(&h.deflines[idx], rest)
+		return hatchDefLineAuditField(&h.Deflines[idx], rest)
 	}
 	return nil
 }
 
 // hatchPathAuditField HATCH 单条路径的展平键导出（rest 为 paths[i]. 之后的子键）。
-func hatchPathAuditField(p *hatchPath, rest string) any {
+func HatchPathAuditField(P *HatchPath, rest string) any {
 	switch rest {
 	case "flag":
-		return int64(p.flag)
+		return int64(P.Flag)
 	case "bulges_present":
-		if !p.isPolyline {
+		if !P.IsPolyline {
 			return nil
 		}
-		return b2int(p.bulgesPresent)
+		return B2int(P.BulgesPresent)
 	case "closed":
-		if !p.isPolyline {
+		if !P.IsPolyline {
 			return nil
 		}
-		return b2int(p.closed)
+		return B2int(P.Closed)
 	case "num_segs_or_paths":
-		return int64(p.numSegsOrPaths)
+		return int64(P.NumSegsOrPaths)
 	case "segs", "polyline_paths":
 		return nil // 数组本身
 	case "boundary_handles":
 		// 边界对象句柄数组（handle 流，按 path 尾部计数读入；gold 逐位
 		// 对照末位句柄值）
-		if len(p.boundaryHandles) == 0 {
+		if len(P.boundaryHandles) == 0 {
 			return nil
 		}
-		out := make([]float64, 0, len(p.boundaryHandles))
-		for _, hh := range p.boundaryHandles {
+		out := make([]float64, 0, len(P.boundaryHandles))
+		for _, hh := range P.boundaryHandles {
 			out = append(out, float64(hh))
 		}
 		return out
 	}
 	if idx, sub, ok := auditArrayIndex(rest, "segs"); ok {
-		if idx < 0 || idx >= len(p.segs) {
+		if idx < 0 || idx >= len(P.Segs) {
 			return nil
 		}
-		return hatchSegAuditField(&p.segs[idx], sub)
+		return HatchSegAuditField(&P.Segs[idx], sub)
 	}
 	if idx, sub, ok := auditArrayIndex(rest, "polyline_paths"); ok {
-		if idx < 0 || idx >= len(p.polyVerts) {
+		if idx < 0 || idx >= len(P.PolyVerts) {
 			return nil
 		}
 		switch sub {
 		case "point":
 			return nil // 数组
 		case "bulge":
-			return p.polyVerts[idx].bulge
+			return P.PolyVerts[idx].Bulge
 		}
 	}
 	return nil
 }
 
 // hatchSegAuditField HATCH 边集段的展平键导出（sub 为 segs[j]. 之后的子键）。
-func hatchSegAuditField(s *hatchSeg, sub string) any {
+func HatchSegAuditField(s *HatchSeg, sub string) any {
 	switch sub {
 	case "curve_type":
-		return int64(s.curveType)
+		return int64(s.CurveType)
 	case "radius":
-		return s.radius
+		return s.Radius
 	case "minor_major_ratio":
-		return s.ratio
+		return s.Ratio
 	case "start_angle":
-		return s.startAng
+		return s.StartAng
 	case "end_angle":
-		return s.endAng
+		return s.EndAng
 	case "is_ccw":
-		return b2int(s.ccw)
+		return B2int(s.Ccw)
 	case "degree":
-		return int64(s.degree)
+		return int64(s.Degree)
 	case "is_rational":
-		return b2int(s.rational)
+		return B2int(s.Rational)
 	case "is_periodic":
-		return b2int(s.periodic)
+		return B2int(s.Periodic)
 	case "num_knots":
-		return int64(len(s.knots))
+		return int64(len(s.Knots))
 	case "num_control_points":
-		return int64(len(s.ctrl))
+		return int64(len(s.Ctrl))
 	case "num_fitpts":
-		return int64(len(s.fitPts))
+		return int64(len(s.FitPts))
 	case "first_endpoint":
-		return point2Arr(s.first)
+		return Point2Arr(s.First)
 	case "second_endpoint":
-		return point2Arr(s.second)
+		return Point2Arr(s.Second)
 	case "center":
-		return point2Arr(s.center)
+		return Point2Arr(s.Center)
 	case "endpoint":
-		return point2Arr(s.endpoint)
+		return Point2Arr(s.Endpoint)
 	case "knots":
-		return f64Arr(s.knots)
+		return F64Arr(s.Knots)
 	case "weights":
-		return f64Arr(s.weights)
+		return F64Arr(s.Weights)
 	case "start_tangent":
-		return point2Arr(s.startTan)
+		return Point2Arr(s.startTan)
 	case "end_tangent":
-		return point2Arr(s.endTan)
+		return Point2Arr(s.endTan)
 	case "control_points", "fitpts":
 		// gold 为 {point:[x,y]} 对象数组（flattenJSONGold 展平为
 		// control_points[i].point），由数组下标键导出
 		return nil
 	}
 	if idx, rest, ok := auditArrayIndex(sub, "control_points"); ok {
-		if idx < 0 || idx >= len(s.ctrl) {
+		if idx < 0 || idx >= len(s.Ctrl) {
 			return nil
 		}
 		if rest == "point" {
-			return point2Arr(s.ctrl[idx])
+			return Point2Arr(s.Ctrl[idx])
 		}
 		return nil
 	}
 	if idx, rest, ok := auditArrayIndex(sub, "fitpts"); ok {
-		if idx < 0 || idx >= len(s.fitPts) {
+		if idx < 0 || idx >= len(s.FitPts) {
 			return nil
 		}
 		if rest == "point" {
-			return point2Arr(s.fitPts[idx])
+			return Point2Arr(s.FitPts[idx])
 		}
 	}
 	return nil
 }
 
 // hatchDefLineAuditField HATCH 定义线的展平键导出（rest 为 deflines[i]. 之后的子键）。
-func hatchDefLineAuditField(dl *hatchDefLine, rest string) any {
+func hatchDefLineAuditField(dl *HatchDefLine, rest string) any {
 	switch rest {
 	case "angle":
-		return dl.angle
+		return dl.Angle
 	case "num_dashes":
-		return int64(len(dl.dashes))
+		return int64(len(dl.Dashes))
 	case "pt0":
-		return point2Arr(dl.pt0)
+		return Point2Arr(dl.Pt0)
 	case "offset":
-		return point2Arr(dl.offset)
+		return Point2Arr(dl.Offset)
 	case "dashes":
-		return f64Arr(dl.dashes)
+		return F64Arr(dl.Dashes)
 	}
 	return nil
 }
 
 // auditArrayIndex 解析展平键的数组下标前缀：key 形如 "paths[2].flag"、
 // name 为 "paths" 时返回 (2, "flag")。无方括号返回 ok=false。
-func auditArrayIndex(key, name string) (idx int, rest string, ok bool) {
-	if !strings.HasPrefix(key, name+"[") {
+func auditArrayIndex(key, Name string) (idx int, rest string, ok bool) {
+	if !strings.HasPrefix(key, Name+"[") {
 		return 0, "", false
 	}
 	close := strings.Index(key, "]")
 	if close < 0 {
 		return 0, "", false
 	}
-	n, err := strconv.Atoi(key[len(name)+1 : close])
+	n, err := strconv.Atoi(key[len(Name)+1 : close])
 	if err != nil {
 		return 0, "", false
 	}
@@ -2060,41 +2060,41 @@ func auditArrayIndex(key, name string) (idx int, rest string, ok bool) {
 
 // b2int bool 转 0/1 整型。返回 int64 与审计值比较口径一致
 // （auditValueMatch 的数值分支只识别 float64/int64/bool）。
-func b2int(b bool) int64 {
+func B2int(b bool) int64 {
 	if b {
 		return 1
 	}
 	return 0
 }
 
-func point3Arr(p point3) []float64 { return []float64{p.x, p.y, p.z} }
+func point3Arr(P Point3) []float64 { return []float64{P.X, P.Y, P.Z} }
 
-func vec3Arr(v point3) []float64 { return []float64{v.x, v.y, v.z} }
+func Vec3Arr(v Point3) []float64 { return []float64{v.X, v.Y, v.Z} }
 
-func pt2Arr(p []point2) []float64 {
-	out := make([]float64, 0, len(p)*2)
-	for _, e := range p {
-		out = append(out, e.x, e.y)
+func Pt2Arr(P []Point2) []float64 {
+	out := make([]float64, 0, len(P)*2)
+	for _, e := range P {
+		out = append(out, e.X, e.Y)
 	}
 	return out
 }
 
-func f64Arr(v []float64) []float64 { return append([]float64(nil), v...) }
+func F64Arr(v []float64) []float64 { return append([]float64(nil), v...) }
 
 // colorAuditValue gold 的 color 键：ByLayer/索引色输出 ACI 索引；
 // 真彩色输出 0xC0000000|RGB 形态的十进制值。
-func colorAuditValue(c entColor) any {
-	if c.hasTrue {
-		return int64(0xC0000000) | int64(c.trueColor&0xFFFFFF)
+func colorAuditValue(c EntColor) any {
+	if c.HasTrue {
+		return int64(0xC0000000) | int64(c.TrueColor&0xFFFFFF)
 	}
-	if c.hasIndex {
-		return int64(c.index)
+	if c.HasIndex {
+		return int64(c.Index)
 	}
 	return int64(256) // BYLAYER
 }
 
 // nearF 浮点近似比较（审计容差与内部对象口径一致）。
-func nearF(a, b float64) bool {
+func NearF(a, b float64) bool {
 	if a == b {
 		return true
 	}
@@ -2102,18 +2102,18 @@ func nearF(a, b float64) bool {
 }
 
 // entityValueEqual 实体字段值比较：float 容差、切片逐元素、其余直接相等。
-func entityValueEqual(got, want any) bool {
+func EntityValueEqual(got, want any) bool {
 	switch w := want.(type) {
 	case float64:
 		g, ok := got.(float64)
-		return ok && nearF(g, w)
+		return ok && NearF(g, w)
 	case []float64:
 		g, ok := got.([]float64)
 		if !ok || len(g) != len(w) {
 			return false
 		}
 		for i := range w {
-			if !nearF(g[i], w[i]) {
+			if !NearF(g[i], w[i]) {
 				return false
 			}
 		}
@@ -2134,14 +2134,14 @@ func entityValueEqual(got, want any) bool {
 	return false
 }
 
-func point2Arr(p point2) []float64 { return []float64{p.x, p.y} }
+func Point2Arr(P Point2) []float64 { return []float64{P.X, P.Y} }
 
 // p3sFlat 点数组展平为 [x,y,z,x,y,z,...]（gold 二维嵌套数组的导出形态，
 // 测试侧 jsonTestValueMatch 做嵌套展开对照）。
-func p3sFlat(pts []point3) []float64 {
+func p3sFlat(pts []Point3) []float64 {
 	out := make([]float64, 0, len(pts)*3)
-	for _, p := range pts {
-		out = append(out, p.x, p.y, p.z)
+	for _, P := range pts {
+		out = append(out, P.X, P.Y, P.Z)
 	}
 	return out
 }
@@ -2181,18 +2181,18 @@ func eedFieldValue(items []entEED, key string) any {
 	field := key[rb+2:]
 	flat := 0
 	for _, it := range items {
-		for pi, p := range it.Pairs {
+		for pi, P := range it.Pairs {
 			if flat == idx {
 				switch field {
 				case "code":
-					return p.Code
+					return P.Code
 				case "size":
 					if pi == 0 {
 						return it.Size
 					}
 					return nil
 				case "value":
-					return p.Value
+					return P.Value
 				}
 				return nil
 			}
@@ -2205,17 +2205,17 @@ func eedFieldValue(items []entEED, key string) any {
 // underlayAuditField UNDERLAY 家族审计键导出（gold 标量键 angle/flag/
 // contrast/fade；definition_id/extrusion/ins_pt/scale/clip_verts 为数组
 // 键，审计展平循环按类型过滤跳过，无需导出）。
-func underlayAuditField(u *entUnderlay, key string) any {
+func underlayAuditField(u *EntUnderlay, key string) any {
 	switch key {
 	case "angle":
 		// gold JSON 输出弧度原值（out_json 无角度制转换）
-		return u.angle
+		return u.Angle
 	case "flag":
-		return int64(u.flag)
+		return int64(u.Flag)
 	case "contrast":
-		return int64(u.contrast)
+		return int64(u.Contrast)
 	case "fade":
-		return int64(u.fade)
+		return int64(u.Fade)
 	}
 	return nil
 }

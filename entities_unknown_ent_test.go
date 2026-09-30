@@ -4,6 +4,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"os"
 	"testing"
 )
@@ -11,11 +12,11 @@ import (
 // TestUnknownEntFallbackNameList 名单判定：ACAD_TABLE 兜底，
 // LIGHT/MULTILEADER 等有正式 spec 布局的类不兜底。
 func TestUnknownEntFallbackNameList(t *testing.T) {
-	if !unknownEntFallbackNames["ACAD_TABLE"] {
+	if !entity.UnknownEntFallbackNames["ACAD_TABLE"] {
 		t.Fatal("ACAD_TABLE 应在兜底名单")
 	}
 	for _, n := range []string{"LIGHT", "MULTILEADER", "ACDBLINE", ""} {
-		if unknownEntFallbackNames[n] {
+		if entity.UnknownEntFallbackNames[n] {
 			t.Fatalf("%q 不应在兜底名单", n)
 		}
 	}
@@ -24,17 +25,17 @@ func TestUnknownEntFallbackNameList(t *testing.T) {
 // TestDecodeUnknownEntAuditKeys 兜底实体的审计键：entity 强制
 // UNKNOWN_ENT，dxfname 保留原类名（审计跳过该键，仅供诊断）。
 func TestDecodeUnknownEntAuditKeys(t *testing.T) {
-	e := &entUnknownEnt{baseEntity: baseEntity{
-		handle: 1266, typeName: "ACAD_TABLE", typeCode: 528,
-		extra: map[string]any{"dxfname": "ACAD_TABLE"},
+	e := &entity.EntUnknownEnt{BaseEntity: entity.BaseEntity{
+		Handle: 1266, TypeName: "ACAD_TABLE", TypeCode: 528,
+		Extra: map[string]any{"dxfname": "ACAD_TABLE"},
 	}}
-	if got := entityField(e, "entity"); got != "UNKNOWN_ENT" {
+	if got := entity.EntityField(e, "entity"); got != "UNKNOWN_ENT" {
 		t.Fatalf("entity 键: %v", got)
 	}
-	if got := entityField(e, "type"); got != int64(528) {
+	if got := entity.EntityField(e, "type"); got != int64(528) {
 		t.Fatalf("type 键: %v", got)
 	}
-	if got := entityField(e, "dxfname"); got != "ACAD_TABLE" {
+	if got := entity.EntityField(e, "dxfname"); got != "ACAD_TABLE" {
 		t.Fatalf("dxfname 键: %v", got)
 	}
 }
@@ -50,21 +51,21 @@ func TestUnknownEntGoldR13(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u, ok := doc.EntityByHandle(1266).(*entUnknownEnt)
+	u, ok := doc.EntityByHandle(1266).(*entity.EntUnknownEnt)
 	if !ok {
 		t.Fatalf("handle 1266 不是 entUnknownEnt: %T", doc.EntityByHandle(1266))
 	}
-	if u.typeCode != 528 || u.typeName != "ACAD_TABLE" {
-		t.Fatalf("typeCode=%d typeName=%s", u.typeCode, u.typeName)
+	if u.TypeCode != 528 || u.TypeName != "ACAD_TABLE" {
+		t.Fatalf("typeCode=%d typeName=%s", u.TypeCode, u.TypeName)
 	}
-	if entityField(u, "entity") != "UNKNOWN_ENT" {
-		t.Fatalf("entity 键: %v", entityField(u, "entity"))
+	if entity.EntityField(u, "entity") != "UNKNOWN_ENT" {
+		t.Fatalf("entity 键: %v", entity.EntityField(u, "entity"))
 	}
-	if u.extra["dxfname"] != "ACAD_TABLE" {
-		t.Fatalf("dxfname: %v", u.extra["dxfname"])
+	if u.Extra["dxfname"] != "ACAD_TABLE" {
+		t.Fatalf("dxfname: %v", u.Extra["dxfname"])
 	}
 	// 位串收集完整（roundtrip 回放依赖）
-	if u.headRawBits == "" || u.RawHandleBits == "" {
+	if u.HeadRawBits == "" || u.RawHandleBits == "" {
 		t.Fatal("兜底实体缺少位串收集")
 	}
 }

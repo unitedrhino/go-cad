@@ -6,6 +6,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"math"
 	"os"
 	"path/filepath"
@@ -45,12 +46,12 @@ func TestLineSamplesAllVersions(t *testing.T) {
 	for _, name := range []string{"line_2000.dwg", "line_2004.dwg", "line_2010.dwg", "line_2013.dwg"} {
 		t.Run(name, func(t *testing.T) {
 			doc := parseSample(t, name)
-			line := findEntity[entLine](doc)
+			line := findEntity[entity.EntLine](doc)
 			if line == nil {
 				t.Fatal("未解出 LINE")
 			}
-			if !isFinite(line.start.x) || math.Abs(line.start.x) > 1e7 {
-				t.Fatalf("%s LINE start 异常: %v", name, line.start)
+			if !entity.IsFinite(line.Start.X) || math.Abs(line.Start.X) > 1e7 {
+				t.Fatalf("%s LINE start 异常: %v", name, line.Start)
 			}
 		})
 	}
@@ -60,16 +61,16 @@ func TestCircleSamples(t *testing.T) {
 	for _, name := range []string{"circle_2004.dwg", "circle_2010.dwg", "circle_2013.dwg"} {
 		t.Run(name, func(t *testing.T) {
 			doc := parseSample(t, name)
-			c := findEntity[entCircle](doc)
+			c := findEntity[entity.EntCircle](doc)
 			if c == nil {
 				t.Fatal("未解出 CIRCLE")
 			}
 			if name == "circle_2013.dwg" {
-				if math.Abs(c.radius-50) > 0.01 {
-					t.Fatalf("CIRCLE 半径期望 50 得到 %v", c.radius)
+				if math.Abs(c.Radius-50) > 0.01 {
+					t.Fatalf("CIRCLE 半径期望 50 得到 %v", c.Radius)
 				}
-			} else if !isFinite(c.radius) || c.radius < 0 || c.radius > 1e7 {
-				t.Fatalf("CIRCLE 半径异常: %v", c.radius)
+			} else if !entity.IsFinite(c.Radius) || c.Radius < 0 || c.Radius > 1e7 {
+				t.Fatalf("CIRCLE 半径异常: %v", c.Radius)
 			}
 		})
 	}
@@ -79,12 +80,12 @@ func TestArcSamples(t *testing.T) {
 	for _, name := range []string{"arc_2004.dwg", "arc_2010.dwg", "arc_2013.dwg"} {
 		t.Run(name, func(t *testing.T) {
 			doc := parseSample(t, name)
-			a := findEntity[entArc](doc)
+			a := findEntity[entity.EntArc](doc)
 			if a == nil {
 				t.Fatal("未解出 ARC")
 			}
-			if !isFinite(a.radius) || a.radius < 0 || a.radius > 1e7 {
-				t.Fatalf("ARC 半径异常: %v", a.radius)
+			if !entity.IsFinite(a.Radius) || a.Radius < 0 || a.Radius > 1e7 {
+				t.Fatalf("ARC 半径异常: %v", a.Radius)
 			}
 		})
 	}
@@ -94,7 +95,7 @@ func TestPointSamples(t *testing.T) {
 	for _, name := range []string{"point2d_2013.dwg", "point3d_2013.dwg"} {
 		t.Run(name, func(t *testing.T) {
 			doc := parseSample(t, name)
-			if findEntity[entPoint](doc) == nil {
+			if findEntity[entity.EntPoint](doc) == nil {
 				t.Fatal("未解出 POINT")
 			}
 		})
@@ -105,12 +106,12 @@ func TestEllipseSamples(t *testing.T) {
 	for _, name := range []string{"ellipse_2004.dwg", "ellipse_2010.dwg", "ellipse_2013.dwg"} {
 		t.Run(name, func(t *testing.T) {
 			doc := parseSample(t, name)
-			e := findEntity[entEllipse](doc)
+			e := findEntity[entity.EntEllipse](doc)
 			if e == nil {
 				t.Fatal("未解出 ELLIPSE")
 			}
-			if !isFinite(e.ratio) || e.ratio <= 0 || e.ratio > 1 {
-				t.Fatalf("ELLIPSE 轴比异常: %v", e.ratio)
+			if !entity.IsFinite(e.Ratio) || e.Ratio <= 0 || e.Ratio > 1 {
+				t.Fatalf("ELLIPSE 轴比异常: %v", e.Ratio)
 			}
 		})
 	}
@@ -120,8 +121,8 @@ func TestPolyline2DSamples(t *testing.T) {
 	for _, name := range []string{"polyline2d_line_2004.dwg", "polyline2d_line_2010.dwg", "polyline2d_line_2013.dwg"} {
 		t.Run(name, func(t *testing.T) {
 			doc := parseSample(t, name)
-			p := findEntity[entLwPolyline](doc)
-			if p == nil || len(p.vertices) == 0 {
+			p := findEntity[entity.EntLwPolyline](doc)
+			if p == nil || len(p.Vertices) == 0 {
 				t.Fatal("未解出 LWPOLYLINE 或无顶点")
 			}
 		})
@@ -130,23 +131,23 @@ func TestPolyline2DSamples(t *testing.T) {
 
 func TestMText2000Sample(t *testing.T) {
 	doc := parseSample(t, "mtext_2000.dwg")
-	m := findEntity[entMText](doc)
+	m := findEntity[entity.EntMText](doc)
 	if m == nil {
 		t.Fatal("未解出 MTEXT")
 	}
-	if !strings.Contains(m.text, "Hello") {
-		t.Fatalf("MTEXT 文本: %q", m.text)
+	if !strings.Contains(m.Text, "Hello") {
+		t.Fatalf("MTEXT 文本: %q", m.Text)
 	}
 }
 
 func TestText2000Sample(t *testing.T) {
 	doc := parseSample(t, "text_2000.dwg")
-	txt := findEntity[entText](doc)
+	txt := findEntity[entity.EntText](doc)
 	if txt == nil {
 		t.Fatal("未解出 TEXT")
 	}
-	if !strings.Contains(txt.text, "Hello") {
-		t.Fatalf("TEXT 文本: %q", txt.text)
+	if !strings.Contains(txt.Text, "Hello") {
+		t.Fatalf("TEXT 文本: %q", txt.Text)
 	}
 }
 

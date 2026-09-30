@@ -30,6 +30,7 @@ package cad
 import (
 	"bytes"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"image"
 	"image/color"
 	"image/png"
@@ -207,7 +208,7 @@ func DetectSheets(doc *Document) []Sheet {
 	for i, c := range kept {
 		name := sd.sheetTitle(c)
 		if name == "" {
-			name = sd.blockName(c.ins.blockHeader)
+			name = sd.blockName(c.ins.BlockHeader)
 		}
 		if name == "" {
 			name = fmt.Sprintf("图 %d", i+1)
@@ -232,13 +233,13 @@ type sheetTextLike struct {
 // 结果按块句柄缓存（同一符号块被引用多次只展开一次）。
 type sheetDetector struct {
 	doc         *Document
-	ts          *tessellator               // 共享顶点索引 + 展开预算
-	blockPrimsC map[uint64][]primitive     // 块句柄 → 块定义局部展开图元（缓存）
-	blockBox    map[uint64]box2            // 块句柄 → 块定义局部包围盒（缓存）
-	insertPrims map[*entInsert][]primitive // 候选 INSERT → 世界展开图元（缓存）
-	modelTexts  []sheetTextLike            // 模型空间直属文本（图名提取第二来源）
-	dots        [][2]float64               // 模型空间直属实体代表点（内容密度与残余聚类共用）
-	dotText     map[[2]float64]struct{}    // dots 中文本插入点集合（文字页/符号区判别）
+	ts          *tessellator                      // 共享顶点索引 + 展开预算
+	blockPrimsC map[uint64][]primitive            // 块句柄 → 块定义局部展开图元（缓存）
+	blockBox    map[uint64]box2                   // 块句柄 → 块定义局部包围盒（缓存）
+	insertPrims map[*entity.EntInsert][]primitive // 候选 INSERT → 世界展开图元（缓存）
+	modelTexts  []sheetTextLike                   // 模型空间直属文本（图名提取第二来源）
+	dots        [][2]float64                      // 模型空间直属实体代表点（内容密度与残余聚类共用）
+	dotText     map[[2]float64]struct{}           // dots 中文本插入点集合（文字页/符号区判别）
 }
 
 // newSheetDetector 构造检测器：buildVertexIndex 一次供全部块展开共用
@@ -254,7 +255,7 @@ func newSheetDetector(doc *Document) *sheetDetector {
 		ts:          ts,
 		blockPrimsC: make(map[uint64][]primitive, 64),
 		blockBox:    make(map[uint64]box2, 64),
-		insertPrims: make(map[*entInsert][]primitive, 16),
+		insertPrims: make(map[*entity.EntInsert][]primitive, 16),
 		modelTexts:  collectModelTexts(doc),
 		dots:        dots,
 		dotText:     textDotSet(doc),
@@ -267,17 +268,17 @@ func textDotSet(doc *Document) map[[2]float64]struct{} {
 	set := make(map[[2]float64]struct{}, 1024)
 	for _, ent := range doc.modelSpace {
 		switch e := ent.(type) {
-		case *entText:
-			if plausible(e.insertion.x, e.insertion.y) {
-				set[[2]float64{e.insertion.x, e.insertion.y}] = struct{}{}
+		case *entity.EntText:
+			if plausible(e.Insertion.X, e.Insertion.Y) {
+				set[[2]float64{e.Insertion.X, e.Insertion.Y}] = struct{}{}
 			}
-		case *entMText:
-			if plausible(e.insertion.x, e.insertion.y) {
-				set[[2]float64{e.insertion.x, e.insertion.y}] = struct{}{}
+		case *entity.EntMText:
+			if plausible(e.Insertion.X, e.Insertion.Y) {
+				set[[2]float64{e.Insertion.X, e.Insertion.Y}] = struct{}{}
 			}
-		case *entAttrib:
-			if plausible(e.insertion.x, e.insertion.y) {
-				set[[2]float64{e.insertion.x, e.insertion.y}] = struct{}{}
+		case *entity.EntAttrib:
+			if plausible(e.Insertion.X, e.Insertion.Y) {
+				set[[2]float64{e.Insertion.X, e.Insertion.Y}] = struct{}{}
 			}
 		}
 	}
@@ -286,8 +287,8 @@ func textDotSet(doc *Document) map[[2]float64]struct{} {
 
 // sheetCand 通过粗筛的图框候选。
 type sheetCand struct {
-	ins *entInsert // 图框块参照
-	box box2       // 精确世界包围盒（AABB，含旋转外扩）
+	ins *entity.EntInsert // 图框块参照
+	box box2              // 精确世界包围盒（AABB，含旋转外扩）
 }
 
 // contentDots 模型空间直属实体的代表点样本（内容密度判定用）：
@@ -302,25 +303,25 @@ func contentDots(doc *Document) [][2]float64 {
 	}
 	for _, ent := range doc.modelSpace {
 		switch e := ent.(type) {
-		case *entLine:
-			add(e.start.x, e.start.y)
-			add(e.end.x, e.end.y)
-		case *entText:
-			add(e.insertion.x, e.insertion.y)
-		case *entAttrib:
-			add(e.insertion.x, e.insertion.y)
-		case *entMText:
-			add(e.insertion.x, e.insertion.y)
-		case *entCircle:
-			add(e.center.x, e.center.y)
-		case *entArc:
-			add(e.center.x, e.center.y)
-		case *entLwPolyline:
-			for _, v := range e.vertices {
-				add(v.x, v.y)
+		case *entity.EntLine:
+			add(e.Start.X, e.Start.Y)
+			add(e.End.X, e.End.Y)
+		case *entity.EntText:
+			add(e.Insertion.X, e.Insertion.Y)
+		case *entity.EntAttrib:
+			add(e.Insertion.X, e.Insertion.Y)
+		case *entity.EntMText:
+			add(e.Insertion.X, e.Insertion.Y)
+		case *entity.EntCircle:
+			add(e.Center.X, e.Center.Y)
+		case *entity.EntArc:
+			add(e.Center.X, e.Center.Y)
+		case *entity.EntLwPolyline:
+			for _, v := range e.Vertices {
+				add(v.X, v.Y)
 			}
-		case *entPoint:
-			add(e.location.x, e.location.y)
+		case *entity.EntPoint:
+			add(e.Location.X, e.Location.Y)
 		}
 	}
 	return dots
@@ -343,25 +344,25 @@ func (sd *sheetDetector) candidates() []sheetCand {
 	// 模型空间 INSERT 按块聚合（实例世界近似尺寸供网格判定），
 	// 块序保持首次出现顺序保证候选输出顺序确定
 	type insts struct {
-		list  []*entInsert
+		list  []*entity.EntInsert
 		boxes []box2 // 角点外接近似世界包围盒（网格判定用）
 	}
 	var blockOrder []uint64
 	byBlock := map[uint64]*insts{}
 	for _, ent := range sd.doc.modelSpace {
-		ins, ok := ent.(*entInsert)
+		ins, ok := ent.(*entity.EntInsert)
 		if !ok {
 			continue
 		}
-		if n := len(sd.doc.blocks[ins.blockHeader]); n == 0 || n > sheetMaxBlockEnts {
+		if n := len(sd.doc.blocks[ins.BlockHeader]); n == 0 || n > sheetMaxBlockEnts {
 			continue
 		}
-		lb := sd.blockLocalBox(ins.blockHeader)
+		lb := sd.blockLocalBox(ins.BlockHeader)
 		if lb.invalid() {
 			continue
 		}
-		w := (lb.maxX - lb.minX) * math.Abs(ins.scale.x)
-		h := (lb.maxY - lb.minY) * math.Abs(ins.scale.y)
+		w := (lb.maxX - lb.minX) * math.Abs(ins.Scale.X)
+		h := (lb.maxY - lb.minY) * math.Abs(ins.Scale.Y)
 		if w <= 0 || h <= 0 {
 			continue
 		}
@@ -372,15 +373,15 @@ func (sd *sheetDetector) candidates() []sheetCand {
 		if ratio < sheetRatioMin || ratio > sheetRatioLongMax {
 			continue
 		}
-		prims := sd.blockPrims(ins.blockHeader)
-		if !frameRect(sd.doc, ins.blockHeader, prims, lb) {
+		prims := sd.blockPrims(ins.BlockHeader)
+		if !frameRect(sd.doc, ins.BlockHeader, prims, lb) {
 			continue
 		}
-		g := byBlock[ins.blockHeader]
+		g := byBlock[ins.BlockHeader]
 		if g == nil {
 			g = &insts{}
-			byBlock[ins.blockHeader] = g
-			blockOrder = append(blockOrder, ins.blockHeader)
+			byBlock[ins.BlockHeader] = g
+			blockOrder = append(blockOrder, ins.BlockHeader)
 		}
 		g.list = append(g.list, ins)
 		g.boxes = append(g.boxes, cornerBox(lb, insertXform(ins)))
@@ -391,8 +392,8 @@ func (sd *sheetDetector) candidates() []sheetCand {
 		g := byBlock[h]
 		ratioOKA := false
 		if lb := sd.blockLocalBox(h); !lb.invalid() {
-			w := (lb.maxX - lb.minX) * math.Abs(g.list[0].scale.x)
-			hh := (lb.maxY - lb.minY) * math.Abs(g.list[0].scale.y)
+			w := (lb.maxX - lb.minX) * math.Abs(g.list[0].Scale.X)
+			hh := (lb.maxY - lb.minY) * math.Abs(g.list[0].Scale.Y)
 			ratio := math.Max(w, hh) / math.Min(w, hh)
 			ratioOKA = ratio <= sheetRatioMax
 		}
@@ -443,9 +444,9 @@ func countDotsIn(dots [][2]float64, b box2) int {
 // 90° 倍数时高估，仅网格判定粗用；候选最终 bbox 走精确展开）。
 func cornerBox(b box2, t xform) box2 {
 	out := box2{minX: math.Inf(1), minY: math.Inf(1), maxX: math.Inf(-1), maxY: math.Inf(-1)}
-	for _, p := range [4]point2{{b.minX, b.minY}, {b.maxX, b.minY}, {b.minX, b.maxY}, {b.maxX, b.maxY}} {
+	for _, p := range [4]entity.Point2{{b.minX, b.minY}, {b.maxX, b.minY}, {b.minX, b.maxY}, {b.maxX, b.maxY}} {
 		q := t.apply(p)
-		out.extend(q.x, q.y)
+		out.extend(q.X, q.Y)
 	}
 	return out
 }
@@ -465,8 +466,8 @@ func frameRect(doc *Document, h uint64, prims []primitive, b box2) bool {
 		return true
 	}
 	for _, e := range doc.blocks[h] {
-		p, ok := e.(*entLwPolyline)
-		if !ok || len(p.vertices) < 4 || len(p.vertices) > 5 {
+		p, ok := e.(*entity.EntLwPolyline)
+		if !ok || len(p.Vertices) < 4 || len(p.Vertices) > 5 {
 			continue
 		}
 		// 矩形顶点特征：唯一 x/y 各至多 2 值，全部顶点落在其上；
@@ -474,23 +475,23 @@ func frameRect(doc *Document, h uint64, prims []primitive, b box2) bool {
 		// 撑高包围盒，不能要求顶点贴合包围盒边界）
 		xs := [2]float64{math.Inf(1), math.Inf(-1)}
 		ys := [2]float64{math.Inf(1), math.Inf(-1)}
-		for _, v := range p.vertices {
-			if v.x < xs[0] {
-				xs[0] = v.x
+		for _, v := range p.Vertices {
+			if v.X < xs[0] {
+				xs[0] = v.X
 			}
-			if v.x > xs[1] {
-				xs[1] = v.x
+			if v.X > xs[1] {
+				xs[1] = v.X
 			}
-			if v.y < ys[0] {
-				ys[0] = v.y
+			if v.Y < ys[0] {
+				ys[0] = v.Y
 			}
-			if v.y > ys[1] {
-				ys[1] = v.y
+			if v.Y > ys[1] {
+				ys[1] = v.Y
 			}
 		}
 		isRect := true
-		for _, v := range p.vertices {
-			if (v.x != xs[0] && v.x != xs[1]) || (v.y != ys[0] && v.y != ys[1]) {
+		for _, v := range p.Vertices {
+			if (v.X != xs[0] && v.X != xs[1]) || (v.Y != ys[0] && v.Y != ys[1]) {
 				isRect = false
 				break
 			}
@@ -641,16 +642,16 @@ func (sd *sheetDetector) blockLocalBox(h uint64) box2 {
 
 // expandInsert 图框候选的完整世界展开：块内图元经插入变换展开，
 // 关联 ATTRIB 文字一并展开（标题栏图名常为属性文本）。
-func (sd *sheetDetector) expandInsert(ins *entInsert) []primitive {
+func (sd *sheetDetector) expandInsert(ins *entity.EntInsert) []primitive {
 	if p, ok := sd.insertPrims[ins]; ok {
 		return p
 	}
 	child := insertXform(ins)
 	out := make([]primitive, 0, 64)
-	for _, inner := range sd.doc.blocks[ins.blockHeader] {
+	for _, inner := range sd.doc.blocks[ins.BlockHeader] {
 		out = sd.ts.appendEntity(out, inner, child, 0)
 	}
-	for _, ah := range ins.attribs {
+	for _, ah := range ins.Attribs {
 		if a, ok := sd.doc.attribs[ah]; ok {
 			out = sd.ts.appendEntity(out, a, child, 0)
 		}
@@ -1506,12 +1507,12 @@ func collectModelTexts(doc *Document) []sheetTextLike {
 	}
 	for _, ent := range doc.modelSpace {
 		switch e := ent.(type) {
-		case *entText:
-			add(e.insertion.x, e.insertion.y, e.height, e.text)
-		case *entMText:
-			add(e.insertion.x, e.insertion.y, e.textHeight, stripMTextFormat(e.text))
-		case *entAttrib:
-			add(e.insertion.x, e.insertion.y, e.height, e.text)
+		case *entity.EntText:
+			add(e.Insertion.X, e.Insertion.Y, e.Height, e.Text)
+		case *entity.EntMText:
+			add(e.Insertion.X, e.Insertion.Y, e.TextHeight, stripMTextFormat(e.Text))
+		case *entity.EntAttrib:
+			add(e.Insertion.X, e.Insertion.Y, e.Height, e.Text)
 		}
 	}
 	return out

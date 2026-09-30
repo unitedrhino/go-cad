@@ -1,7 +1,7 @@
 // entities_dimension.go 实现 DIMENSION 实体族（线性/对齐/角度/半径/直径/坐标）
 // 的公共数据与各类型专属布局解码。字段序对照 LibreDWG dwg.spec
 // COMMON_ENTITY_DIMENSION 与 ODA 20.4.22-20.4.27 逐位校准。
-package cad
+package entity
 
 import (
 	"fmt"
@@ -11,17 +11,17 @@ import (
 )
 
 // dimSpecificLayout 类型专属尾部布局（ODA spec 20.4.22-20.4.27）。
-type dimSpecificLayout int
+type DimSpecificLayout int
 
 const (
-	dimLayoutLinear   dimSpecificLayout = iota // 3BD13 + 3BD14 + 3BD10 + BD 扩线角 + BD 转角
-	dimLayoutAligned                           // 3BD13 + 3BD14 + 3BD10 + BD 扩线角
-	dimLayoutAng3Pt                            // 3BD10 + 3BD13 + 3BD14 + 3BD15
-	dimLayoutAng2Ln                            // 2RD16 + 3BD13 + 3BD14 + 3BD15 + 3BD10
-	dimLayoutOrdinate                          // 3BD10 + 3BD13 + 3BD14 + RC flags2
-	dimLayoutRadius                            // 3BD10 + 3BD15 + BD 引线长
-	dimLayoutDiameter                          // 3BD15 + 3BD10 + BD 引线长
-	dimLayoutArc                               // 弧长：3BD def_pt + 3BD13 + 3BD14 + 3BD15 + B is_partial + BD×2 参数 + B has_leader + 3BD16 + 3BD17
+	DimLayoutLinear   DimSpecificLayout = iota // 3BD13 + 3BD14 + 3BD10 + BD 扩线角 + BD 转角
+	DimLayoutAligned                           // 3BD13 + 3BD14 + 3BD10 + BD 扩线角
+	DimLayoutAng3Pt                            // 3BD10 + 3BD13 + 3BD14 + 3BD15
+	DimLayoutAng2Ln                            // 2RD16 + 3BD13 + 3BD14 + 3BD15 + 3BD10
+	DimLayoutOrdinate                          // 3BD10 + 3BD13 + 3BD14 + RC flags2
+	DimLayoutRadius                            // 3BD10 + 3BD15 + BD 引线长
+	DimLayoutDiameter                          // 3BD15 + 3BD10 + BD 引线长
+	DimLayoutArc                               // 弧长：3BD def_pt + 3BD13 + 3BD14 + 3BD15 + B is_partial + BD×2 参数 + B has_leader + 3BD16 + 3BD17
 )
 
 // dimShape R2010+ 维度数据变体的特征位组合：bit0=流内 RC 版本字节、
@@ -60,7 +60,7 @@ const (
 )
 
 // r2000DimShapes R2000/R2004 候选变体（规范布局优先，评分择优）。
-var r2000DimShapes = []dimShape{
+var R2000DimShapes = []dimShape{
 	// R13/R14 常见组合（无 attachment，clone_ins_pt 2RD 存在）
 	r2000ShapeInsPoint,
 	r2000ShapeAttachment | r2000ShapeInsPoint | r2000ShapeStyleFirst,
@@ -78,84 +78,84 @@ var r2000DimShapes = []dimShape{
 }
 
 // entDimension 标注实体（公共数据 + 类型专属字段）。
-type entDimension struct {
-	baseEntity
-	extrusion         point3
-	textMidpoint      point3
-	elevation         float64
-	dimFlags          uint8 // flag1：位流原始 RC 标志字节（合成 flag 见 dimFlag）
-	dimFlag           uint8 // flag：按 LibreDWG DECODER 语义从 flag1/flag2 合成的输出标志
-	flag2             uint8 // ORDINATE 专属 RC（bit7 覆盖）
-	classVersion      uint8 // R2010+ class_version RC（恒 0）
+type EntDimension struct {
+	BaseEntity
+	Extrusion         Point3
+	TextMidpoint      Point3
+	Elevation         float64
+	DimFlags          uint8 // flag1：位流原始 RC 标志字节（合成 flag 见 dimFlag）
+	DimFlag           uint8 // flag：按 LibreDWG DECODER 语义从 flag1/flag2 合成的输出标志
+	Flag2             uint8 // ORDINATE 专属 RC（bit7 覆盖）
+	ClassVersion      uint8 // R2010+ class_version RC（恒 0）
 	unknownFlag       bool  // R2007+ unknown B（spec 注释恒 0）
 	flipArrow1        bool  // R2007+ flip_arrow1 B
 	flipArrow2        bool  // R2007+ flip_arrow2 B
-	userText          string
-	textRotation      float64
-	horizontalDir     float64
-	insertScale       point3
-	insertRotation    float64
-	attachmentPoint   uint16
-	lineSpacingStyle  uint16
-	lineSpacingFactor float64
-	actualMeasurement float64
-	insertPoint       point3
-	hasInsertPoint    bool
-	dimstyleHandle    uint64
-	anonymousBlock    uint64
+	UserText          string
+	TextRotation      float64
+	HorizontalDir     float64
+	InsertScale       Point3
+	InsertRotation    float64
+	AttachmentPoint   uint16
+	LineSpacingStyle  uint16
+	LineSpacingFactor float64
+	ActualMeasurement float64
+	InsertPoint       Point3
+	HasInsertPoint    bool
+	DimstyleHandle    uint64
+	AnonymousBlock    uint64
 	// 类型专属
-	point13         point3
-	point14         point3
-	point10         point3
-	extLineRotation float64
-	dimRotation     float64
-	point15         point3
-	hasPoint15      bool
-	point16x, p16y  float64
-	hasPoint16      bool
+	Point13         Point3
+	Point14         Point3
+	Point10         Point3
+	ExtLineRotation float64
+	DimRotation     float64
+	Point15         Point3
+	HasPoint15      bool
+	Point16x, P16y  float64
+	HasPoint16      bool
 	// 弧长专属（ARC_DIMENSION）
-	defPt         point3
-	isPartial     bool
-	arcStartParam float64
-	arcEndParam   float64
-	hasLeader     bool
-	leader1Pt     point3
-	leader2Pt     point3
-	leaderLen     float64 // RADIUS/DIAMETER 引线长（gold leader_len）
+	DefPt         Point3
+	IsPartial     bool
+	ArcStartParam float64
+	ArcEndParam   float64
+	HasLeader     bool
+	Leader1Pt     Point3
+	Leader2Pt     Point3
+	LeaderLen     float64 // RADIUS/DIAMETER 引线长（gold leader_len）
 }
 
 // dimSpecificData 类型专属字段解析结果。
 type dimSpecificData struct {
-	point13, point14, point10 point3
-	extLineRotation           float64
-	dimRotation               float64
-	point15                   point3
-	hasPoint15                bool
-	p16x, p16y                float64
-	hasPoint16                bool
-	leaderLen                 float64 // RADIUS/DIAMETER 引线长（gold leader_len）
-	flag2                     uint8   // ORDINATE 专属 RC
+	Point13, Point14, Point10 Point3
+	ExtLineRotation           float64
+	DimRotation               float64
+	Point15                   Point3
+	HasPoint15                bool
+	p16x, P16y                float64
+	HasPoint16                bool
+	LeaderLen                 float64 // RADIUS/DIAMETER 引线长（gold leader_len）
+	Flag2                     uint8   // ORDINATE 专属 RC
 	// 弧长专属（ARC_DIMENSION）
-	defPt         point3
-	isPartial     bool
-	arcStartParam float64
-	arcEndParam   float64
-	hasLeader     bool
-	leader1Pt     point3
-	leader2Pt     point3
+	DefPt         Point3
+	IsPartial     bool
+	ArcStartParam float64
+	ArcEndParam   float64
+	HasLeader     bool
+	Leader1Pt     Point3
+	Leader2Pt     Point3
 }
 
 // dimFieldStep 类型专属尾部的单字段读取步进。
 type dimFieldStep func(r *bitstream.BitStream, d *dimSpecificData) error
 
 // dimStep3BD 读取一个 3BD 点到指定目标字段。
-func dimStep3BD(dst func(*dimSpecificData) *point3, marked ...func(*dimSpecificData)) dimFieldStep {
+func dimStep3BD(dst func(*dimSpecificData) *Point3, marked ...func(*dimSpecificData)) dimFieldStep {
 	return func(r *bitstream.BitStream, d *dimSpecificData) error {
-		p, err := read3pt(r)
+		P, err := read3pt(r)
 		if err != nil {
 			return err
 		}
-		*dst(d) = p
+		*dst(d) = P
 		for _, mark := range marked {
 			mark(d)
 		}
@@ -189,16 +189,16 @@ func dimStepFlag(dst func(*dimSpecificData) *bool) dimFieldStep {
 
 // dimStep16 读取 2RD 到 (p16x, p16y)（ANG2LN 的 16 点）。
 func dimStep16(r *bitstream.BitStream, d *dimSpecificData) error {
-	x, err := r.ReadRD()
+	X, err := r.ReadRD()
 	if err != nil {
 		return err
 	}
-	y, err := r.ReadRD()
+	Y, err := r.ReadRD()
 	if err != nil {
 		return err
 	}
-	d.p16x, d.p16y = x, y
-	d.hasPoint16 = true
+	d.p16x, d.P16y = X, Y
+	d.HasPoint16 = true
 	return nil
 }
 
@@ -208,7 +208,7 @@ func dimStepFlag2(r *bitstream.BitStream, d *dimSpecificData) error {
 	if err != nil {
 		return err
 	}
-	d.flag2 = v
+	d.Flag2 = v
 	return nil
 }
 
@@ -218,101 +218,101 @@ func dimStepLeaderLen(r *bitstream.BitStream, d *dimSpecificData) error {
 	if err != nil {
 		return err
 	}
-	d.leaderLen = v
+	d.LeaderLen = v
 	return nil
 }
 
 // dimStepArcParams 读取弧长段：is_partial 位 + 起末参数 + has_leader 位 +
 // 两个引线点（dwg2.spec ARC_DIMENSION）。
 func dimStepArcParams(r *bitstream.BitStream, d *dimSpecificData) error {
-	if err := dimStepFlag(func(d *dimSpecificData) *bool { return &d.isPartial })(r, d); err != nil {
+	if err := dimStepFlag(func(d *dimSpecificData) *bool { return &d.IsPartial })(r, d); err != nil {
 		return err
 	}
-	if err := dimStepBD(func(d *dimSpecificData) *float64 { return &d.arcStartParam })(r, d); err != nil {
+	if err := dimStepBD(func(d *dimSpecificData) *float64 { return &d.ArcStartParam })(r, d); err != nil {
 		return err
 	}
-	if err := dimStepBD(func(d *dimSpecificData) *float64 { return &d.arcEndParam })(r, d); err != nil {
+	if err := dimStepBD(func(d *dimSpecificData) *float64 { return &d.ArcEndParam })(r, d); err != nil {
 		return err
 	}
-	if err := dimStepFlag(func(d *dimSpecificData) *bool { return &d.hasLeader })(r, d); err != nil {
+	if err := dimStepFlag(func(d *dimSpecificData) *bool { return &d.HasLeader })(r, d); err != nil {
 		return err
 	}
-	if err := dimStep3BD(func(d *dimSpecificData) *point3 { return &d.leader1Pt })(r, d); err != nil {
+	if err := dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Leader1Pt })(r, d); err != nil {
 		return err
 	}
-	return dimStep3BD(func(d *dimSpecificData) *point3 { return &d.leader2Pt })(r, d)
+	return dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Leader2Pt })(r, d)
 }
 
 // dimLayoutSteps 各类型专属尾部的字段步进序列（ODA spec 20.4.22-20.4.27，
 // ARC/LARGE_RADIAL 见各自注释）。读取顺序即步进顺序。
-var dimLayoutSteps = map[dimSpecificLayout][]dimFieldStep{
-	dimLayoutLinear: {
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point13 }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point14 }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point10 }),
-		dimStepBD(func(d *dimSpecificData) *float64 { return &d.extLineRotation }),
-		dimStepBD(func(d *dimSpecificData) *float64 { return &d.dimRotation }),
+var dimLayoutSteps = map[DimSpecificLayout][]dimFieldStep{
+	DimLayoutLinear: {
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point13 }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point14 }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point10 }),
+		dimStepBD(func(d *dimSpecificData) *float64 { return &d.ExtLineRotation }),
+		dimStepBD(func(d *dimSpecificData) *float64 { return &d.DimRotation }),
 	},
-	dimLayoutAligned: {
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point13 }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point14 }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point10 }),
-		dimStepBD(func(d *dimSpecificData) *float64 { return &d.extLineRotation }),
+	DimLayoutAligned: {
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point13 }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point14 }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point10 }),
+		dimStepBD(func(d *dimSpecificData) *float64 { return &d.ExtLineRotation }),
 	},
-	dimLayoutAng3Pt: {
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point10 }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point13 }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point14 }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point15 }, func(d *dimSpecificData) { d.hasPoint15 = true }),
+	DimLayoutAng3Pt: {
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point10 }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point13 }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point14 }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point15 }, func(d *dimSpecificData) { d.HasPoint15 = true }),
 	},
-	dimLayoutAng2Ln: {
+	DimLayoutAng2Ln: {
 		dimStep16,
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point13 }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point14 }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point15 }, func(d *dimSpecificData) { d.hasPoint15 = true }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point10 }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point13 }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point14 }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point15 }, func(d *dimSpecificData) { d.HasPoint15 = true }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point10 }),
 	},
-	dimLayoutOrdinate: {
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point10 }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point13 }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point14 }),
+	DimLayoutOrdinate: {
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point10 }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point13 }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point14 }),
 		dimStepFlag2,
 	},
-	dimLayoutRadius: {
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point10 }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point15 }, func(d *dimSpecificData) { d.hasPoint15 = true }),
+	DimLayoutRadius: {
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point10 }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point15 }, func(d *dimSpecificData) { d.HasPoint15 = true }),
 		dimStepLeaderLen,
 	},
-	dimLayoutDiameter: {
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point15 }, func(d *dimSpecificData) { d.hasPoint15 = true }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point10 }),
+	DimLayoutDiameter: {
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point15 }, func(d *dimSpecificData) { d.HasPoint15 = true }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point10 }),
 		dimStepLeaderLen,
 	},
-	dimLayoutArc: {
+	DimLayoutArc: {
 		// dwg2.spec ARC_DIMENSION：def_pt(0) + xline1_pt(13) + xline2_pt(14)
 		// + center_pt(15) + is_partial(B) + arc_start_param(BD)
 		// + arc_end_param(BD) + has_leader(B) + leader1_pt(16) + leader2_pt(17)
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.defPt }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point13 }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point14 }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point15 }, func(d *dimSpecificData) { d.hasPoint15 = true }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.DefPt }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point13 }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point14 }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point15 }, func(d *dimSpecificData) { d.HasPoint15 = true }),
 		dimStepArcParams,
 	},
-	dimLayoutLargeRadial: {
+	DimLayoutLargeRadial: {
 		// LARGE_RADIAL_DIMENSION 专属尾部（dwg.spec else 分支）：
 		// def_pt + chord_pt + jog_angle + ovr_center + jog_pt。
 		// 载体字段复用（无新增字段）：point13←def_pt、point14←chord_pt、
 		// extLineRotation←jog_angle、point15←ovr_center、point10←jog_pt
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point13 }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point14 }),
-		dimStepBD(func(d *dimSpecificData) *float64 { return &d.extLineRotation }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point15 }, func(d *dimSpecificData) { d.hasPoint15 = true }),
-		dimStep3BD(func(d *dimSpecificData) *point3 { return &d.point10 }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point13 }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point14 }),
+		dimStepBD(func(d *dimSpecificData) *float64 { return &d.ExtLineRotation }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point15 }, func(d *dimSpecificData) { d.HasPoint15 = true }),
+		dimStep3BD(func(d *dimSpecificData) *Point3 { return &d.Point10 }),
 	},
 }
 
 // readDimSpecific 按类型专属布局步进表解析尾部字段。
-func readDimSpecific(r *bitstream.BitStream, layout dimSpecificLayout) (dimSpecificData, error) {
+func readDimSpecific(r *bitstream.BitStream, layout DimSpecificLayout) (dimSpecificData, error) {
 	var d dimSpecificData
 	for _, step := range dimLayoutSteps[layout] {
 		if err := step(r, &d); err != nil {
@@ -326,21 +326,21 @@ func readDimSpecific(r *bitstream.BitStream, layout dimSpecificLayout) (dimSpeci
 // （LibreDWG dwg.spec COMMON_ENTITY_DIMENSION，已经 dwgread -v9 trace
 // 逐字段核对），优先确定性解码；公共头边界异常导致 body 中途失败时
 // 才回退变体扫描兜底。
-func decodeDimension(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion, layout dimSpecificLayout) (any, error) {
+func DecodeDimension(r *bitstream.BitStream, Head *CommonEntityHead, ver container.DwgVersion, layout DimSpecificLayout) (any, error) {
 	pos := r.TellBits()
-	if d, err := decodeDimCanonical(r, head, ver, layout); err == nil {
+	if d, err := decodeDimCanonical(r, Head, ver, layout); err == nil {
 		return d, nil
 	}
 	// 兜底：canonical 失败（公共头边界异常等）时从原起点走变体扫描。
 	r.SetBitPos(pos)
 	if ver == container.VerR2000 || ver == container.VerR13 || ver == container.VerR14 || ver == container.VerR2004 {
-		if ent, err := scanDimShapes(r, head, layout, r2000DimShapes, decodeDimR2000Variant); err == nil {
+		if ent, err := ScanDimShapes(r, Head, layout, R2000DimShapes, DecodeDimR2000Variant); err == nil {
 			return ent, nil
 		} else {
 			return ent, fmt.Errorf("cad: DIMENSION R2000 变体全部失败: %w", err)
 		}
 	}
-	if ent, err := scanDimShapes(r, head, layout, r2010PlusDimShapes, decodeDimR2010PlusVariant); err == nil {
+	if ent, err := ScanDimShapes(r, Head, layout, r2010PlusDimShapes, decodeDimR2010PlusVariant); err == nil {
 		return ent, nil
 	} else {
 		return ent, fmt.Errorf("cad: DIMENSION R2010+ 变体全部失败: %w", err)
@@ -363,9 +363,9 @@ type dimStringStream struct {
 // newDimStringStream 定位字符串流数据区起点；失败返回 nil
 // （此时各 T 字段按空串处理，与 !has_strings 行为一致）。
 // 主位流游标在返回前恢复到 enterPos。
-func newDimStringStream(r *bitstream.BitStream, objSizeBit, enterPos uint64) *dimStringStream {
+func newDimStringStream(r *bitstream.BitStream, ObjSizeBit, enterPos uint64) *dimStringStream {
 	defer r.SetBitPos(enterPos)
-	p0 := int64(objSizeBit) - 1
+	p0 := int64(ObjSizeBit) - 1
 	if p0 < 66 { // 1 位标志 + 2~6 字节 size 指示 + 至少一个字符串的余量
 		return nil
 	}
@@ -376,27 +376,27 @@ func newDimStringStream(r *bitstream.BitStream, objSizeBit, enterPos uint64) *di
 	}
 	// 回退到 p0-16 位读 data_size（RS 小端）
 	r.SetBitPos(uint64(p0) - 16)
-	dataSize, err := r.ReadRS()
+	DataSize, err := r.ReadRS()
 	if err != nil {
 		return nil
 	}
-	if dataSize&0x8000 != 0 {
+	if DataSize&0x8000 != 0 {
 		// 扩展：hi 16 位在更前 2 字节，data_size 回退 4 字节重读
 		r.SetBitPos(uint64(p0) - 48)
 		hi, e := r.ReadRS()
 		if e != nil {
 			return nil
 		}
-		dataSize = dataSize&0x7FFF | hi<<15
-		if uint64(dataSize) > objSizeBit {
+		DataSize = DataSize&0x7FFF | hi<<15
+		if uint64(DataSize) > ObjSizeBit {
 			return nil
 		}
-		r.SetBitPos(uint64(p0) - 32 - uint64(dataSize))
+		r.SetBitPos(uint64(p0) - 32 - uint64(DataSize))
 	} else {
-		if uint64(dataSize) > objSizeBit {
+		if uint64(DataSize) > ObjSizeBit {
 			return nil
 		}
-		r.SetBitPos(uint64(p0) - 16 - uint64(dataSize))
+		r.SetBitPos(uint64(p0) - 16 - uint64(DataSize))
 	}
 	return &dimStringStream{r: r, pos: r.TellBits()}
 }
@@ -423,52 +423,52 @@ func (s *dimStringStream) readTU(r *bitstream.BitStream, enterPos uint64) string
 // ins_rotation BD → [R2000+ attachment/lspace/measurement] →
 // [R2007+ unknown/flip×2] → clone_ins_pt 2RD → 类型专属尾部 → handle 流
 // （common → dimstyle → block，顺序与 dwg.spec 一致）。
-func decodeDimCanonical(r *bitstream.BitStream, head *commonEntityHead, ver container.DwgVersion, layout dimSpecificLayout) (*entDimension, error) {
-	trOn := cadTraceHandle != 0 && cadTraceHandle == head.handle
+func decodeDimCanonical(r *bitstream.BitStream, Head *CommonEntityHead, ver container.DwgVersion, layout DimSpecificLayout) (*EntDimension, error) {
+	trOn := cadTraceHandle != 0 && cadTraceHandle == Head.Handle
 	// dimR2000Plus attachment 段起始于 R2000；注意 verR2000 是枚举零值，
 	// 不可用 >= 判断（R13/R14 枚举值更大但布局更旧）。
 	dimR2000Plus := ver == container.VerR2000 || ver == container.VerR2004 || dimVerR2007Plus(ver)
-	d := &entDimension{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
+	d := &EntDimension{BaseEntity: BaseEntity{Handle: Head.Handle, Color: Head.Color, Mode: Head.EntityMode}}
 	var err error
-	traceRC := func(name string, dst *uint8) error {
+	traceRC := func(Name string, dst *uint8) error {
 		pos := r.TellBits()
 		v, e := r.ReadRC()
 		if e == nil {
 			*dst = v
 			if trOn {
-				cadTraceField(trOn, pos, r.TellBits(), name, fmt.Sprintf("%#x", v))
+				CadTraceField(trOn, pos, r.TellBits(), Name, fmt.Sprintf("%#x", v))
 			}
 		}
 		return e
 	}
-	traceBD := func(name string, dst *float64) error {
+	traceBD := func(Name string, dst *float64) error {
 		pos := r.TellBits()
 		v, e := r.ReadBD()
 		if e == nil {
 			*dst = v
 			if trOn {
-				cadTraceField(trOn, pos, r.TellBits(), name, fmt.Sprintf("%g", v))
+				CadTraceField(trOn, pos, r.TellBits(), Name, fmt.Sprintf("%g", v))
 			}
 		}
 		return e
 	}
-	trace3BD := func(name string, dst *point3) error {
+	trace3BD := func(Name string, dst *Point3) error {
 		pos := r.TellBits()
 		v, e := read3pt(r)
 		if e == nil {
 			*dst = v
 			if trOn {
-				cadTraceField(trOn, pos, r.TellBits(), name, fmt.Sprintf("(%g,%g,%g)", v.x, v.y, v.z))
+				CadTraceField(trOn, pos, r.TellBits(), Name, fmt.Sprintf("(%g,%g,%g)", v.X, v.Y, v.Z))
 			}
 		}
 		return e
 	}
 	if ver.R2010Plus() {
-		if err = traceRC("class_version", &d.classVersion); err != nil {
+		if err = traceRC("class_version", &d.ClassVersion); err != nil {
 			return nil, err
 		}
 	}
-	if err = trace3BD("extrusion", &d.extrusion); err != nil {
+	if err = trace3BD("extrusion", &d.Extrusion); err != nil {
 		return nil, err
 	}
 	var mx, my float64
@@ -480,56 +480,56 @@ func decodeDimCanonical(r *bitstream.BitStream, head *commonEntityHead, ver cont
 		return nil, err
 	}
 	if trOn {
-		cadTraceField(trOn, pos, r.TellBits(), "text_midpt", fmt.Sprintf("(%g,%g)", mx, my))
+		CadTraceField(trOn, pos, r.TellBits(), "text_midpt", fmt.Sprintf("(%g,%g)", mx, my))
 	}
-	if err = traceBD("elevation", &d.elevation); err != nil {
+	if err = traceBD("elevation", &d.Elevation); err != nil {
 		return nil, err
 	}
-	d.textMidpoint = point3{mx, my, d.elevation}
-	if err = traceRC("flag1", &d.dimFlags); err != nil {
+	d.TextMidpoint = Point3{mx, my, d.Elevation}
+	if err = traceRC("flag1", &d.DimFlags); err != nil {
 		return nil, err
 	}
 	// R2007+ 的 T 字段内容在字符串流中，主位流 0 位；R13-R2004 的 TV 在主位流。
 	var ss *dimStringStream
 	if dimVerR2007Plus(ver) {
-		ss = newDimStringStream(r, head.objSizeBit, r.TellBits())
+		ss = newDimStringStream(r, Head.ObjSizeBit, r.TellBits())
 	}
 	pos = r.TellBits()
 	if dimVerR2007Plus(ver) {
-		d.userText = ss.readTU(r, pos)
+		d.UserText = ss.readTU(r, pos)
 	} else {
-		if d.userText, err = r.ReadTV(512); err != nil {
+		if d.UserText, err = r.ReadTV(512); err != nil {
 			return nil, err
 		}
 	}
-	cadTraceField(trOn, pos, r.TellBits(), "user_text", d.userText)
-	if err = traceBD("text_rotation", &d.textRotation); err != nil {
+	CadTraceField(trOn, pos, r.TellBits(), "user_text", d.UserText)
+	if err = traceBD("text_rotation", &d.TextRotation); err != nil {
 		return nil, err
 	}
-	if err = traceBD("horiz_dir", &d.horizontalDir); err != nil {
+	if err = traceBD("horiz_dir", &d.HorizontalDir); err != nil {
 		return nil, err
 	}
-	if err = trace3BD("ins_scale", &d.insertScale); err != nil {
+	if err = trace3BD("ins_scale", &d.InsertScale); err != nil {
 		return nil, err
 	}
-	if err = traceBD("ins_rotation", &d.insertRotation); err != nil {
+	if err = traceBD("ins_rotation", &d.InsertRotation); err != nil {
 		return nil, err
 	}
 	if dimR2000Plus {
 		pos = r.TellBits()
-		if d.attachmentPoint, err = r.ReadBS(); err != nil {
+		if d.AttachmentPoint, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
-		cadTraceFieldInt(trOn, pos, r.TellBits(), "attachment", int64(d.attachmentPoint))
+		cadTraceFieldInt(trOn, pos, r.TellBits(), "attachment", int64(d.AttachmentPoint))
 		pos = r.TellBits()
-		if d.lineSpacingStyle, err = r.ReadBS(); err != nil {
+		if d.LineSpacingStyle, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
-		cadTraceFieldInt(trOn, pos, r.TellBits(), "lspace_style", int64(d.lineSpacingStyle))
-		if err = traceBD("lspace_factor", &d.lineSpacingFactor); err != nil {
+		cadTraceFieldInt(trOn, pos, r.TellBits(), "lspace_style", int64(d.LineSpacingStyle))
+		if err = traceBD("lspace_factor", &d.LineSpacingFactor); err != nil {
 			return nil, err
 		}
-		if err = traceBD("act_measurement", &d.actualMeasurement); err != nil {
+		if err = traceBD("act_measurement", &d.ActualMeasurement); err != nil {
 			return nil, err
 		}
 	}
@@ -561,32 +561,32 @@ func decodeDimCanonical(r *bitstream.BitStream, head *commonEntityHead, ver cont
 		return nil, err
 	}
 	if trOn {
-		cadTraceField(trOn, pos, r.TellBits(), "clone_ins_pt", fmt.Sprintf("(%g,%g)", p12x, p12y))
+		CadTraceField(trOn, pos, r.TellBits(), "clone_ins_pt", fmt.Sprintf("(%g,%g)", p12x, p12y))
 	}
-	d.insertPoint = point3{p12x, p12y, d.elevation}
-	d.hasInsertPoint = true
+	d.InsertPoint = Point3{p12x, p12y, d.Elevation}
+	d.HasInsertPoint = true
 	var spec dimSpecificData
 	if spec, err = readDimSpecific(r, layout); err != nil {
 		return nil, err
 	}
 	applyDimSpecific(d, spec)
 	d.computeDimFlag(layout)
-	decodeDimHandles(r, head, d)
+	decodeDimHandles(r, Head, d)
 	return d, nil
 }
 
 // applyDimSpecific 把类型专属尾部解析结果写入实体字段。
-func applyDimSpecific(d *entDimension, spec dimSpecificData) {
-	d.point13, d.point14, d.point10 = spec.point13, spec.point14, spec.point10
-	d.extLineRotation, d.dimRotation = spec.extLineRotation, spec.dimRotation
-	d.point15, d.hasPoint15 = spec.point15, spec.hasPoint15
-	d.point16x, d.p16y, d.hasPoint16 = spec.p16x, spec.p16y, spec.hasPoint16
-	d.flag2 = spec.flag2
-	d.defPt, d.isPartial = spec.defPt, spec.isPartial
-	d.arcStartParam, d.arcEndParam = spec.arcStartParam, spec.arcEndParam
-	d.hasLeader = spec.hasLeader
-	d.leader1Pt, d.leader2Pt = spec.leader1Pt, spec.leader2Pt
-	d.leaderLen = spec.leaderLen
+func applyDimSpecific(d *EntDimension, spec dimSpecificData) {
+	d.Point13, d.Point14, d.Point10 = spec.Point13, spec.Point14, spec.Point10
+	d.ExtLineRotation, d.DimRotation = spec.ExtLineRotation, spec.DimRotation
+	d.Point15, d.HasPoint15 = spec.Point15, spec.HasPoint15
+	d.Point16x, d.P16y, d.HasPoint16 = spec.p16x, spec.P16y, spec.HasPoint16
+	d.Flag2 = spec.Flag2
+	d.DefPt, d.IsPartial = spec.DefPt, spec.IsPartial
+	d.ArcStartParam, d.ArcEndParam = spec.ArcStartParam, spec.ArcEndParam
+	d.HasLeader = spec.HasLeader
+	d.Leader1Pt, d.Leader2Pt = spec.Leader1Pt, spec.Leader2Pt
+	d.LeaderLen = spec.LeaderLen
 }
 
 // computeDimFlag 按 LibreDWG DIMENSION DECODER 语义合成输出 flag：
@@ -595,53 +595,53 @@ func applyDimSpecific(d *entDimension, spec dimSpecificData) {
 // （ALIGNED=1/ANG2LN=2/DIAMETER=3/RADIUS=4/ANG3PT=5/ORDINATE=6/LINEAR=0；
 // ARC_DIMENSION 同 ANG3PT 取 5，见 dwg_spec_shared.h DECODER 分支）；
 // ORDINATE 再用 flag2 bit0 覆盖 bit7。
-func (d *entDimension) computeDimFlag(layout dimSpecificLayout) {
-	flag := d.dimFlags & 0xe0
-	if d.dimFlags&1 != 0 {
-		flag &= 0x7f
+func (d *EntDimension) computeDimFlag(layout DimSpecificLayout) {
+	Flag := d.DimFlags & 0xe0
+	if d.DimFlags&1 != 0 {
+		Flag &= 0x7f
 	} else {
-		flag |= 0x80
+		Flag |= 0x80
 	}
-	if d.dimFlags&2 != 0 {
-		flag |= 0x20
+	if d.DimFlags&2 != 0 {
+		Flag |= 0x20
 	} else {
-		flag &= 0xdf
+		Flag &= 0xdf
 	}
 	switch layout {
-	case dimLayoutAligned:
-		flag |= 1
-	case dimLayoutAng2Ln:
-		flag |= 2
-	case dimLayoutDiameter:
-		flag |= 3
-	case dimLayoutRadius:
-		flag |= 4
-	case dimLayoutAng3Pt, dimLayoutArc:
-		flag |= 5
-	case dimLayoutOrdinate:
-		flag |= 6
+	case DimLayoutAligned:
+		Flag |= 1
+	case DimLayoutAng2Ln:
+		Flag |= 2
+	case DimLayoutDiameter:
+		Flag |= 3
+	case DimLayoutRadius:
+		Flag |= 4
+	case DimLayoutAng3Pt, DimLayoutArc:
+		Flag |= 5
+	case DimLayoutOrdinate:
+		Flag |= 6
 	}
-	if layout == dimLayoutOrdinate {
-		if d.flag2&1 != 0 {
-			flag |= 0x80
+	if layout == DimLayoutOrdinate {
+		if d.Flag2&1 != 0 {
+			Flag |= 0x80
 		} else {
-			flag &^= 0x80
+			Flag &^= 0x80
 		}
 	}
-	d.dimFlag = flag
+	d.DimFlag = Flag
 }
 
 // scanDimShapes 遍历候选变体表取最优：逐变体从同一起点试解，按
 // dimPlausibilityScore 评分择优（值小者胜，平局取先）；全部失败时
 // 返回末次错误。
-func scanDimShapes(r *bitstream.BitStream, head *commonEntityHead, layout dimSpecificLayout, shapes []dimShape, decode func(*bitstream.BitStream, *commonEntityHead, dimShape, dimSpecificLayout) (*entDimension, error)) (any, error) {
+func ScanDimShapes(r *bitstream.BitStream, Head *CommonEntityHead, layout DimSpecificLayout, shapes []dimShape, decode func(*bitstream.BitStream, *CommonEntityHead, dimShape, DimSpecificLayout) (*EntDimension, error)) (any, error) {
 	pos := r.TellBits()
-	var best *entDimension
+	var best *EntDimension
 	bestScore := uint64(0)
 	var lastErr error
 	for _, shape := range shapes {
 		r.SetBitPos(pos)
-		ent, err := decode(r, head, shape, layout)
+		ent, err := decode(r, Head, shape, layout)
 		if err != nil {
 			lastErr = err
 			continue
@@ -658,22 +658,22 @@ func scanDimShapes(r *bitstream.BitStream, head *commonEntityHead, layout dimSpe
 }
 
 // decodeDimR2010PlusVariant 按单一 R2010+ 变体解析。
-func decodeDimR2010PlusVariant(r *bitstream.BitStream, head *commonEntityHead, shape dimShape, layout dimSpecificLayout) (*entDimension, error) {
+func decodeDimR2010PlusVariant(r *bitstream.BitStream, Head *CommonEntityHead, shape dimShape, layout DimSpecificLayout) (*EntDimension, error) {
 	if shape&dimShapeVersionByte != 0 {
 		if _, err := r.ReadRC(); err != nil {
 			return nil, err
 		}
 	}
-	d := &entDimension{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
+	d := &EntDimension{BaseEntity: BaseEntity{Handle: Head.Handle, Color: Head.Color, Mode: Head.EntityMode}}
 	var err error
 	if shape&dimShapeExtrudeBE != 0 {
-		x, y, z, e := r.ReadBE()
+		X, Y, Z, e := r.ReadBE()
 		if e != nil {
 			return nil, e
 		}
-		d.extrusion = point3{x, y, z}
+		d.Extrusion = Point3{X, Y, Z}
 	} else {
-		if d.extrusion, err = read3pt(r); err != nil {
+		if d.Extrusion, err = read3pt(r); err != nil {
 			return nil, err
 		}
 	}
@@ -681,15 +681,15 @@ func decodeDimR2010PlusVariant(r *bitstream.BitStream, head *commonEntityHead, s
 	if err != nil {
 		return nil, err
 	}
-	if d.elevation, err = r.ReadBD(); err != nil {
+	if d.Elevation, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	d.textMidpoint = point3{mx, my, d.elevation}
-	if d.dimFlags, err = r.ReadRC(); err != nil {
+	d.TextMidpoint = Point3{mx, my, d.Elevation}
+	if d.DimFlags, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
 	if shape&dimShapeUserText != 0 {
-		if d.userText, err = r.ReadTV(512); err != nil {
+		if d.UserText, err = r.ReadTV(512); err != nil {
 			return nil, err
 		}
 	}
@@ -707,34 +707,34 @@ func decodeDimR2010PlusVariant(r *bitstream.BitStream, head *commonEntityHead, s
 	if err != nil {
 		return nil, err
 	}
-	d.insertPoint = point3{p12x, p12y, d.elevation}
-	d.hasInsertPoint = true
-	return finishDimension(r, head, d, layout)
+	d.InsertPoint = Point3{p12x, p12y, d.Elevation}
+	d.HasInsertPoint = true
+	return finishDimension(r, Head, d, layout)
 }
 
 // readDimCommonTail 维度公共尾段（R2010+ 形态）：text_rotation → horiz_dir →
 // ins_scale → ins_rotation → attachment → linespacing style/factor →
 // actual_measurement（后四项无条件存在）。
-func readDimCommonTail(r *bitstream.BitStream, d *entDimension) error {
+func readDimCommonTail(r *bitstream.BitStream, d *EntDimension) error {
 	steps := append(dimTailThroughRotation(r, d),
-		func(r *bitstream.BitStream, d *entDimension) error {
+		func(r *bitstream.BitStream, d *EntDimension) error {
 			var e error
-			d.attachmentPoint, e = r.ReadBS()
+			d.AttachmentPoint, e = r.ReadBS()
 			return e
 		},
-		func(r *bitstream.BitStream, d *entDimension) error {
+		func(r *bitstream.BitStream, d *EntDimension) error {
 			var e error
-			d.lineSpacingStyle, e = r.ReadBS()
+			d.LineSpacingStyle, e = r.ReadBS()
 			return e
 		},
-		func(r *bitstream.BitStream, d *entDimension) error {
+		func(r *bitstream.BitStream, d *EntDimension) error {
 			var e error
-			d.lineSpacingFactor, e = r.ReadBD()
+			d.LineSpacingFactor, e = r.ReadBD()
 			return e
 		},
-		func(r *bitstream.BitStream, d *entDimension) error {
+		func(r *bitstream.BitStream, d *EntDimension) error {
 			var e error
-			d.actualMeasurement, e = r.ReadBD()
+			d.ActualMeasurement, e = r.ReadBD()
 			return e
 		},
 	)
@@ -748,62 +748,62 @@ func readDimCommonTail(r *bitstream.BitStream, d *entDimension) error {
 
 // dimTailThroughRotation R2000 族与 R2010+ 共有的前四步：
 // text_rotation → horiz_dir → ins_scale → ins_rotation。
-func dimTailThroughRotation(r *bitstream.BitStream, d *entDimension) []func(*bitstream.BitStream, *entDimension) error {
-	return []func(*bitstream.BitStream, *entDimension) error{
-		func(r *bitstream.BitStream, d *entDimension) error {
+func dimTailThroughRotation(r *bitstream.BitStream, d *EntDimension) []func(*bitstream.BitStream, *EntDimension) error {
+	return []func(*bitstream.BitStream, *EntDimension) error{
+		func(r *bitstream.BitStream, d *EntDimension) error {
 			var e error
-			d.textRotation, e = r.ReadBD()
+			d.TextRotation, e = r.ReadBD()
 			return e
 		},
-		func(r *bitstream.BitStream, d *entDimension) error {
+		func(r *bitstream.BitStream, d *EntDimension) error {
 			var e error
-			d.horizontalDir, e = r.ReadBD()
+			d.HorizontalDir, e = r.ReadBD()
 			return e
 		},
-		func(r *bitstream.BitStream, d *entDimension) error {
+		func(r *bitstream.BitStream, d *EntDimension) error {
 			var e error
-			d.insertScale, e = read3pt(r)
+			d.InsertScale, e = read3pt(r)
 			return e
 		},
-		func(r *bitstream.BitStream, d *entDimension) error {
+		func(r *bitstream.BitStream, d *EntDimension) error {
 			var e error
-			d.insertRotation, e = r.ReadBD()
+			d.InsertRotation, e = r.ReadBD()
 			return e
 		},
 	}
 }
 
 // finishDimension 收尾：类型专属段解析 + 标志合成 + handle 流。
-func finishDimension(r *bitstream.BitStream, head *commonEntityHead, d *entDimension, layout dimSpecificLayout) (*entDimension, error) {
+func finishDimension(r *bitstream.BitStream, Head *CommonEntityHead, d *EntDimension, layout DimSpecificLayout) (*EntDimension, error) {
 	spec, err := readDimSpecific(r, layout)
 	if err != nil {
 		return nil, err
 	}
 	applyDimSpecific(d, spec)
 	d.computeDimFlag(layout)
-	decodeDimHandles(r, head, d)
+	decodeDimHandles(r, Head, d)
 	return d, nil
 }
 
 // decodeDimR2000Variant 按单一 R2000/R2004 变体解析。
-func decodeDimR2000Variant(r *bitstream.BitStream, head *commonEntityHead, shape dimShape, layout dimSpecificLayout) (*entDimension, error) {
-	d := &entDimension{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
+func DecodeDimR2000Variant(r *bitstream.BitStream, Head *CommonEntityHead, shape dimShape, layout DimSpecificLayout) (*EntDimension, error) {
+	d := &EntDimension{BaseEntity: BaseEntity{Handle: Head.Handle, Color: Head.Color, Mode: Head.EntityMode}}
 	var err error
-	if d.extrusion, err = read3pt(r); err != nil {
+	if d.Extrusion, err = read3pt(r); err != nil {
 		return nil, err
 	}
 	mx, my, err := r.Read2RD()
 	if err != nil {
 		return nil, err
 	}
-	if d.elevation, err = r.ReadBD(); err != nil {
+	if d.Elevation, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	d.textMidpoint = point3{mx, my, d.elevation}
-	if d.dimFlags, err = r.ReadRC(); err != nil {
+	d.TextMidpoint = Point3{mx, my, d.Elevation}
+	if d.DimFlags, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
-	if d.userText, err = r.ReadTV(512); err != nil {
+	if d.UserText, err = r.ReadTV(512); err != nil {
 		return nil, err
 	}
 	// R2000 族公共段止于 ins_rotation；attachment/linespacing 组由变体位决定
@@ -817,16 +817,16 @@ func decodeDimR2000Variant(r *bitstream.BitStream, head *commonEntityHead, shape
 		if att, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
-		d.attachmentPoint = att
+		d.AttachmentPoint = att
 		var lsStyle uint16
 		if lsStyle, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
-		d.lineSpacingStyle = lsStyle
-		if d.lineSpacingFactor, err = r.ReadBD(); err != nil {
+		d.LineSpacingStyle = lsStyle
+		if d.LineSpacingFactor, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
-		if d.actualMeasurement, err = r.ReadBD(); err != nil {
+		if d.ActualMeasurement, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
 	}
@@ -850,69 +850,69 @@ func decodeDimR2000Variant(r *bitstream.BitStream, head *commonEntityHead, shape
 		if e != nil {
 			return nil, e
 		}
-		d.insertPoint = point3{p12x, p12y, d.elevation}
-		d.hasInsertPoint = true
+		d.InsertPoint = Point3{p12x, p12y, d.Elevation}
+		d.HasInsertPoint = true
 	}
-	return finishDimension(r, head, d, layout)
+	return finishDimension(r, Head, d, layout)
 }
 
 // decodeDimHandles 解析 handle 流：common → dimstyle + anonymous block。
 // 顺序与 dwg.spec 一致（COMMON_ENTITY_HANDLE_DATA 在 dimstyle/block 之前，
 // 已由 exr13/ex2004/ex2018 trace 核对）。失败时容忍（退化为仅图层句柄）。
-func decodeDimHandles(r *bitstream.BitStream, head *commonEntityHead, d *entDimension) {
-	r.SetBitPos(head.objSizeBit)
-	owner, layer, e3 := parseCommonEntityHandles(r, head)
-	_ = owner
-	dimstyle, e1 := objrec.ReadHandleReference(r, head.handle)
-	block, e2 := objrec.ReadHandleReference(r, head.handle)
+func decodeDimHandles(r *bitstream.BitStream, Head *CommonEntityHead, d *EntDimension) {
+	r.SetBitPos(Head.ObjSizeBit)
+	Owner, Layer, e3 := ParseCommonEntityHandles(r, Head)
+	_ = Owner
+	Dimstyle, e1 := objrec.ReadHandleReference(r, Head.Handle)
+	block, e2 := objrec.ReadHandleReference(r, Head.Handle)
 	if e1 == nil && e2 == nil && e3 == nil {
-		d.dimstyleHandle, d.anonymousBlock, d.layer = dimstyle, block, layer
+		d.DimstyleHandle, d.AnonymousBlock, d.Layer = Dimstyle, block, Layer
 	} else {
-		r.SetBitPos(head.objSizeBit)
-		if _, layer, e := parseCommonEntityHandles(r, head); e == nil {
-			d.layer = layer
+		r.SetBitPos(Head.ObjSizeBit)
+		if _, Layer, e := ParseCommonEntityHandles(r, Head); e == nil {
+			d.Layer = Layer
 		}
 	}
 }
 
 // read3pt 读取 3BD 为 point3。
-func read3pt(r *bitstream.BitStream) (point3, error) {
-	x, y, z, err := r.Read3BD()
-	return point3{x, y, z}, err
+func read3pt(r *bitstream.BitStream) (Point3, error) {
+	X, Y, Z, err := r.Read3BD()
+	return Point3{X, Y, Z}, err
 }
 
 // dimPlausibilityScore 标注字段合理性评分（值越小越可信）：
 // 微量级垃圾值、天文角度与越界枚举是错位候选的主要特征。
-func dimPlausibilityScore(d *entDimension) uint64 {
+func dimPlausibilityScore(d *EntDimension) uint64 {
 	score := uint64(0)
-	for _, p := range []point3{d.point10, d.point13, d.point14, d.textMidpoint} {
-		score += dimPointScore(p)
+	for _, P := range []Point3{d.Point10, d.Point13, d.Point14, d.TextMidpoint} {
+		score += DimPointScore(P)
 	}
-	if d.hasInsertPoint {
-		score += dimPointScore(d.insertPoint)
+	if d.HasInsertPoint {
+		score += DimPointScore(d.InsertPoint)
 	}
-	if d.hasPoint15 {
-		score += dimPointScore(d.point15)
+	if d.HasPoint15 {
+		score += DimPointScore(d.Point15)
 	}
-	if d.hasPoint16 {
-		score += dimValueScore(d.point16x) + dimValueScore(d.p16y)
+	if d.HasPoint16 {
+		score += DimValueScore(d.Point16x) + DimValueScore(d.P16y)
 	}
-	score += dimPointScore(d.extrusion)
-	score += dimPointScore(d.insertScale)
-	score += dimAngleScore(d.textRotation)
-	score += dimAngleScore(d.horizontalDir)
-	score += dimAngleScore(d.extLineRotation)
-	score += dimAngleScore(d.dimRotation)
-	score += dimAngleScore(d.insertRotation)
-	score += dimValueScore(d.actualMeasurement)
-	score += dimValueScore(d.lineSpacingFactor)
-	if d.attachmentPoint > 9 {
+	score += DimPointScore(d.Extrusion)
+	score += DimPointScore(d.InsertScale)
+	score += DimAngleScore(d.TextRotation)
+	score += DimAngleScore(d.HorizontalDir)
+	score += DimAngleScore(d.ExtLineRotation)
+	score += DimAngleScore(d.DimRotation)
+	score += DimAngleScore(d.InsertRotation)
+	score += DimValueScore(d.ActualMeasurement)
+	score += DimValueScore(d.LineSpacingFactor)
+	if d.AttachmentPoint > 9 {
 		score += 10000
 	}
-	if d.lineSpacingStyle > 2 {
+	if d.LineSpacingStyle > 2 {
 		score += 10000
 	}
-	if d.dimFlags > 0x3F {
+	if d.DimFlags > 0x3F {
 		score += 1000
 	}
 	return score
@@ -922,7 +922,7 @@ func dimPlausibilityScore(d *entDimension) uint64 {
 const dimGarbageMagnitude = 1.0e-30
 
 // dimAngleScore 角度合理性：|v|>1000 渐进惩罚。
-func dimAngleScore(v float64) uint64 {
+func DimAngleScore(v float64) uint64 {
 	abs := absF(v)
 	if abs > 0 && abs < dimGarbageMagnitude {
 		return 5000
@@ -940,7 +940,7 @@ func dimAngleScore(v float64) uint64 {
 }
 
 // dimValueScore 数值合理性：超过 1e6 渐进惩罚，非有限值重罚。
-func dimValueScore(v float64) uint64 {
+func DimValueScore(v float64) uint64 {
 	abs := absF(v)
 	if abs > 0 && abs < dimGarbageMagnitude {
 		return 5000
@@ -962,8 +962,8 @@ func dimValueScore(v float64) uint64 {
 }
 
 // dimPointScore 三坐标数值评分之和。
-func dimPointScore(p point3) uint64 {
-	return dimValueScore(p.x) + dimValueScore(p.y) + dimValueScore(p.z)
+func DimPointScore(P Point3) uint64 {
+	return DimValueScore(P.X) + DimValueScore(P.Y) + DimValueScore(P.Z)
 }
 
 // absF 浮点绝对值。

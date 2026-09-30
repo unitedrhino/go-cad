@@ -9,6 +9,7 @@ package cad
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"math"
 	"os"
 	"path/filepath"
@@ -488,12 +489,12 @@ func TestUNDERLAYGold(t *testing.T) {
 		if !ok {
 			continue
 		}
-		ent, ok := doc.EntityByHandle(h).(*entUnderlay)
+		ent, ok := doc.EntityByHandle(h).(*entity.EntUnderlay)
 		if !ok {
 			t.Errorf("PDFUNDERLAY h=%d 未解析到（实体侧）", h)
 			continue
 		}
-		base := entBase(ent)
+		base := entity.EntityBase(ent)
 		bad := ""
 		// 专有字段（UNDERLAY_fields）
 		checkEqU64 := func(name string, got, want uint64) {
@@ -511,31 +512,31 @@ func TestUNDERLAYGold(t *testing.T) {
 				bad += fmt.Sprintf(" %s=%d(want %d)", name, got, want)
 			}
 		}
-		checkP3 := func(name string, got point3, goldVal any) {
+		checkP3 := func(name string, got entity.Point3, goldVal any) {
 			arr, ok := goldVal.([]any)
 			if !ok || len(arr) != 3 {
 				return
 			}
-			gv := [3]float64{got.x, got.y, got.z}
+			gv := [3]float64{got.X, got.Y, got.Z}
 			for i := 0; i < 3; i++ {
 				w, _ := arr[i].(float64)
 				checkF(fmt.Sprintf("%s[%d]", name, i), gv[i], w)
 			}
 		}
-		checkEqU64("definition_id", ent.definitionID, jsonHandleNum(o["definition_id"]))
-		checkP3("extrusion", ent.extrusion, o["extrusion"])
-		checkP3("ins_pt", ent.insPt, o["ins_pt"])
-		checkF("angle", ent.angle, goldFloat(o["angle"]))
-		checkP3("scale", ent.scale, o["scale"])
-		checkI("flag", int64(ent.flag), int64(goldFloat(o["flag"])))
-		checkI("contrast", int64(ent.contrast), int64(goldFloat(o["contrast"])))
-		checkI("fade", int64(ent.fade), int64(goldFloat(o["fade"])))
+		checkEqU64("definition_id", ent.DefinitionID, jsonHandleNum(o["definition_id"]))
+		checkP3("extrusion", ent.Extrusion, o["extrusion"])
+		checkP3("ins_pt", ent.InsPt, o["ins_pt"])
+		checkF("angle", ent.Angle, goldFloat(o["angle"]))
+		checkP3("scale", ent.Scale, o["scale"])
+		checkI("flag", int64(ent.Flag), int64(goldFloat(o["flag"])))
+		checkI("contrast", int64(ent.Contrast), int64(goldFloat(o["contrast"])))
+		checkI("fade", int64(ent.Fade), int64(goldFloat(o["fade"])))
 		if arr, ok := o["clip_verts"].([]any); ok {
-			if len(ent.clipVerts) != len(arr) {
-				bad += fmt.Sprintf(" clip_verts 数量=%d(want %d)", len(ent.clipVerts), len(arr))
+			if len(ent.ClipVerts) != len(arr) {
+				bad += fmt.Sprintf(" clip_verts 数量=%d(want %d)", len(ent.ClipVerts), len(arr))
 			}
 			for i, gv := range arr {
-				if i >= len(ent.clipVerts) {
+				if i >= len(ent.ClipVerts) {
 					break
 				}
 				pt, ok := gv.([]any)
@@ -544,37 +545,37 @@ func TestUNDERLAYGold(t *testing.T) {
 				}
 				w0, _ := pt[0].(float64)
 				w1, _ := pt[1].(float64)
-				checkF(fmt.Sprintf("clip_verts[%d][0]", i), ent.clipVerts[i].x, w0)
-				checkF(fmt.Sprintf("clip_verts[%d][1]", i), ent.clipVerts[i].y, w1)
+				checkF(fmt.Sprintf("clip_verts[%d][0]", i), ent.ClipVerts[i].X, w0)
+				checkF(fmt.Sprintf("clip_verts[%d][1]", i), ent.ClipVerts[i].Y, w1)
 			}
 		}
 		// 实体头关键字段
-		if base.head == nil {
+		if base.Head == nil {
 			bad += " 公共头缺失"
 		} else {
-			hd := base.head
-			checkI("preview_exists", b2int(base.previewExists), int64(goldFloat(o["preview_exists"])))
-			if want, ok := o["preview"].(string); ok && base.previewExists {
-				got := strings.ToUpper(fmt.Sprintf("%X", hd.preview))
+			hd := base.Head
+			checkI("preview_exists", entity.B2int(base.PreviewExists), int64(goldFloat(o["preview_exists"])))
+			if want, ok := o["preview"].(string); ok && base.PreviewExists {
+				got := strings.ToUpper(fmt.Sprintf("%X", hd.Preview))
 				if got != want {
 					bad += fmt.Sprintf(" preview=%q(want %q)", got, want)
 				}
 			}
-			checkI("entmode", int64(base.mode), int64(goldFloat(o["entmode"])))
-			checkF("ltype_scale", hd.ltypeScale, goldFloat(o["ltype_scale"]))
-			checkI("ltype_flags", int64(hd.ltypeFlags), int64(goldFloat(o["ltype_flags"])))
-			checkI("plotstyle_flags", int64(hd.plotstyleFlgs), int64(goldFloat(o["plotstyle_flags"])))
-			checkI("invisible", int64(hd.invisible), int64(goldFloat(o["invisible"])))
-			checkI("linewt", int64(hd.linewt), int64(goldFloat(o["linewt"])))
+			checkI("entmode", int64(base.Mode), int64(goldFloat(o["entmode"])))
+			checkF("ltype_scale", hd.LtypeScale, goldFloat(o["ltype_scale"]))
+			checkI("ltype_flags", int64(hd.LtypeFlags), int64(goldFloat(o["ltype_flags"])))
+			checkI("plotstyle_flags", int64(hd.PlotstyleFlgs), int64(goldFloat(o["plotstyle_flags"])))
+			checkI("invisible", int64(hd.Invisible), int64(goldFloat(o["invisible"])))
+			checkI("linewt", int64(hd.Linewt), int64(goldFloat(o["linewt"])))
 			if cm, ok := o["color"].(map[string]any); ok {
-				checkI("color.index", int64(base.color.index), int64(goldFloat(cm["index"])))
+				checkI("color.index", int64(base.Color.Index), int64(goldFloat(cm["index"])))
 			}
 			if xm, ok := o["is_xdic_missing"]; ok {
-				checkI("is_xdic_missing", b2int(hd.xdicMissing), int64(goldFloat(xm)))
+				checkI("is_xdic_missing", entity.B2int(hd.XdicMissing), int64(goldFloat(xm)))
 			}
 		}
-		checkF("bitsize", float64(base.objSizeBit), goldFloat(o["bitsize"]))
-		checkF("size", float64(base.recSize), goldFloat(o["size"]))
+		checkF("bitsize", float64(base.ObjSizeBit), goldFloat(o["bitsize"]))
+		checkF("size", float64(base.RecSize), goldFloat(o["size"]))
 		if bad != "" {
 			t.Errorf("PDFUNDERLAY h=%d:%s", h, bad)
 		}

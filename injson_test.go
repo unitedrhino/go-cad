@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"path/filepath"
@@ -215,12 +216,12 @@ func TestParseJSONRoundtripNineSamples(t *testing.T) {
 				if !ok {
 					continue // gold 未输出该键（可选字段）
 				}
-				jv := entityField(je, k)
+				jv := entity.EntityField(je, k)
 				if jv == nil {
 					// gold 键名与 entityField 导出键名的已知别名
 					// （审计侧数组键不对照故未覆盖的同义键）
 					if alt := injsonKeyAliases[k]; alt != "" {
-						jv = entityField(je, alt)
+						jv = entity.EntityField(je, alt)
 					}
 				}
 				if !jsonTestValueMatch(jv, gv) {
@@ -234,10 +235,10 @@ func TestParseJSONRoundtripNineSamples(t *testing.T) {
 					continue
 				}
 				// 殊途同归：两侧实体都存在时键值必须一致（json vs dwg）
-				dv := entityField(de, k)
+				dv := entity.EntityField(de, k)
 				if dv == nil {
 					if alt := injsonKeyAliases[k]; alt != "" {
-						dv = entityField(de, alt)
+						dv = entity.EntityField(de, alt)
 					}
 					if dv == nil {
 						continue // DWG 侧未导出该键（解码缺口），已由 json vs gold 覆盖
@@ -248,7 +249,7 @@ func TestParseJSONRoundtripNineSamples(t *testing.T) {
 				if isGoldNoise(s.alias, ename, h, k) {
 					continue
 				}
-				if !entityValueEqual(dv, jv) && !entityValueEqual(jv, dv) && !jsonTestValueMatch(jv, dv) {
+				if !entity.EntityValueEqual(dv, jv) && !entity.EntityValueEqual(jv, dv) && !jsonTestValueMatch(jv, dv) {
 					diff++
 					if diff <= 5 {
 						t.Errorf("%s: h=%d %s 键 %s: json=%v dwg=%v（与 gold=%v）", s.alias, h, ename, k, jv, dv, gv)
@@ -263,38 +264,38 @@ func TestParseJSONRoundtripNineSamples(t *testing.T) {
 			// 尾 \n，均属 JSON 序列化信息损失），对照按剥 \r+裁尾 \n 归一；
 			// DWG 侧 acis_empty=1（AcDs blob 场景，gold 历史噪声清单同源）
 			// 无文本可比，仅验证 JSON 侧还原完整性。
-			if ja, ok := je.(*entAcis); ok && !ja.acisEmpty {
-				if _, has := o["acis_data"]; has && len(ja.acisData) == 0 {
+			if ja, ok := je.(*entity.EntAcis); ok && !ja.AcisEmpty {
+				if _, has := o["acis_data"]; has && len(ja.AcisData) == 0 {
 					t.Errorf("%s: h=%d %s JSON 侧 acis_data 未还原", s.alias, h, ename)
 				}
 				if de != nil {
-					if da, ok := de.(*entAcis); ok && !da.acisEmpty {
+					if da, ok := de.(*entity.EntAcis); ok && !da.AcisEmpty {
 						norm := func(b []byte) string {
 							return strings.TrimRight(strings.ReplaceAll(string(b), "\r", ""), "\n")
 						}
-						if norm(da.acisData) != norm(ja.acisData) {
+						if norm(da.AcisData) != norm(ja.AcisData) {
 							t.Errorf("%s: h=%d %s acisData 归一化后不一致 json=%d 字节 dwg=%d 字节",
-								s.alias, h, ename, len(ja.acisData), len(da.acisData))
+								s.alias, h, ename, len(ja.AcisData), len(da.AcisData))
 						}
 					}
 				}
 			}
 			// 3.6 HATCH/MPOLYGON 图案定义线（批次 B）：gold deflines 数组
 			// 逐条还原（angle/pt0/offset/dashes），与 DWG 侧同构一致
-			var jDeflines []hatchDefLine
+			var jDeflines []entity.HatchDefLine
 			switch t := je.(type) {
-			case *entHatch:
-				jDeflines = t.deflines
-			case *entMpolygon:
-				jDeflines = t.hatch.deflines
+			case *entity.EntHatch:
+				jDeflines = t.Deflines
+			case *entity.EntMpolygon:
+				jDeflines = t.Hatch.Deflines
 			}
 			if jDeflines != nil || o["deflines"] != nil {
-				var dDeflines []hatchDefLine
+				var dDeflines []entity.HatchDefLine
 				switch t := de.(type) {
-				case *entHatch:
-					dDeflines = t.deflines
-				case *entMpolygon:
-					dDeflines = t.hatch.deflines
+				case *entity.EntHatch:
+					dDeflines = t.Deflines
+				case *entity.EntMpolygon:
+					dDeflines = t.Hatch.Deflines
 				}
 				if len(dDeflines) != len(jDeflines) {
 					t.Errorf("%s: h=%d %s deflines 数不一致 json=%d dwg=%d",
@@ -322,35 +323,35 @@ func TestParseJSONRoundtripNineSamples(t *testing.T) {
 						continue
 					}
 					dl := jDeflines[i]
-					if gf, _ := gm["angle"].(float64); !nearF(dl.angle, gf) {
+					if gf, _ := gm["angle"].(float64); !entity.NearF(dl.Angle, gf) {
 						t.Errorf("%s: h=%d %s deflines[%d].angle json=%v gold=%v",
-							s.alias, h, ename, i, dl.angle, gf)
+							s.alias, h, ename, i, dl.Angle, gf)
 					}
 					if pa, ok := gm["pt0"].([]any); ok {
-						if !nearF(dl.pt0.x, jsonNumAt(pa, 0)) || !nearF(dl.pt0.y, jsonNumAt(pa, 1)) {
+						if !entity.NearF(dl.Pt0.X, jsonNumAt(pa, 0)) || !entity.NearF(dl.Pt0.Y, jsonNumAt(pa, 1)) {
 							t.Errorf("%s: h=%d %s deflines[%d].pt0 json=(%v,%v) gold=%v",
-								s.alias, h, ename, i, dl.pt0.x, dl.pt0.y, pa)
+								s.alias, h, ename, i, dl.Pt0.X, dl.Pt0.Y, pa)
 						}
 					}
 					if pa, ok := gm["offset"].([]any); ok {
-						if !nearF(dl.offset.x, jsonNumAt(pa, 0)) || !nearF(dl.offset.y, jsonNumAt(pa, 1)) {
+						if !entity.NearF(dl.Offset.X, jsonNumAt(pa, 0)) || !entity.NearF(dl.Offset.Y, jsonNumAt(pa, 1)) {
 							t.Errorf("%s: h=%d %s deflines[%d].offset json=(%v,%v) gold=%v",
-								s.alias, h, ename, i, dl.offset.x, dl.offset.y, pa)
+								s.alias, h, ename, i, dl.Offset.X, dl.Offset.Y, pa)
 						}
 					}
 					if da, ok := gm["dashes"].([]any); ok {
-						if len(da) != len(dl.dashes) {
+						if len(da) != len(dl.Dashes) {
 							t.Errorf("%s: h=%d %s deflines[%d].dashes 数 json=%d gold=%d",
-								s.alias, h, ename, i, len(dl.dashes), len(da))
+								s.alias, h, ename, i, len(dl.Dashes), len(da))
 						}
 						for j, ge2 := range da {
-							if j >= len(dl.dashes) {
+							if j >= len(dl.Dashes) {
 								break
 							}
 							gf, _ := ge2.(float64)
-							if !nearF(dl.dashes[j], gf) {
+							if !entity.NearF(dl.Dashes[j], gf) {
 								t.Errorf("%s: h=%d %s deflines[%d].dashes[%d] json=%v gold=%v",
-									s.alias, h, ename, i, j, dl.dashes[j], gf)
+									s.alias, h, ename, i, j, dl.Dashes[j], gf)
 							}
 						}
 					}
@@ -481,7 +482,7 @@ func TestParseJSONBadInput(t *testing.T) {
 	if doc.internalObjects[11] == nil {
 		t.Error("未知对象名应以 objGeneric 兜底入 internalObjects")
 	}
-	if l, ok := doc.entityByHandle[10].(*entLine); !ok || l.end.x != 10 {
+	if l, ok := doc.entityByHandle[10].(*entity.EntLine); !ok || l.End.X != 10 {
 		t.Errorf("LINE 几何还原错误: %#v", l)
 	}
 }
@@ -511,14 +512,14 @@ func TestParseJSONLayers(t *testing.T) {
 }
 
 // hatchDeflineEqual 图案定义线全字段等价（浮点容差 + dashes 逐元素）。
-func hatchDeflineEqual(a, b hatchDefLine) bool {
-	if !nearF(a.angle, b.angle) || !nearF(a.pt0.x, b.pt0.x) || !nearF(a.pt0.y, b.pt0.y) ||
-		!nearF(a.offset.x, b.offset.x) || !nearF(a.offset.y, b.offset.y) ||
-		len(a.dashes) != len(b.dashes) {
+func hatchDeflineEqual(a, b entity.HatchDefLine) bool {
+	if !entity.NearF(a.Angle, b.Angle) || !entity.NearF(a.Pt0.X, b.Pt0.X) || !entity.NearF(a.Pt0.Y, b.Pt0.Y) ||
+		!entity.NearF(a.Offset.X, b.Offset.X) || !entity.NearF(a.Offset.Y, b.Offset.Y) ||
+		len(a.Dashes) != len(b.Dashes) {
 		return false
 	}
-	for i := range a.dashes {
-		if !nearF(a.dashes[i], b.dashes[i]) {
+	for i := range a.Dashes {
+		if !entity.NearF(a.Dashes[i], b.Dashes[i]) {
 			return false
 		}
 	}
@@ -581,11 +582,11 @@ func jsonTestValueMatch(got, want any) bool {
 	case float64:
 		switch g := got.(type) {
 		case float64:
-			return nearF(g, w)
+			return entity.NearF(g, w)
 		case int64:
-			return nearF(float64(g), w)
+			return entity.NearF(float64(g), w)
 		case uint16:
-			return nearF(float64(g), w)
+			return entity.NearF(float64(g), w)
 		}
 	case string:
 		g, ok := got.(string)
@@ -602,7 +603,7 @@ func jsonTestValueMatch(got, want any) bool {
 		if !ok {
 			if f, ok2 := got.(float64); ok2 && len(w) == 1 {
 				if wf, ok3 := w[0].(float64); ok3 {
-					return nearF(f, wf)
+					return entity.NearF(f, wf)
 				}
 			}
 			return false
@@ -639,7 +640,7 @@ func jsonTestValueMatch(got, want any) bool {
 			g, flat = pad(g), pad(flat)
 		}
 		for i := range flat {
-			if !nearF(g[i], flat[i]) {
+			if !entity.NearF(g[i], flat[i]) {
 				return false
 			}
 		}
@@ -670,17 +671,17 @@ func TestParseJSONHeaderVars(t *testing.T) {
 	if !ok || len(want) < 2 {
 		t.Fatalf("HeaderVars 缺 EXTMIN")
 	}
-	if doc.extMin.x != want[0].(float64) || doc.extMin.y != want[1].(float64) {
+	if doc.extMin.X != want[0].(float64) || doc.extMin.Y != want[1].(float64) {
 		t.Errorf("extMin 与 EXTMIN 不一致: %v vs %v", doc.extMin, want)
 	}
 	maxArr := doc.HeaderVars["EXTMAX"].([]any)
-	if doc.extMax.x != maxArr[0].(float64) || doc.extMax.y != maxArr[1].(float64) {
+	if doc.extMax.X != maxArr[0].(float64) || doc.extMax.Y != maxArr[1].(float64) {
 		t.Errorf("extMax 与 EXTMAX 不一致: %v vs %v", doc.extMax, maxArr)
 	}
 	// INSBASE/LTSCALE 提升与 $ 前缀容错查询
 	if v, ok := doc.HeaderVar("$INSBASE"); !ok {
 		t.Errorf("HeaderVar($INSBASE) 未命中")
-	} else if arr := v.([]any); doc.insbase.x != arr[0].(float64) {
+	} else if arr := v.([]any); doc.insbase.X != arr[0].(float64) {
 		t.Errorf("insbase 与 INSBASE 不一致: %v vs %v", doc.insbase, arr)
 	}
 	if v, ok := doc.HeaderVar("LTSCALE"); !ok || v.(float64) != doc.ltscale {

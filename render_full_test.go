@@ -2,6 +2,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"math"
 	"testing"
 )
@@ -47,7 +48,7 @@ func TestTessArcSpan(t *testing.T) {
 }
 
 func TestTessLwPolylineLines(t *testing.T) {
-	e := &entLwPolyline{vertices: []point2{{0, 0}, {10, 0}, {10, 10}}}
+	e := &entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {10, 0}, {10, 10}}}
 	strokes := tessLwPolyline(e, identityXform())
 	// 2 段直线
 	if len(strokes) != 2 {
@@ -60,7 +61,7 @@ func TestTessLwPolylineLines(t *testing.T) {
 
 func TestTessLwPolylineClosedByGeometry(t *testing.T) {
 	// 首尾重合 → 几何闭合：最后一段 (10,0)→(0,0) 已回到起点，无需回连段
-	e := &entLwPolyline{vertices: []point2{{0, 0}, {10, 0}, {0, 0}}}
+	e := &entity.EntLwPolyline{Vertices: []entity.Point2{{0, 0}, {10, 0}, {0, 0}}}
 	strokes := tessLwPolyline(e, identityXform())
 	if len(strokes) != 2 {
 		t.Fatalf("闭合折线期望 2 段得到 %d", len(strokes))
@@ -73,9 +74,9 @@ func TestTessLwPolylineClosedByGeometry(t *testing.T) {
 
 func TestTessLwPolylineBulgeArc(t *testing.T) {
 	// bulge=1 → 半圆弧（圆心角 180°），弦 (0,0)-(10,0)
-	e := &entLwPolyline{
-		vertices: []point2{{0, 0}, {10, 0}},
-		bulges:   []float64{1},
+	e := &entity.EntLwPolyline{
+		Vertices: []entity.Point2{{0, 0}, {10, 0}},
+		Bulges:   []float64{1},
 	}
 	strokes := tessLwPolyline(e, identityXform())
 	if len(strokes) == 0 {
@@ -98,12 +99,12 @@ func TestTessLwPolylineBulgeArc(t *testing.T) {
 }
 
 func TestTessEllipse(t *testing.T) {
-	e := &entEllipse{
-		center:    point3{0, 0, 0},
-		majorAxis: point3{10, 0, 0},
-		ratio:     0.5,
-		startAng:  0,
-		endAng:    2 * math.Pi,
+	e := &entity.EntEllipse{
+		Center:    entity.Point3{0, 0, 0},
+		MajorAxis: entity.Point3{10, 0, 0},
+		Ratio:     0.5,
+		StartAng:  0,
+		EndAng:    2 * math.Pi,
 	}
 	strokes := tessEllipse(e, identityXform())
 	if len(strokes) == 0 {
@@ -112,10 +113,10 @@ func TestTessEllipse(t *testing.T) {
 	// 长轴端点 (10,0) 短轴端点 (0,5)
 	hasMajorEnd, hasMinorEnd := false, false
 	for _, s := range strokes {
-		if near(s.x1, 10) && near(s.y1, 0) {
+		if entity.Near(s.x1, 10) && entity.Near(s.y1, 0) {
 			hasMajorEnd = true
 		}
-		if near(s.x1, 0) && near(s.y1, 5) {
+		if entity.Near(s.x1, 0) && entity.Near(s.y1, 5) {
 			hasMinorEnd = true
 		}
 	}
@@ -183,25 +184,25 @@ func TestEntityColorPriority(t *testing.T) {
 		10: {index: 5, hasTrue: false},
 	}}
 	// true color 优先
-	e := &primitive{color: entColor{hasTrue: true, trueColor: 0xFF0000}, layer: 10}
+	e := &primitive{color: entity.EntColor{HasTrue: true, TrueColor: 0xFF0000}, layer: 10}
 	c := entityColor(doc, e, true)
 	if c.R != 255 || c.G != 0 || c.B != 0 {
 		t.Fatalf("true color 优先失败: %v", c)
 	}
 	// 实体 ACI
-	e2 := &primitive{color: entColor{hasIndex: true, index: 1}, layer: 10}
+	e2 := &primitive{color: entity.EntColor{HasIndex: true, Index: 1}, layer: 10}
 	c2 := entityColor(doc, e2, true)
 	if c2.R != 255 || c2.G != 0 {
 		t.Fatalf("实体 ACI 失败: %v", c2)
 	}
 	// 图层 ACI 继承（ACI 5 = 蓝）
-	e3 := &primitive{color: entColor{}, layer: 10}
+	e3 := &primitive{color: entity.EntColor{}, layer: 10}
 	c3 := entityColor(doc, e3, true)
 	if c3.R != 0 || c3.G != 0 || c3.B != 255 {
 		t.Fatalf("图层 ACI 继承失败: %v", c3)
 	}
 	// 默认黑
-	e4 := &primitive{color: entColor{}, layer: 999}
+	e4 := &primitive{color: entity.EntColor{}, layer: 999}
 	c4 := entityColor(doc, e4, true)
 	if c4.R != 0 || c4.G != 0 || c4.B != 0 {
 		t.Fatalf("默认黑失败: %v", c4)
@@ -226,22 +227,22 @@ func TestPrimitivesBounds(t *testing.T) {
 
 func TestInsertXformAndCompose(t *testing.T) {
 	// INSERT：插入点 (10,20)、旋转 90°、缩放 2 → 局部点 (1,0) → (10+0, 20+2)=(10,22)
-	ins := &entInsert{
-		position: point3{10, 20, 0},
-		scale:    point3{2, 2, 2},
-		rotation: math.Pi / 2,
+	ins := &entity.EntInsert{
+		Position: entity.Point3{10, 20, 0},
+		Scale:    entity.Point3{2, 2, 2},
+		Rotation: math.Pi / 2,
 	}
 	xf := insertXform(ins)
-	p := xf.apply(point2{1, 0})
-	if math.Abs(p.x-10) > 1e-9 || math.Abs(p.y-22) > 1e-9 {
-		t.Fatalf("INSERT 变换: (%v,%v) 期望 (10,22)", p.x, p.y)
+	p := xf.apply(entity.Point2{1, 0})
+	if math.Abs(p.X-10) > 1e-9 || math.Abs(p.Y-22) > 1e-9 {
+		t.Fatalf("INSERT 变换: (%v,%v) 期望 (10,22)", p.X, p.Y)
 	}
 }
 
 func TestTextLabelWidth(t *testing.T) {
 	ts := newTessellator(&Document{})
-	e := &entText{baseEntity: baseEntity{}, text: "ABCD", insertion: point3{0, 0, 0}, height: 2}
-	prim := ts.textLabel(0, 0, 2, 0, 4, identityXform(), e, "TEXT", e.text, 0)
+	e := &entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "ABCD", Insertion: entity.Point3{0, 0, 0}, Height: 2}
+	prim := ts.textLabel(0, 0, 2, 0, 4, identityXform(), e, "TEXT", e.Text, 0)
 	if prim.kind != 1 {
 		t.Fatal("文字应产生 label 图元")
 	}
@@ -260,11 +261,11 @@ func TestCanvasToPixelYFlip(t *testing.T) {
 	}
 	_ = imgW
 	_ = imgH
-	px, py := cv.toPixel(point2{0, 50}) // 世界顶部 → 像素顶部
+	px, py := cv.toPixel(entity.Point2{0, 50}) // 世界顶部 → 像素顶部
 	if px != 0 || py != 0 {
 		t.Fatalf("Y 翻转错误: (%v,%v)", px, py)
 	}
-	px, py = cv.toPixel(point2{100, 0}) // 世界底部 → 像素底部
+	px, py = cv.toPixel(entity.Point2{100, 0}) // 世界底部 → 像素底部
 	if px != 100 || py != 50 {
 		t.Fatalf("像素换算错误: (%v,%v)", px, py)
 	}

@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"math"
 	"strconv"
 	"strings"
@@ -45,7 +46,7 @@ func ParseDXF(data []byte) (*Document, error) {
 		version:         lex.version,
 		codepage:        30, // ANSI_1252 的 DWG 编号（HEADER $DWGCODEPAGE 可覆盖）
 		blocks:          make(map[uint64][]any),
-		attribs:         make(map[uint64]*entAttrib),
+		attribs:         make(map[uint64]*entity.EntAttrib),
 		layerColors:     make(map[uint64]layerColor),
 		internalObjects: make(map[uint64]*objGeneric),
 	}
@@ -80,7 +81,7 @@ type dxfState struct {
 	// owner，按文件顺序归属最近的 POLYLINE，并回填其顶点句柄表
 	curPolylineHost any
 	// curInsert 最近一个带 66=1 的 INSERT：其后的 ATTRIB 序列归属该块参照
-	curInsert *entInsert
+	curInsert *entity.EntInsert
 }
 
 // parseSections 主循环：逐段分发，未知段整段跳过。
@@ -443,18 +444,18 @@ func (r *dxfRec) intVal(code int) (int64, bool) {
 }
 
 // point2 取 (code, code+10) 平面点。
-func (r *dxfRec) point2(code int) point2 {
+func (r *dxfRec) point2(code int) entity.Point2 {
 	x, _ := r.floatVal(code)
 	y, _ := r.floatVal(code + 10)
-	return point2{x, y}
+	return entity.Point2{x, y}
 }
 
 // point3 取 (code, code+10, code+20) 空间点。
-func (r *dxfRec) point3(code int) point3 {
+func (r *dxfRec) point3(code int) entity.Point3 {
 	x, _ := r.floatVal(code)
 	y, _ := r.floatVal(code + 10)
 	z, _ := r.floatVal(code + 20)
-	return point3{x, y, z}
+	return entity.Point3{x, y, z}
 }
 
 // hexHandle 句柄类组码值（十六进制字符串，二进制编码同样是 hex 文本）。
@@ -632,26 +633,26 @@ func (st *dxfState) buildEntity(rec *dxfRec, mode uint8, owner uint64) any {
 	var ent any
 	switch rec.typ {
 	case "LINE":
-		ent = &entLine{baseEntity: *base, start: rec.point3(10), end: rec.point3(11)}
+		ent = &entity.EntLine{BaseEntity: *base, Start: rec.point3(10), End: rec.point3(11)}
 	case "CIRCLE":
 		radius, _ := rec.floatVal(40)
-		ent = &entCircle{baseEntity: *base, center: rec.point3(10), radius: radius}
+		ent = &entity.EntCircle{BaseEntity: *base, Center: rec.point3(10), Radius: radius}
 	case "ARC":
 		radius, _ := rec.floatVal(40)
 		a0, _ := rec.floatVal(50)
 		a1, _ := rec.floatVal(51)
-		ent = &entArc{baseEntity: *base, center: rec.point3(10), radius: radius,
-			angleStart: a0 * math.Pi / 180, angleEnd: a1 * math.Pi / 180}
+		ent = &entity.EntArc{BaseEntity: *base, Center: rec.point3(10), Radius: radius,
+			AngleStart: a0 * math.Pi / 180, AngleEnd: a1 * math.Pi / 180}
 	case "POINT":
 		rot, _ := rec.floatVal(50)
-		ent = &entPoint{baseEntity: *base, location: rec.point3(10), rotation: rot * math.Pi / 180}
+		ent = &entity.EntPoint{BaseEntity: *base, Location: rec.point3(10), Rotation: rot * math.Pi / 180}
 	case "ELLIPSE":
 		ratio, _ := rec.floatVal(40)
 		sa, _ := rec.floatVal(41)
 		ea, _ := rec.floatVal(42)
-		ent = &entEllipse{baseEntity: *base, center: rec.point3(10),
-			majorAxis: rec.point3(11), ratio: ratio,
-			startAng: sa, endAng: ea}
+		ent = &entity.EntEllipse{BaseEntity: *base, Center: rec.point3(10),
+			MajorAxis: rec.point3(11), Ratio: ratio,
+			StartAng: sa, EndAng: ea}
 	case "TEXT":
 		ent = st.buildText(rec, base)
 	case "MTEXT":
@@ -670,15 +671,15 @@ func (st *dxfState) buildEntity(rec *dxfRec, mode uint8, owner uint64) any {
 		ent = st.buildAttdef(rec, base)
 	case "SOLID", "TRACE":
 		elevation, _ := rec.floatVal(30)
-		ent = &entSolid{baseEntity: *base,
-			p1: rec.point2(10), p2: rec.point2(11), p3: rec.point2(12), p4: rec.point2(13),
-			elevation: elevation, trace: rec.typ == "TRACE"}
+		ent = &entity.EntSolid{BaseEntity: *base,
+			P1: rec.point2(10), P2: rec.point2(11), P3: rec.point2(12), P4: rec.point2(13),
+			Elevation: elevation, Trace: rec.typ == "TRACE"}
 	case "3DFACE":
-		ent = &entFace3d{baseEntity: *base,
-			p1: rec.point3(10), p2: rec.point3(11), p3: rec.point3(12), p4: rec.point3(13)}
+		ent = &entity.EntFace3d{BaseEntity: *base,
+			P1: rec.point3(10), P2: rec.point3(11), P3: rec.point3(12), P4: rec.point3(13)}
 	case "RAY", "XLINE":
-		ent = &entRay{baseEntity: *base, start: rec.point3(10), unitVector: rec.point3(11),
-			xline: rec.typ == "XLINE"}
+		ent = &entity.EntRay{BaseEntity: *base, Start: rec.point3(10), UnitVector: rec.point3(11),
+			Xline: rec.typ == "XLINE"}
 	case "SPLINE":
 		ent = st.buildSpline(rec, base)
 	// ---- 批次 R：复杂实体 ----
@@ -706,38 +707,38 @@ func (st *dxfState) buildEntity(rec *dxfRec, mode uint8, owner uint64) any {
 }
 
 // dxfBase 公共字段（句柄/图层/颜色/归属）。
-func (st *dxfState) dxfBase(rec *dxfRec, mode uint8, owner uint64) *baseEntity {
+func (st *dxfState) dxfBase(rec *dxfRec, mode uint8, owner uint64) *entity.BaseEntity {
 	if owner == 0 {
 		if h, ok := rec.hexHandle(330); ok {
 			owner = h
 		}
 	}
-	return &baseEntity{
-		handle: st.recordHandle(rec),
-		color:  dxfEntityColor(rec),
-		layer:  st.layerHandle(rec.str(8)),
-		owner:  owner,
-		mode:   mode,
+	return &entity.BaseEntity{
+		Handle: st.recordHandle(rec),
+		Color:  dxfEntityColor(rec),
+		Layer:  st.layerHandle(rec.str(8)),
+		Owner:  owner,
+		Mode:   mode,
 	}
 }
 
 // dxfEntityColor 实体颜色：62 ACI 索引与 420 真彩色（420 优先级更高，
 // 与渲染 entityColor 的取色顺序一致）。
-func dxfEntityColor(rec *dxfRec) entColor {
-	var c entColor
+func dxfEntityColor(rec *dxfRec) entity.EntColor {
+	var c entity.EntColor
 	if v, ok := rec.intVal(62); ok {
 		idx := v
 		if idx < 0 {
 			idx = -idx
 		}
 		if idx > 0 && idx <= 257 {
-			c.index = uint16(idx)
-			c.hasIndex = true
+			c.Index = uint16(idx)
+			c.HasIndex = true
 		}
 	}
 	if v, ok := rec.intVal(420); ok && v != 0 {
-		c.trueColor = uint32(v) & 0x00FFFFFF
-		c.hasTrue = true
+		c.TrueColor = uint32(v) & 0x00FFFFFF
+		c.HasTrue = true
 	}
 	return c
 }
@@ -761,94 +762,94 @@ func (st *dxfState) layerHandle(name string) uint64 {
 
 // buildText TEXT：文本（1）、字高（40）、插入点（10）、旋转（50，度）、
 // 对齐点（11）与对齐模式（72/73）。
-func (st *dxfState) buildText(rec *dxfRec, base *baseEntity) any {
-	t := &entText{baseEntity: *base}
-	t.text = rec.str(1)
-	t.insertion = rec.point3(10)
+func (st *dxfState) buildText(rec *dxfRec, base *entity.BaseEntity) any {
+	t := &entity.EntText{BaseEntity: *base}
+	t.Text = rec.str(1)
+	t.Insertion = rec.point3(10)
 	if h, ok := rec.floatVal(40); ok {
-		t.height = h
+		t.Height = h
 	} else {
-		t.height = 1
+		t.Height = 1
 	}
 	if rot, ok := rec.floatVal(50); ok {
-		t.rotation = rot * math.Pi / 180
+		t.Rotation = rot * math.Pi / 180
 	}
 	if v, ok := rec.intVal(72); ok {
-		t.hAlign = uint16(v)
+		t.HAlign = uint16(v)
 	}
 	if v, ok := rec.intVal(73); ok {
-		t.vAlign = uint16(v)
+		t.VAlign = uint16(v)
 	}
 	if v, ok := rec.intVal(71); ok {
-		t.gen = uint16(v)
+		t.Gen = uint16(v)
 	}
 	// 有对齐模式（非 0）时 11 组码为第二对齐点
-	if (t.hAlign != 0 || t.vAlign != 0) && len(rec.all(11)) > 0 {
+	if (t.HAlign != 0 || t.VAlign != 0) && len(rec.all(11)) > 0 {
 		p := rec.point2(11)
-		t.alignPt = &p
+		t.AlignPt = &p
 	}
 	return t
 }
 
 // buildMText MTEXT：分段文本 3*（前置段）+1（末段）拼接为原始富文本，
 // 40 字高、41 矩形宽、71 附着点。
-func (st *dxfState) buildMText(rec *dxfRec, base *baseEntity) any {
-	m := &entMText{baseEntity: *base}
+func (st *dxfState) buildMText(rec *dxfRec, base *entity.BaseEntity) any {
+	m := &entity.EntMText{BaseEntity: *base}
 	var sb strings.Builder
 	for _, s := range rec.strAll(3) {
 		sb.WriteString(s)
 	}
 	sb.WriteString(rec.str(1))
-	m.text = sb.String()
-	m.insertion = rec.point3(10)
+	m.Text = sb.String()
+	m.Insertion = rec.point3(10)
 	if h, ok := rec.floatVal(40); ok {
-		m.textHeight = h
+		m.TextHeight = h
 	} else {
-		m.textHeight = 1
+		m.TextHeight = 1
 	}
 	if w, ok := rec.floatVal(41); ok {
-		m.rectWidth = w
+		m.RectWidth = w
 	}
 	if v, ok := rec.intVal(71); ok {
-		m.attachment = uint16(v)
+		m.Attachment = uint16(v)
 	}
 	// 行距系数（DXF 44 linespace_factor，R2000+ DXF 才写出；缺省 0=未存储）
 	if f, ok := rec.floatVal(44); ok {
-		m.lineFactor = f
+		m.LineFactor = f
 	}
 	return m
 }
 
 // buildLwPolyline LWPOLYLINE：顶点按 10/20 对序收集，42 凸度关联最近
 // 顶点（DXF 逐顶点交错写出），43 常量宽、38 标高、70 标志。
-func (st *dxfState) buildLwPolyline(rec *dxfRec, base *baseEntity) any {
-	lw := &entLwPolyline{baseEntity: *base}
+func (st *dxfState) buildLwPolyline(rec *dxfRec, base *entity.BaseEntity) any {
+	lw := &entity.EntLwPolyline{BaseEntity: *base}
 	if v, ok := rec.intVal(70); ok {
-		lw.flags = uint16(v)
+		lw.Flags = uint16(v)
 	}
 	if w, ok := rec.floatVal(43); ok {
-		lw.constWidth = w
+		lw.ConstWidth = w
 	}
 	if e, ok := rec.floatVal(38); ok {
-		lw.elevation = e
+		lw.Elevation = e
 	}
 	for _, p := range rec.pairs {
 		switch p.code {
 		case 10:
-			lw.vertices = append(lw.vertices, point2{x: p.floatValue()})
+			lw.Vertices = append(lw.Vertices, entity.Point2{X: p.floatValue()})
 		case 20:
-			if len(lw.vertices) > 0 {
-				lw.vertices[len(lw.vertices)-1].y = p.floatValue()
+			if len(lw.Vertices) > 0 {
+				lw.Vertices[len(lw.Vertices)-1].Y = p.floatValue()
 			}
 		case 42:
-			for len(lw.bulges) < len(lw.vertices)-1 {
-				lw.bulges = append(lw.bulges, 0)
+			for len(lw.Bulges) < len(lw.Vertices)-1 {
+				lw.Bulges = append(lw.Bulges, 0)
 			}
-			lw.bulges = append(lw.bulges, p.floatValue())
+			lw.Bulges = append(lw.Bulges, p.floatValue())
 		}
 	}
-	for len(lw.bulges) < len(lw.vertices) {
-		lw.bulges = append(lw.bulges, 0)
+	for len(lw.Bulges) < len(lw.Vertices) {
+		lw.Bulges = append(lw.Bulges, 0)
 	}
 	return lw
 }
@@ -856,44 +857,44 @@ func (st *dxfState) buildLwPolyline(rec *dxfRec, base *baseEntity) any {
 // buildPolyline POLYLINE（R12 布局）：70 标志区分 2D/3D/面网格/多面
 // 网格多段线（bit3=3D、bit4=MESH、bit6=PFACE，与 DWG 侧类型分布对齐），
 // 顶点由后续 VERTEX 记录按文件顺序回填。渲染依赖 ownedHandles 句柄表。
-func (st *dxfState) buildPolyline(rec *dxfRec, base *baseEntity) any {
+func (st *dxfState) buildPolyline(rec *dxfRec, base *entity.BaseEntity) any {
 	flags, _ := rec.intVal(70)
 	switch {
 	case flags&8 != 0:
-		p3 := &entPolyline3d{baseEntity: *base, flags70: uint8(flags & 0xFF)}
+		p3 := &entity.EntPolyline3d{BaseEntity: *base, Flags70: uint8(flags & 0xFF)}
 		st.curPolylineHost = p3
 		return p3
 	case flags&64 != 0:
-		pf := &entPolylinePface{baseEntity: *base}
+		pf := &entity.EntPolylinePface{BaseEntity: *base}
 		if nv, ok := rec.intVal(71); ok {
-			pf.numVertices = int(nv)
+			pf.NumVertices = int(nv)
 		}
 		if nf, ok := rec.intVal(72); ok {
-			pf.numFaces = int(nf)
+			pf.NumFaces = int(nf)
 		}
 		st.curPolylineHost = pf
 		return pf
 	case flags&16 != 0:
-		m := &entPolylineMesh{baseEntity: *base, flags: uint16(flags & 0xFFFF)}
+		m := &entity.EntPolylineMesh{BaseEntity: *base, Flags: uint16(flags & 0xFFFF)}
 		if v, ok := rec.intVal(71); ok {
-			m.mVertexCount = uint16(v)
+			m.MVertexCount = uint16(v)
 		}
 		if v, ok := rec.intVal(72); ok {
-			m.nVertexCount = uint16(v)
+			m.NVertexCount = uint16(v)
 		}
 		if v, ok := rec.intVal(73); ok {
-			m.mDensity = uint16(v)
+			m.MDensity = uint16(v)
 		}
 		if v, ok := rec.intVal(74); ok {
-			m.nDensity = uint16(v)
+			m.NDensity = uint16(v)
 		}
 		if v, ok := rec.intVal(75); ok {
-			m.curveType = uint16(v)
+			m.CurveType = uint16(v)
 		}
 		st.curPolylineHost = m
 		return m
 	default:
-		p2 := &entPolyline2d{baseEntity: *base, flags: uint16(flags & 0xFFFF)}
+		p2 := &entity.EntPolyline2d{BaseEntity: *base, Flags: uint16(flags & 0xFFFF)}
 		st.curPolylineHost = p2
 		return p2
 	}
@@ -902,67 +903,67 @@ func (st *dxfState) buildPolyline(rec *dxfRec, base *baseEntity) any {
 // buildVertex VERTEX：位置（10）、凸度（42）、标志（70）；按宿主 POLYLINE
 // 类型构造对应顶点实体，归属句柄改为宿主（mode=0），并回填宿主句柄表
 // ——与 DWG 侧 VERTEX 的对象归属语义一致（blocks[宿主句柄]）。
-func (st *dxfState) buildVertex(rec *dxfRec, base *baseEntity) any {
+func (st *dxfState) buildVertex(rec *dxfRec, base *entity.BaseEntity) any {
 	host := st.curPolylineHost
 	if h, ok := rec.hexHandle(330); ok && h != 0 {
 		// R2000+：330 owner 指回宿主，按句柄覆盖文件顺序归属
 		if e := st.doc.entityByHandle[h]; e != nil {
 			switch e.(type) {
-			case *entPolyline2d, *entPolyline3d, *entPolylinePface, *entPolylineMesh:
+			case *entity.EntPolyline2d, *entity.EntPolyline3d, *entity.EntPolylinePface, *entity.EntPolylineMesh:
 				host = e
 			}
 		}
 	}
-	base.mode = 0 // 顶点实体归属宿主对象，不直接进模型空间
+	base.Mode = 0 // 顶点实体归属宿主对象，不直接进模型空间
 	if host == nil {
 		// 孤立 VERTEX：无宿主可归属，退回模型空间直挂（渲染不消费）
-		base.mode = 2
-		return &entVertex2d{baseEntity: *base, position: rec.point3(10), bulge: bulgeOf(rec)}
+		base.Mode = 2
+		return &entity.EntVertex2d{BaseEntity: *base, Position: rec.point3(10), Bulge: bulgeOf(rec)}
 	}
-	base.owner = entBase(host).handle
+	base.Owner = entity.EntityBase(host).Handle
 	switch h := host.(type) {
-	case *entPolyline3d:
-		v := &entVertex3d{baseEntity: *base, position: rec.point3(10)}
+	case *entity.EntPolyline3d:
+		v := &entity.EntVertex3d{BaseEntity: *base, Position: rec.point3(10)}
 		if f, ok := rec.intVal(70); ok {
-			v.flags = uint8(f & 0xFF)
+			v.Flags = uint8(f & 0xFF)
 		}
-		h.ownedHandles = append(h.ownedHandles, v.handle)
+		h.OwnedHandles = append(h.OwnedHandles, v.Handle)
 		return v
-	case *entPolylineMesh:
-		v := &entVertexPface{baseEntity: *base, position: rec.point3(10)}
+	case *entity.EntPolylineMesh:
+		v := &entity.EntVertexPface{BaseEntity: *base, Position: rec.point3(10)}
 		if f, ok := rec.intVal(70); ok {
-			v.flag = uint8(f & 0xFF)
+			v.Flag = uint8(f & 0xFF)
 		}
-		h.ownedHandles = append(h.ownedHandles, v.handle)
+		h.OwnedHandles = append(h.OwnedHandles, v.Handle)
 		return v
-	case *entPolylinePface:
+	case *entity.EntPolylinePface:
 		// 子类标记判别（in_dxf UPGRADE_ENTITY 口径）：AcDbFaceRecord 为
 		// 面记录（71-74 顶点索引），AcDbPolyFaceMeshVertex 为定位顶点
 		if dxfRecHasSubclass(rec, "AcDbFaceRecord") {
-			f := &entVertexPfaceFace{baseEntity: *base, flag: 128}
+			f := &entity.EntVertexPfaceFace{BaseEntity: *base, Flag: 128}
 			for i := 0; i < 4; i++ {
 				if v, ok := rec.intVal(71 + i); ok {
-					f.vertind[i] = int32(int16(v))
+					f.Vertind[i] = int32(int16(v))
 				}
 			}
 			return f
 		}
-		v := &entVertexPface{baseEntity: *base, position: rec.point3(10)}
+		v := &entity.EntVertexPface{BaseEntity: *base, Position: rec.point3(10)}
 		if f, ok := rec.intVal(70); ok {
-			v.flag = uint8(f & 0xFF)
+			v.Flag = uint8(f & 0xFF)
 		}
 		return v
-	case *entPolyline2d:
-		v := &entVertex2d{baseEntity: *base, position: rec.point3(10), bulge: bulgeOf(rec)}
+	case *entity.EntPolyline2d:
+		v := &entity.EntVertex2d{BaseEntity: *base, Position: rec.point3(10), Bulge: bulgeOf(rec)}
 		if f, ok := rec.intVal(70); ok {
-			v.flags = uint16(f)
+			v.Flags = uint16(f)
 		}
-		h.ownedHandles = append(h.ownedHandles, v.handle)
+		h.OwnedHandles = append(h.OwnedHandles, v.Handle)
 		return v
 	default:
-		v := &entVertex2d{baseEntity: *base, position: rec.point3(10), bulge: bulgeOf(rec)}
+		v := &entity.EntVertex2d{BaseEntity: *base, Position: rec.point3(10), Bulge: bulgeOf(rec)}
 		if f, ok := rec.intVal(70); ok {
-			v.flags = uint16(f)
+			v.Flags = uint16(f)
 		}
 		return v
 	}
@@ -986,24 +987,24 @@ func bulgeOf(rec *dxfRec) float64 {
 
 // buildInsert INSERT：块名（2）解析为块定义句柄，插入点（10）、缩放
 // （41/42/43，缺省 1）、旋转（50，度）、66 属性跟随标志。
-func (st *dxfState) buildInsert(rec *dxfRec, base *baseEntity) any {
-	ins := &entInsert{baseEntity: *base,
-		position: rec.point3(10),
-		scale:    point3{x: 1, y: 1, z: 1}}
+func (st *dxfState) buildInsert(rec *dxfRec, base *entity.BaseEntity) any {
+	ins := &entity.EntInsert{BaseEntity: *base,
+		Position: rec.point3(10),
+		Scale:    entity.Point3{X: 1, Y: 1, Z: 1}}
 	if name := rec.str(2); name != "" {
-		ins.blockHeader = st.blockHandle(name)
+		ins.BlockHeader = st.blockHandle(name)
 	}
 	if v, ok := rec.floatVal(41); ok {
-		ins.scale.x = v
+		ins.Scale.X = v
 	}
 	if v, ok := rec.floatVal(42); ok {
-		ins.scale.y = v
+		ins.Scale.Y = v
 	}
 	if v, ok := rec.floatVal(43); ok {
-		ins.scale.z = v
+		ins.Scale.Z = v
 	}
 	if rot, ok := rec.floatVal(50); ok {
-		ins.rotation = rot * math.Pi / 180
+		ins.Rotation = rot * math.Pi / 180
 	}
 	if attribs, ok := rec.intVal(66); ok && attribs == 1 {
 		st.curInsert = ins
@@ -1016,36 +1017,36 @@ func (st *dxfState) buildInsert(rec *dxfRec, base *baseEntity) any {
 // buildAttrib ATTRIB：属性文本（1）、标签（2）、插入点与字高/旋转；
 // 归属最近的 INSERT（66=1 序列或 330 owner），归属语义与 DWG 侧一致
 // （mode=0、owner=块参照句柄，进 blocks 而非模型空间直挂）。
-func (st *dxfState) buildAttrib(rec *dxfRec, base *baseEntity) any {
-	a := &entAttrib{baseEntity: *base}
-	a.text = rec.str(1)
-	a.tag = rec.str(2)
-	a.insertion = rec.point3(10)
+func (st *dxfState) buildAttrib(rec *dxfRec, base *entity.BaseEntity) any {
+	a := &entity.EntAttrib{BaseEntity: *base}
+	a.Text = rec.str(1)
+	a.Tag = rec.str(2)
+	a.Insertion = rec.point3(10)
 	if h, ok := rec.floatVal(40); ok {
-		a.height = h
+		a.Height = h
 	} else {
-		a.height = 1
+		a.Height = 1
 	}
 	if rot, ok := rec.floatVal(50); ok {
-		a.rotation = rot * math.Pi / 180
+		a.Rotation = rot * math.Pi / 180
 	}
 	if v, ok := rec.intVal(72); ok {
-		a.hAlign = uint16(v)
+		a.HAlign = uint16(v)
 	}
 	if v, ok := rec.intVal(74); ok {
-		a.vAlign = uint16(v)
+		a.VAlign = uint16(v)
 	}
 	// 关联宿主 INSERT：330 owner 优先，否则取 66=1 序列的最近 INSERT
 	host := st.curInsert
 	if h, ok := rec.hexHandle(330); ok && h != 0 {
-		if ins, ok2 := st.doc.entityByHandle[h].(*entInsert); ok2 {
+		if ins, ok2 := st.doc.entityByHandle[h].(*entity.EntInsert); ok2 {
 			host = ins
 		}
 	}
 	if host != nil {
-		a.mode = 0
-		a.owner = host.handle
-		host.attribs = append(host.attribs, a.handle)
+		a.Mode = 0
+		a.Owner = host.Handle
+		host.Attribs = append(host.Attribs, a.Handle)
 	}
 	return a
 }
@@ -1078,8 +1079,8 @@ func (st *dxfState) buildSeqend(rec *dxfRec, mode uint8, owner uint64) any {
 	if host == nil {
 		return nil
 	}
-	base := st.dxfBase(rec, 0, entBase(host).handle)
-	return &entBlockLike{baseEntity: *base}
+	base := st.dxfBase(rec, 0, entity.EntityBase(host).Handle)
+	return &entity.EntBlockLike{BaseEntity: *base}
 }
 
 // buildAttdef ATTDEF 属性定义：DXF 组码与 ATTRIB 同构（1 默认值/2 标签/
@@ -1088,25 +1089,25 @@ func (st *dxfState) buildSeqend(rec *dxfRec, mode uint8, owner uint64) any {
 // ATTRIB 的归属语义），按 330 owner（块定义句柄）归入 blocks；顶层
 // ATTDEF 按 dxfBase 的 owner 兜底逻辑处理（渲染不消费，与 DWG 侧
 // ATTDEF→entAttrib 同构口径一致）。
-func (st *dxfState) buildAttdef(rec *dxfRec, base *baseEntity) any {
-	a := &entAttrib{baseEntity: *base}
-	a.text = rec.str(1)
-	a.tag = rec.str(2)
-	a.prompt = rec.str(3)
-	a.insertion = rec.point3(10)
+func (st *dxfState) buildAttdef(rec *dxfRec, base *entity.BaseEntity) any {
+	a := &entity.EntAttrib{BaseEntity: *base}
+	a.Text = rec.str(1)
+	a.Tag = rec.str(2)
+	a.Prompt = rec.str(3)
+	a.Insertion = rec.point3(10)
 	if h, ok := rec.floatVal(40); ok {
-		a.height = h
+		a.Height = h
 	} else {
-		a.height = 1
+		a.Height = 1
 	}
 	if rot, ok := rec.floatVal(50); ok {
-		a.rotation = rot * math.Pi / 180
+		a.Rotation = rot * math.Pi / 180
 	}
 	if v, ok := rec.intVal(72); ok {
-		a.hAlign = uint16(v)
+		a.HAlign = uint16(v)
 	}
 	if v, ok := rec.intVal(74); ok {
-		a.vAlign = uint16(v)
+		a.VAlign = uint16(v)
 	}
 	return a
 }
@@ -1114,40 +1115,40 @@ func (st *dxfState) buildAttdef(rec *dxfRec, base *baseEntity) any {
 // buildSpline SPLINE：70 标志、71 阶数、节点（40*）、控制点（10*）、
 // 拟合点（11*）、拟合容差（43）。scenario 按拟合点有无推断（渲染仅
 // 用控制点）。
-func (st *dxfState) buildSpline(rec *dxfRec, base *baseEntity) any {
-	s := &entSpline{baseEntity: *base, scenario: 1}
+func (st *dxfState) buildSpline(rec *dxfRec, base *entity.BaseEntity) any {
+	s := &entity.EntSpline{BaseEntity: *base, Scenario: 1}
 	if f, ok := rec.intVal(70); ok {
-		s.closed = f&1 != 0
-		s.periodic = f&2 != 0
-		s.rational = f&4 != 0
+		s.Closed = f&1 != 0
+		s.Periodic = f&2 != 0
+		s.Rational = f&4 != 0
 	}
 	if d, ok := rec.intVal(71); ok {
-		s.degree = uint32(d)
+		s.Degree = uint32(d)
 	}
 	if t, ok := rec.floatVal(43); ok {
-		s.fitTolerance = t
+		s.FitTolerance = t
 	}
 	for _, p := range rec.all(40) {
-		s.knots = append(s.knots, p.floatValue())
+		s.Knots = append(s.Knots, p.floatValue())
 	}
 	// 点分量按 (code, code+10, code+20) 三元组顺序配对
-	collect3 := func(code int) []point3 {
-		var pts []point3
-		cur := point3{}
+	collect3 := func(code int) []entity.Point3 {
+		var pts []entity.Point3
+		cur := entity.Point3{}
 		stage := 0
 		for _, p := range rec.pairs {
 			switch p.code {
 			case code:
-				cur.x = p.floatValue()
+				cur.X = p.floatValue()
 				stage = 1
 			case code + 10:
 				if stage == 1 {
-					cur.y = p.floatValue()
+					cur.Y = p.floatValue()
 					stage = 2
 				}
 			case code + 20:
 				if stage == 2 {
-					cur.z = p.floatValue()
+					cur.Z = p.floatValue()
 					pts = append(pts, cur)
 					stage = 0
 				}
@@ -1155,10 +1156,10 @@ func (st *dxfState) buildSpline(rec *dxfRec, base *baseEntity) any {
 		}
 		return pts
 	}
-	s.controlPoints = collect3(10)
-	s.fitPoints = collect3(11)
-	if len(s.fitPoints) > 0 {
-		s.scenario = 2
+	s.ControlPoints = collect3(10)
+	s.FitPoints = collect3(11)
+	if len(s.FitPoints) > 0 {
+		s.Scenario = 2
 	}
 	return s
 }
@@ -1191,64 +1192,64 @@ func dxfDegToRad(deg float64) float64 { return deg * math.Pi / 180 }
 // feature_location/leader_end（直接载入 point13/14，与 JSON 侧同口径）。
 // DIMENSION 走显式组码字段，无 dimSpecificLayout 位流布局问题；
 // dimstyle 名（组码 3）与匿名块名（组码 2）无句柄对应，不恢复句柄引用。
-func (st *dxfState) buildDimension(rec *dxfRec, base *baseEntity) any {
-	d := &entDimension{baseEntity: *base}
+func (st *dxfState) buildDimension(rec *dxfRec, base *entity.BaseEntity) any {
+	d := &entity.EntDimension{BaseEntity: *base}
 	flag, _ := rec.intVal(70)
-	d.dimFlag = uint8(flag & 0xFF)
-	d.dimFlags = d.dimFlag // DXF 无独立 flag1 位流，审计口径以 flag 为准
-	sub := d.dimFlag & 0x7
+	d.DimFlag = uint8(flag & 0xFF)
+	d.DimFlags = d.DimFlag // DXF 无独立 flag1 位流，审计口径以 flag 为准
+	sub := d.DimFlag & 0x7
 	// 公共段
 	// 10 组码恒为 def 点（DWG 侧 point10 载体，含 ANG2LN——gold 仲裁：
 	// ex2000 h=43B 的 DXF 10 与 gold xline2end_pt 一致，16 与 def_pt 一致）
-	d.point10 = rec.point3(10)
-	d.textMidpoint = rec.point3(11)
+	d.Point10 = rec.point3(10)
+	d.TextMidpoint = rec.point3(11)
 	if el, ok := rec.floatVal(31); ok {
-		d.elevation = el
-		d.textMidpoint.z = el // text_midpt 的 z 分量即标高
+		d.Elevation = el
+		d.TextMidpoint.Z = el // text_midpt 的 z 分量即标高
 	}
-	d.userText = rec.str(1)
+	d.UserText = rec.str(1)
 	if v, ok := rec.intVal(71); ok {
-		d.attachmentPoint = uint16(v)
+		d.AttachmentPoint = uint16(v)
 	}
 	if v, ok := rec.floatVal(42); ok {
-		d.actualMeasurement = v
+		d.ActualMeasurement = v
 	}
 	if v, ok := rec.floatVal(51); ok {
-		d.horizontalDir = dxfDegToRad(v)
+		d.HorizontalDir = dxfDegToRad(v)
 	}
 	if v, ok := rec.floatVal(53); ok {
-		d.textRotation = dxfDegToRad(v)
+		d.TextRotation = dxfDegToRad(v)
 	}
 	if v, ok := rec.floatVal(54); ok {
-		d.insertRotation = dxfDegToRad(v)
+		d.InsertRotation = dxfDegToRad(v)
 	}
 	if v, ok := rec.floatVal(52); ok {
-		d.extLineRotation = dxfDegToRad(v)
+		d.ExtLineRotation = dxfDegToRad(v)
 	}
 	if v, ok := rec.floatVal(50); ok {
-		d.dimRotation = dxfDegToRad(v)
+		d.DimRotation = dxfDegToRad(v)
 	}
-	d.point13 = rec.point3(13)
-	d.point14 = rec.point3(14)
+	d.Point13 = rec.point3(13)
+	d.Point14 = rec.point3(14)
 	if _, ok := rec.first(12); ok {
-		d.insertPoint = rec.point3(12)
-		d.hasInsertPoint = true
+		d.InsertPoint = rec.point3(12)
+		d.HasInsertPoint = true
 	}
 	// 子类段专属点
 	if len(rec.all(15)) > 0 {
-		d.point15 = rec.point3(15)
-		d.hasPoint15 = true
+		d.Point15 = rec.point3(15)
+		d.HasPoint15 = true
 	}
 	if sub == 2 && len(rec.all(16)) > 0 {
 		// ANG2LN 子类段的 16（2RD，16/26）为 gold def_pt 载体（DWG 位流
 		// 尾部 2RD，即解码侧 point16x/p16y 字段）
 		if p, ok := rec.first(16); ok {
-			d.point16x = p.floatValue()
+			d.Point16x = p.floatValue()
 		}
 		if p, ok := rec.first(26); ok {
-			d.p16y = p.floatValue()
+			d.P16y = p.floatValue()
 		}
-		d.hasPoint16 = true
+		d.HasPoint16 = true
 	}
 	return d
 }
@@ -1263,65 +1264,65 @@ func (st *dxfState) buildDimension(rec *dxfRec, base *baseEntity) any {
 // 463+63/421 逐色三元组/470 渐变名）。
 // 边界细分点列与 DWG/JSON 来源同口径（多段线带凸度细分，边集直线段拼接，
 // 弧段保留原始参数）。
-func (st *dxfState) buildHatch(rec *dxfRec, base *baseEntity) any {
-	h := &entHatch{baseEntity: *base}
+func (st *dxfState) buildHatch(rec *dxfRec, base *entity.BaseEntity) any {
+	h := &entity.EntHatch{BaseEntity: *base}
 	if e, ok := rec.floatVal(30); ok {
-		h.elevation = e
+		h.Elevation = e
 	}
-	h.extrusion = rec.point3(210)
+	h.Extrusion = rec.point3(210)
 	name := rec.str(2)
-	h.name = name
+	h.Name = name
 	if v, ok := rec.intVal(70); ok {
-		h.solidFill = v&1 != 0
+		h.SolidFill = v&1 != 0
 	}
 	if v, ok := rec.intVal(71); ok {
-		h.associative = v&1 != 0
+		h.Associative = v&1 != 0
 	}
 	if v, ok := rec.intVal(75); ok {
-		h.style = uint16(v)
+		h.Style = uint16(v)
 	}
 	if v, ok := rec.intVal(76); ok {
-		h.patternType = uint16(v)
+		h.PatternType = uint16(v)
 	}
 	if v, ok := rec.floatVal(52); ok {
-		h.angle = v
+		h.Angle = v
 	}
 	if v, ok := rec.floatVal(41); ok {
-		h.scaleSpacing = v
+		h.ScaleSpacing = v
 	}
 	if v, ok := rec.intVal(77); ok {
-		h.doubleFlag = v != 0
+		h.DoubleFlag = v != 0
 	}
 	numPaths, _ := rec.intVal(91)
 	// 图案定义线：53 角度、43/44 原点、45/46 偏移、79 划线数、49 划线值
 	numDeflines, _ := rec.intVal(78)
 	if numDeflines > 0 && numDeflines < 10_000 {
-		var cur *hatchDefLine
+		var cur *entity.HatchDefLine
 		var dashes int
 		for _, p := range rec.pairs {
 			switch p.code {
 			case 53:
 				if cur != nil {
-					h.deflines = append(h.deflines, *cur)
+					h.Deflines = append(h.Deflines, *cur)
 				}
-				h.deflines = append(h.deflines, hatchDefLine{angle: p.floatValue()})
-				cur = &h.deflines[len(h.deflines)-1]
+				h.Deflines = append(h.Deflines, entity.HatchDefLine{Angle: p.floatValue()})
+				cur = &h.Deflines[len(h.Deflines)-1]
 				dashes = 0
 			case 43:
 				if cur != nil {
-					cur.pt0.x = p.floatValue()
+					cur.Pt0.X = p.floatValue()
 				}
 			case 44:
 				if cur != nil {
-					cur.pt0.y = p.floatValue()
+					cur.Pt0.Y = p.floatValue()
 				}
 			case 45:
 				if cur != nil {
-					cur.offset.x = p.floatValue()
+					cur.Offset.X = p.floatValue()
 				}
 			case 46:
 				if cur != nil {
-					cur.offset.y = p.floatValue()
+					cur.Offset.Y = p.floatValue()
 				}
 			case 79:
 				if cur != nil {
@@ -1329,13 +1330,13 @@ func (st *dxfState) buildHatch(rec *dxfRec, base *baseEntity) any {
 				}
 			case 49:
 				if cur != nil && dashes > 0 {
-					cur.dashes = append(cur.dashes, p.floatValue())
+					cur.Dashes = append(cur.Dashes, p.floatValue())
 					dashes--
 				}
 			}
 		}
 		if cur != nil {
-			h.deflines = append(h.deflines, *cur)
+			h.Deflines = append(h.Deflines, *cur)
 		}
 	}
 	if numPaths <= 0 || numPaths > 100_000 {
@@ -1348,7 +1349,7 @@ func (st *dxfState) buildHatch(rec *dxfRec, base *baseEntity) any {
 	curPath := -1
 	segStage := 0      // 边集路径当前段类型（0 待定）
 	expect11Y := false // 21 为 11 的 y 分量
-	var curPt point2
+	var curPt entity.Point2
 	// 尾段状态：98 后 10/20 归种子点；453 色数为 463/63/421 三元组游标
 	// （对齐 in_dxf add_HATCH：num_seeds 与渐变组码由外层条件分流）
 	inSeeds := false
@@ -1358,14 +1359,14 @@ func (st *dxfState) buildHatch(rec *dxfRec, base *baseEntity) any {
 	for _, p := range rec.pairs {
 		if expect11Y && p.code == 21 {
 			expect11Y = false
-			pa := &h.paths[curPath]
-			if !pa.isPolyline && len(pa.segs) > 0 {
-				seg := &pa.segs[len(pa.segs)-1]
+			pa := &h.Paths[curPath]
+			if !pa.IsPolyline && len(pa.Segs) > 0 {
+				seg := &pa.Segs[len(pa.Segs)-1]
 				switch segStage {
 				case 1:
-					seg.second.y = p.floatValue()
+					seg.Second.Y = p.floatValue()
 				case 3:
-					seg.endpoint.y = p.floatValue()
+					seg.Endpoint.Y = p.floatValue()
 				}
 			}
 			continue
@@ -1374,45 +1375,45 @@ func (st *dxfState) buildHatch(rec *dxfRec, base *baseEntity) any {
 		switch p.code {
 		case 92:
 			flg := uint32(p.floatValue())
-			h.paths = append(h.paths, hatchPath{flag: flg, isPolyline: flg&2 != 0})
+			h.Paths = append(h.Paths, entity.HatchPath{Flag: flg, IsPolyline: flg&2 != 0})
 			// has_derived 为各路径 flag bit2 的或（in_dxf 口径），置位时
 			// 读者期待随后的 47 像素尺寸
-			h.hasDerived = h.hasDerived || flg&4 != 0
-			curPath = len(h.paths) - 1
+			h.HasDerived = h.HasDerived || flg&4 != 0
+			curPath = len(h.Paths) - 1
 			segStage = 0
 		case 72:
 			if curPath < 0 {
 				continue
 			}
-			pa := &h.paths[curPath]
-			if pa.isPolyline {
-				pa.bulgesPresent = p.floatValue() != 0
+			pa := &h.Paths[curPath]
+			if pa.IsPolyline {
+				pa.BulgesPresent = p.floatValue() != 0
 			} else {
-				pa.segs = append(pa.segs, hatchSeg{curveType: uint8(p.floatValue())})
+				pa.Segs = append(pa.Segs, entity.HatchSeg{CurveType: uint8(p.floatValue())})
 				segStage = int(p.floatValue())
 			}
 		case 73:
 			if curPath < 0 {
 				continue
 			}
-			pa := &h.paths[curPath]
-			if pa.isPolyline {
-				pa.closed = p.floatValue() != 0
-			} else if len(pa.segs) > 0 && (segStage == 2 || segStage == 3) {
+			pa := &h.Paths[curPath]
+			if pa.IsPolyline {
+				pa.Closed = p.floatValue() != 0
+			} else if len(pa.Segs) > 0 && (segStage == 2 || segStage == 3) {
 				// 弧段 73 为逆时针标志（样条段 73 为 rational 位，此处同码）
-				pa.segs[len(pa.segs)-1].ccw = p.floatValue() != 0
+				pa.Segs[len(pa.Segs)-1].Ccw = p.floatValue() != 0
 			}
 		case 93:
 			if curPath >= 0 {
-				h.paths[curPath].numSegsOrPaths = uint32(p.floatValue())
+				h.Paths[curPath].NumSegsOrPaths = uint32(p.floatValue())
 			}
 		case 94:
-			if curPath >= 0 && segStage == 4 && len(h.paths[curPath].segs) > 0 {
-				h.paths[curPath].segs[len(h.paths[curPath].segs)-1].degree = uint32(p.floatValue())
+			if curPath >= 0 && segStage == 4 && len(h.Paths[curPath].Segs) > 0 {
+				h.Paths[curPath].Segs[len(h.Paths[curPath].Segs)-1].Degree = uint32(p.floatValue())
 			}
 		case 47:
-			if h.hasDerived {
-				h.pixelSize = p.floatValue()
+			if h.HasDerived {
+				h.PixelSize = p.floatValue()
 			}
 		case 98:
 			numSeeds = int(p.floatValue())
@@ -1425,70 +1426,70 @@ func (st *dxfState) buildHatch(rec *dxfRec, base *baseEntity) any {
 			if curPath < 0 {
 				continue
 			}
-			curPt.x = p.floatValue()
+			curPt.X = p.floatValue()
 		case 20:
 			if inSeeds {
-				if len(h.seeds) < numSeeds {
-					h.seeds = append(h.seeds, point2{x: seedX, y: p.floatValue()})
+				if len(h.Seeds) < numSeeds {
+					h.Seeds = append(h.Seeds, entity.Point2{X: seedX, Y: p.floatValue()})
 				}
 				continue
 			}
 			if curPath < 0 {
 				continue
 			}
-			curPt.y = p.floatValue()
-			pa := &h.paths[curPath]
-			if pa.isPolyline {
-				pa.polyVerts = append(pa.polyVerts, hatchPolyVert{p: curPt})
+			curPt.Y = p.floatValue()
+			pa := &h.Paths[curPath]
+			if pa.IsPolyline {
+				pa.PolyVerts = append(pa.PolyVerts, entity.HatchPolyVert{P: curPt})
 				continue
 			}
-			if len(pa.segs) > 0 {
-				seg := &pa.segs[len(pa.segs)-1]
+			if len(pa.Segs) > 0 {
+				seg := &pa.Segs[len(pa.Segs)-1]
 				switch segStage {
 				case 1: // 直线段第一端点
-					seg.first = curPt
+					seg.First = curPt
 				case 2, 3: // 弧/椭圆弧圆心
-					seg.center = curPt
+					seg.Center = curPt
 				}
 			}
 		case 11:
 			if curPath < 0 {
 				continue
 			}
-			pa := &h.paths[curPath]
-			if pa.isPolyline {
+			pa := &h.Paths[curPath]
+			if pa.IsPolyline {
 				continue
 			}
 			// 边集路径：11 为第二端点（直线）或主轴端点（椭圆弧）的 x 分量
-			if len(pa.segs) > 0 {
-				seg := &pa.segs[len(pa.segs)-1]
+			if len(pa.Segs) > 0 {
+				seg := &pa.Segs[len(pa.Segs)-1]
 				switch segStage {
 				case 1:
-					seg.second.x = p.floatValue()
+					seg.Second.X = p.floatValue()
 					expect11Y = true
 				case 3:
-					seg.endpoint.x = p.floatValue()
+					seg.Endpoint.X = p.floatValue()
 					expect11Y = true
 				}
 			}
 		case 40:
-			if curPath < 0 || h.paths[curPath].isPolyline || len(h.paths[curPath].segs) == 0 {
+			if curPath < 0 || h.Paths[curPath].IsPolyline || len(h.Paths[curPath].Segs) == 0 {
 				continue
 			}
-			seg := &h.paths[curPath].segs[len(h.paths[curPath].segs)-1]
+			seg := &h.Paths[curPath].Segs[len(h.Paths[curPath].Segs)-1]
 			if segStage == 2 {
-				seg.radius = p.floatValue()
+				seg.Radius = p.floatValue()
 			}
 		case 50, 51:
-			if curPath < 0 || h.paths[curPath].isPolyline || len(h.paths[curPath].segs) == 0 {
+			if curPath < 0 || h.Paths[curPath].IsPolyline || len(h.Paths[curPath].Segs) == 0 {
 				continue
 			}
-			seg := &h.paths[curPath].segs[len(h.paths[curPath].segs)-1]
+			seg := &h.Paths[curPath].Segs[len(h.Paths[curPath].Segs)-1]
 			if segStage == 2 || segStage == 3 {
 				if p.code == 50 {
-					seg.startAng = p.floatValue()
+					seg.StartAng = p.floatValue()
 				} else {
-					seg.endAng = p.floatValue()
+					seg.EndAng = p.floatValue()
 				}
 			}
 		case 42:
@@ -1496,74 +1497,74 @@ func (st *dxfState) buildHatch(rec *dxfRec, base *baseEntity) any {
 			if curPath < 0 {
 				continue
 			}
-			pa := &h.paths[curPath]
-			if pa.isPolyline && len(pa.polyVerts) > 0 {
-				pa.polyVerts[len(pa.polyVerts)-1].bulge = p.floatValue()
+			pa := &h.Paths[curPath]
+			if pa.IsPolyline && len(pa.PolyVerts) > 0 {
+				pa.PolyVerts[len(pa.PolyVerts)-1].Bulge = p.floatValue()
 			}
 		// ---- 渐变填充段（R2004+；组码对照 dwg2.spec/dwg.spec
 		// _HATCH_gradientfill 与 in_dxf add_HATCH 分支）----
 		case 450:
-			h.isGradientFill = uint32(p.floatValue())
+			h.IsGradientFill = uint32(p.floatValue())
 		case 451:
-			h.reserved = uint32(p.floatValue())
+			h.Reserved = uint32(p.floatValue())
 		case 452:
-			h.singleColorGradient = uint32(p.floatValue())
+			h.SingleColorGradient = uint32(p.floatValue())
 		case 453:
 			curColor = -1 // 色数声明后三元组游标归零
 		case 460:
 			// DXF 渐变角度为度，DWG 位流/模型侧为弧度（in_dxf deg2rad 同款）
-			h.gradientAngle = p.floatValue() * math.Pi / 180
+			h.GradientAngle = p.floatValue() * math.Pi / 180
 		case 461:
-			h.gradientShift = p.floatValue()
+			h.GradientShift = p.floatValue()
 		case 462:
-			h.gradientTint = p.floatValue()
+			h.GradientTint = p.floatValue()
 		case 463:
 			curColor++
-			if curColor < len(h.colors) {
-				h.colors[curColor].shiftValue = p.floatValue()
+			if curColor < len(h.Colors) {
+				h.Colors[curColor].ShiftValue = p.floatValue()
 			} else if curColor < 1000 {
-				h.colors = append(h.colors, hatchGradientColor{shiftValue: p.floatValue()})
+				h.Colors = append(h.Colors, entity.HatchGradientColor{ShiftValue: p.floatValue()})
 			}
 		case 63:
-			if curColor >= 0 && curColor < len(h.colors) {
-				h.colors[curColor].colorIndex = int64(p.floatValue())
+			if curColor >= 0 && curColor < len(h.Colors) {
+				h.Colors[curColor].ColorIndex = int64(p.floatValue())
 			}
 		case 421:
-			if curColor >= 0 && curColor < len(h.colors) {
-				h.colors[curColor].colorRGB = fmt.Sprintf("%08x", uint32(p.floatValue()))
+			if curColor >= 0 && curColor < len(h.Colors) {
+				h.Colors[curColor].ColorRGB = fmt.Sprintf("%08x", uint32(p.floatValue()))
 			}
 		case 470:
-			h.gradientName = p.strValue()
+			h.GradientName = p.strValue()
 		}
 	}
 	// 细分点列（渲染）：与 JSON 构造同口径
-	for i := range h.paths {
-		pa := &h.paths[i]
-		if pa.isPolyline {
-			verts := make([]point2, len(pa.polyVerts))
-			bulges := make([]float64, len(pa.polyVerts))
-			for j, pv := range pa.polyVerts {
-				verts[j], bulges[j] = pv.p, pv.bulge
+	for i := range h.Paths {
+		pa := &h.Paths[i]
+		if pa.IsPolyline {
+			verts := make([]entity.Point2, len(pa.PolyVerts))
+			bulges := make([]float64, len(pa.PolyVerts))
+			for j, pv := range pa.PolyVerts {
+				verts[j], bulges[j] = pv.P, pv.Bulge
 			}
 			pts := verts
-			if pa.bulgesPresent {
-				pts = polylineWithBulges(verts, bulges, pa.closed, 64)
+			if pa.BulgesPresent {
+				pts = entity.PolylineWithBulges(verts, bulges, pa.Closed, 64)
 			}
-			if pa.closed {
-				pts = closePath(pts)
+			if pa.Closed {
+				pts = entity.ClosePath(pts)
 			}
-			pa.points = pts
+			pa.Points = pts
 		} else {
-			var pts []point2
-			for _, seg := range pa.segs {
-				if seg.curveType == 1 {
+			var pts []entity.Point2
+			for _, seg := range pa.Segs {
+				if seg.CurveType == 1 {
 					if len(pts) == 0 {
-						pts = append(pts, seg.first)
+						pts = append(pts, seg.First)
 					}
-					pts = append(pts, seg.second)
+					pts = append(pts, seg.Second)
 				}
 			}
-			pa.points = pts
+			pa.Points = pts
 		}
 	}
 	return h
@@ -1572,42 +1573,42 @@ func (st *dxfState) buildHatch(rec *dxfRec, base *baseEntity) any {
 // buildLeader LEADER：71 箭头可见、72 路径类型、73 注释类型、74 钩线方向、
 // 40/41 文本框宽高、76 顶点数 + 10/20/30 折点、210 挤出、211 X 方向、
 // 212 插入偏移、213 端点投影（组码对照 dwg.spec LEADER 的 DXF 分支）。
-func (st *dxfState) buildLeader(rec *dxfRec, base *baseEntity) any {
-	l := &entLeader{baseEntity: *base}
+func (st *dxfState) buildLeader(rec *dxfRec, base *entity.BaseEntity) any {
+	l := &entity.EntLeader{BaseEntity: *base}
 	if v, ok := rec.intVal(71); ok {
-		l.arrowheadOn = v != 0
+		l.ArrowheadOn = v != 0
 	}
 	if v, ok := rec.intVal(72); ok {
-		l.pathType = uint16(v)
+		l.PathType = uint16(v)
 	}
 	if v, ok := rec.intVal(73); ok {
-		l.annotationType = uint16(v)
+		l.AnnotationType = uint16(v)
 	}
 	if v, ok := rec.intVal(74); ok {
-		l.hooklineDir = v != 0
+		l.HooklineDir = v != 0
 	}
 	if v, ok := rec.floatVal(40); ok {
-		l.boxHeight = v
+		l.BoxHeight = v
 	}
 	if v, ok := rec.floatVal(41); ok {
-		l.boxWidth = v
+		l.BoxWidth = v
 	}
 	for _, p := range collect3Seq(rec, 10) {
-		l.points = append(l.points, p)
+		l.Points = append(l.Points, p)
 	}
-	l.extrusion = rec.point3(210)
-	l.xDirection = rec.point3(211)
-	l.insptOffset = rec.point3(212)
-	l.endptproj = rec.point3(213)
-	l.calcHooklineOn()
+	l.Extrusion = rec.point3(210)
+	l.XDirection = rec.point3(211)
+	l.InsptOffset = rec.point3(212)
+	l.Endptproj = rec.point3(213)
+	l.CalcHooklineOn()
 	return l
 }
 
 // collect3Seq 按出现顺序收集 (code, code+10, code+20) 三元组序列
 // （LEADER/MULTILEADER 的重复 10 组码顶点）。
-func collect3Seq(rec *dxfRec, code int) []point3 {
-	var out []point3
-	var cur point3
+func collect3Seq(rec *dxfRec, code int) []entity.Point3 {
+	var out []entity.Point3
+	var cur entity.Point3
 	stage := 0
 	for _, p := range rec.pairs {
 		switch p.code {
@@ -1615,16 +1616,16 @@ func collect3Seq(rec *dxfRec, code int) []point3 {
 			if stage == 3 {
 				out = append(out, cur)
 			}
-			cur.x = p.floatValue()
+			cur.X = p.floatValue()
 			stage = 1
 		case code + 10:
 			if stage == 1 {
-				cur.y = p.floatValue()
+				cur.Y = p.floatValue()
 				stage = 2
 			}
 		case code + 20:
 			if stage == 2 {
-				cur.z = p.floatValue()
+				cur.Z = p.floatValue()
 				stage = 3
 			}
 		}
@@ -1640,22 +1641,22 @@ func collect3Seq(rec *dxfRec, code int) []point3 {
 // 12/22/32 方向 + 13/23/33 miter + 每线 74/41 段参数、75/42 区域参数
 // （组码对照 dwg.spec MLINE 的 DXF 分支：justification=70、num_verts=72、
 // num_lines=73）。
-func (st *dxfState) buildMLine(rec *dxfRec, base *baseEntity) any {
-	m := &entMLine{baseEntity: *base}
+func (st *dxfState) buildMLine(rec *dxfRec, base *entity.BaseEntity) any {
+	m := &entity.EntMLine{BaseEntity: *base}
 	if sh, ok := rec.hexHandle(340); ok {
-		m.styleHandle = sh
+		m.StyleHandle = sh
 	}
 	if v, ok := rec.floatVal(40); ok {
-		m.scale = v
+		m.Scale = v
 	}
 	if v, ok := rec.intVal(70); ok {
-		m.justification = uint8(v & 0xFF)
+		m.Justification = uint8(v & 0xFF)
 	}
 	if v, ok := rec.intVal(71); ok {
-		m.openClosed = uint16(v)
+		m.OpenClosed = uint16(v)
 	}
 	if v, ok := rec.intVal(73); ok {
-		m.linesInStyle = uint8(v & 0xFF)
+		m.LinesInStyle = uint8(v & 0xFF)
 	}
 	// 顶点流：11/21/31 位置 → 12/22/32 方向 → 13/23/33 miter →
 	// 每线 74 计数 + 41×N → 75 计数 + 42×N → 下一顶点 11。
@@ -1668,48 +1669,48 @@ func (st *dxfState) buildMLine(rec *dxfRec, base *baseEntity) any {
 	stage := stIdle
 	parmsStage := 0 // 0 无、1 segparms、2 areafillparms
 	parmCount := 0
-	var cur entMLineVertex
+	var cur entity.EntMLineVertex
 	for _, p := range rec.pairs {
 		switch p.code {
 		case 11:
 			if stage != stIdle {
-				m.vertices = append(m.vertices, cur)
+				m.Vertices = append(m.Vertices, cur)
 			}
-			cur = entMLineVertex{position: point3{x: p.floatValue()}}
+			cur = entity.EntMLineVertex{Position: entity.Point3{X: p.floatValue()}}
 			stage = stPos
 		case 21:
 			if stage == stPos {
-				cur.position.y = p.floatValue()
+				cur.Position.Y = p.floatValue()
 			}
 		case 31:
 			if stage == stPos {
-				cur.position.z = p.floatValue()
+				cur.Position.Z = p.floatValue()
 				stage = stDir
 			}
 		case 12:
 			if stage >= stPos {
-				cur.direction.x = p.floatValue()
+				cur.Direction.X = p.floatValue()
 			}
 		case 22:
 			if stage >= stPos {
-				cur.direction.y = p.floatValue()
+				cur.Direction.Y = p.floatValue()
 			}
 		case 32:
 			if stage >= stPos {
-				cur.direction.z = p.floatValue()
+				cur.Direction.Z = p.floatValue()
 				stage = stMiter
 			}
 		case 13:
 			if stage >= stPos {
-				cur.miter.x = p.floatValue()
+				cur.Miter.X = p.floatValue()
 			}
 		case 23:
 			if stage >= stPos {
-				cur.miter.y = p.floatValue()
+				cur.Miter.Y = p.floatValue()
 			}
 		case 33:
 			if stage >= stPos {
-				cur.miter.z = p.floatValue()
+				cur.Miter.Z = p.floatValue()
 			}
 		case 74:
 			if stage >= stPos {
@@ -1723,18 +1724,18 @@ func (st *dxfState) buildMLine(rec *dxfRec, base *baseEntity) any {
 			}
 		case 41:
 			if stage >= stPos && parmsStage == 1 && parmCount > 0 {
-				cur.segParams = append(cur.segParams, p.floatValue())
+				cur.SegParams = append(cur.SegParams, p.floatValue())
 				parmCount--
 			}
 		case 42:
 			if stage >= stPos && parmsStage == 2 && parmCount > 0 {
-				cur.areaParams = append(cur.areaParams, p.floatValue())
+				cur.AreaParams = append(cur.AreaParams, p.floatValue())
 				parmCount--
 			}
 		}
 	}
 	if stage != stIdle {
-		m.vertices = append(m.vertices, cur)
+		m.Vertices = append(m.Vertices, cur)
 	}
 	return m
 }
@@ -1748,18 +1749,18 @@ func (st *dxfState) buildMLine(rec *dxfRec, base *baseEntity) any {
 // 的 DXF 标注与 in_dxf.c add_MULTILEADER。上下文段解析顶层标量、文字
 // 内容与 302 LEADER{...} 引线骨架（点列/狗腿/断开），LEADER_LINE 段读
 // 点列与线索引；块内容（296 起）结构深且渲染不消费，跳过。
-func (st *dxfState) buildMLeader(rec *dxfRec, base *baseEntity) any {
-	m := &entMLeader{baseEntity: *base}
+func (st *dxfState) buildMLeader(rec *dxfRec, base *entity.BaseEntity) any {
+	m := &entity.EntMLeader{BaseEntity: *base}
 	if v, ok := rec.intVal(270); ok {
-		m.hasVersion = true
-		m.classVersion = uint16(v)
+		m.HasVersion = true
+		m.ClassVersion = uint16(v)
 	}
 	// ---- 上下文段（300 CONTEXT_DATA{ 到 301 }）----
 	inCtx := false
 	inLeader := false // 302 LEADER{ 到 303 }
 	inLine := false   // 304 LEADER_LINE{ 到 305 }
-	var curNode *mleaderNode
-	var curLine *mleaderLine
+	var curNode *entity.MleaderNode
+	var curLine *entity.MleaderLine
 	numLeaders := 0
 	blkTf := 0 // blk 变换矩阵 47×16 游标
 	for _, p := range rec.pairs {
@@ -1778,11 +1779,11 @@ func (st *dxfState) buildMLeader(rec *dxfRec, base *baseEntity) any {
 		switch code {
 		case 302:
 			if inLeader { // 嵌套异常，容错关闭
-				m.ctx.leaders = append(m.ctx.leaders, *curNode)
+				m.Ctx.Leaders = append(m.Ctx.Leaders, *curNode)
 			}
-			m.ctx.leaders = append(m.ctx.leaders, mleaderNode{})
-			curNode = &m.ctx.leaders[len(m.ctx.leaders)-1]
-			curNode.branchIndex = uint32(numLeaders)
+			m.Ctx.Leaders = append(m.Ctx.Leaders, entity.MleaderNode{})
+			curNode = &m.Ctx.Leaders[len(m.Ctx.Leaders)-1]
+			curNode.BranchIndex = uint32(numLeaders)
 			numLeaders++
 			inLeader = true
 			inLine = false
@@ -1790,69 +1791,69 @@ func (st *dxfState) buildMLeader(rec *dxfRec, base *baseEntity) any {
 		case 303:
 			if inLeader {
 				if curNode != nil {
-					curNode.numLines = uint32(len(curNode.lines))
+					curNode.NumLines = uint32(len(curNode.Lines))
 				}
 				inLeader = false
 				curNode = nil
 			}
 		case 304:
 			if inLeader && curNode != nil {
-				curNode.lines = append(curNode.lines, mleaderLine{})
-				curLine = &curNode.lines[len(curNode.lines)-1]
+				curNode.Lines = append(curNode.Lines, entity.MleaderLine{})
+				curLine = &curNode.Lines[len(curNode.Lines)-1]
 				inLine = true
 			}
 		case 305:
 			if inLine && curLine != nil {
-				curLine.numBreaks = uint32(len(curLine.breaks))
+				curLine.NumBreaks = uint32(len(curLine.Breaks))
 			}
 			inLine = false
 			curLine = nil
 		case 40:
 			if !inLine {
 				if inLeader && curNode != nil {
-					curNode.doglegLength = p.floatValue()
+					curNode.DoglegLength = p.floatValue()
 				} else {
-					m.ctx.scaleFactor = p.floatValue()
+					m.Ctx.ScaleFactor = p.floatValue()
 				}
 			}
 		}
 		if inLine && curLine != nil {
 			switch code {
 			case 10:
-				curLine.points = append(curLine.points, point3{x: p.floatValue()})
+				curLine.Points = append(curLine.Points, entity.Point3{X: p.floatValue()})
 			case 20:
-				if n := len(curLine.points); n > 0 {
-					curLine.points[n-1].y = p.floatValue()
+				if n := len(curLine.Points); n > 0 {
+					curLine.Points[n-1].Y = p.floatValue()
 				}
 			case 30:
-				if n := len(curLine.points); n > 0 {
-					curLine.points[n-1].z = p.floatValue()
+				if n := len(curLine.Points); n > 0 {
+					curLine.Points[n-1].Z = p.floatValue()
 				}
 			case 91:
-				curLine.lineIndex = uint32(p.floatValue())
+				curLine.LineIndex = uint32(p.floatValue())
 			}
 			continue
 		}
 		if inLeader && curNode != nil {
 			switch code {
 			case 290:
-				curNode.hasLastLeaderLinePoint = p.floatValue() != 0
+				curNode.HasLastLeaderLinePoint = p.floatValue() != 0
 			case 291:
-				curNode.hasDogleg = p.floatValue() != 0
+				curNode.HasDogleg = p.floatValue() != 0
 			case 90:
-				curNode.branchIndex = uint32(p.floatValue())
+				curNode.BranchIndex = uint32(p.floatValue())
 			case 10:
-				curNode.lastLeaderLinePoint.x = p.floatValue()
+				curNode.LastLeaderLinePoint.X = p.floatValue()
 			case 20:
-				curNode.lastLeaderLinePoint.y = p.floatValue()
+				curNode.LastLeaderLinePoint.Y = p.floatValue()
 			case 30:
-				curNode.lastLeaderLinePoint.z = p.floatValue()
+				curNode.LastLeaderLinePoint.Z = p.floatValue()
 			case 11:
-				curNode.doglegVector.x = p.floatValue()
+				curNode.DoglegVector.X = p.floatValue()
 			case 21:
-				curNode.doglegVector.y = p.floatValue()
+				curNode.DoglegVector.Y = p.floatValue()
 			case 31:
-				curNode.doglegVector.z = p.floatValue()
+				curNode.DoglegVector.Z = p.floatValue()
 			}
 			continue
 		}
@@ -1861,141 +1862,141 @@ func (st *dxfState) buildMLeader(rec *dxfRec, base *baseEntity) any {
 		// 与 in_dxf add_MULTILEADER）
 		switch code {
 		case 10:
-			m.ctx.contentBase.x = p.floatValue()
+			m.Ctx.ContentBase.X = p.floatValue()
 		case 20:
-			m.ctx.contentBase.y = p.floatValue()
+			m.Ctx.ContentBase.Y = p.floatValue()
 		case 30:
-			m.ctx.contentBase.z = p.floatValue()
+			m.Ctx.ContentBase.Z = p.floatValue()
 		case 41:
-			m.ctx.textHeight = p.floatValue()
+			m.Ctx.TextHeight = p.floatValue()
 		case 140:
-			m.ctx.arrowSize = p.floatValue()
+			m.Ctx.ArrowSize = p.floatValue()
 		case 145:
-			m.ctx.landingGap = p.floatValue()
+			m.Ctx.LandingGap = p.floatValue()
 		case 174:
-			m.ctx.textLeft = uint16(p.floatValue())
+			m.Ctx.TextLeft = uint16(p.floatValue())
 		case 175:
-			m.ctx.textRight = uint16(p.floatValue())
+			m.Ctx.TextRight = uint16(p.floatValue())
 		case 176:
-			m.ctx.textAngletype = uint16(p.floatValue())
+			m.Ctx.TextAngletype = uint16(p.floatValue())
 		case 177:
-			m.ctx.textAlignment = uint16(p.floatValue())
+			m.Ctx.TextAlignment = uint16(p.floatValue())
 		case 290:
-			m.ctx.hasContentTxt = p.floatValue() != 0
+			m.Ctx.HasContentTxt = p.floatValue() != 0
 		case 296:
-			m.ctx.hasContentBlk = p.floatValue() != 0
+			m.Ctx.HasContentBlk = p.floatValue() != 0
 		case 304:
-			if m.ctx.hasContentTxt {
-				m.ctx.txt.defaultText = p.strValue()
+			if m.Ctx.HasContentTxt {
+				m.Ctx.Txt.DefaultText = p.strValue()
 			}
 		case 110:
-			m.ctx.base.x = p.floatValue()
+			m.Ctx.Base.X = p.floatValue()
 		case 120:
-			m.ctx.base.y = p.floatValue()
+			m.Ctx.Base.Y = p.floatValue()
 		case 130:
-			m.ctx.base.z = p.floatValue()
+			m.Ctx.Base.Z = p.floatValue()
 		}
-		if m.ctx.hasContentTxt {
+		if m.Ctx.HasContentTxt {
 			// txt 内容标量（304 default_text 已在上方处理）
 			switch code {
 			case 11:
-				m.ctx.txt.normal.x = p.floatValue()
+				m.Ctx.Txt.Normal.X = p.floatValue()
 			case 21:
-				m.ctx.txt.normal.y = p.floatValue()
+				m.Ctx.Txt.Normal.Y = p.floatValue()
 			case 31:
-				m.ctx.txt.normal.z = p.floatValue()
+				m.Ctx.Txt.Normal.Z = p.floatValue()
 			case 340:
 				if h, ok := dxfPairHandle(p); ok {
-					m.ctx.txt.styleHandle = h
+					m.Ctx.Txt.StyleHandle = h
 				}
 			case 12:
-				m.ctx.txt.location.x = p.floatValue()
+				m.Ctx.Txt.Location.X = p.floatValue()
 			case 22:
-				m.ctx.txt.location.y = p.floatValue()
+				m.Ctx.Txt.Location.Y = p.floatValue()
 			case 32:
-				m.ctx.txt.location.z = p.floatValue()
+				m.Ctx.Txt.Location.Z = p.floatValue()
 			case 13:
-				m.ctx.txt.direction.x = p.floatValue()
+				m.Ctx.Txt.Direction.X = p.floatValue()
 			case 23:
-				m.ctx.txt.direction.y = p.floatValue()
+				m.Ctx.Txt.Direction.Y = p.floatValue()
 			case 33:
-				m.ctx.txt.direction.z = p.floatValue()
+				m.Ctx.Txt.Direction.Z = p.floatValue()
 			case 42:
-				m.ctx.txt.rotation = p.floatValue() * math.Pi / 180
+				m.Ctx.Txt.Rotation = p.floatValue() * math.Pi / 180
 			case 43:
-				m.ctx.txt.width = p.floatValue()
+				m.Ctx.Txt.Width = p.floatValue()
 			case 44:
-				m.ctx.txt.height = p.floatValue()
+				m.Ctx.Txt.Height = p.floatValue()
 			case 45:
-				m.ctx.txt.lineSpacingFactor = p.floatValue()
+				m.Ctx.Txt.LineSpacingFactor = p.floatValue()
 			case 170:
-				m.ctx.txt.lineSpacingStyle = uint16(p.floatValue())
+				m.Ctx.Txt.LineSpacingStyle = uint16(p.floatValue())
 			case 90:
-				dxfSetMLeaderCMC(&m.ctx.txt.color, p)
+				dxfSetMLeaderCMC(&m.Ctx.Txt.Color, p)
 			case 91:
-				dxfSetMLeaderCMC(&m.ctx.txt.bgColor, p)
+				dxfSetMLeaderCMC(&m.Ctx.Txt.BgColor, p)
 			case 171:
-				m.ctx.txt.alignment = uint16(p.floatValue())
+				m.Ctx.Txt.Alignment = uint16(p.floatValue())
 			case 172:
-				m.ctx.txt.flow = uint16(p.floatValue())
+				m.Ctx.Txt.Flow = uint16(p.floatValue())
 			case 141:
-				m.ctx.txt.bgScale = p.floatValue()
+				m.Ctx.Txt.BgScale = p.floatValue()
 			case 92:
-				m.ctx.txt.bgTransparency = uint32(p.floatValue())
+				m.Ctx.Txt.BgTransparency = uint32(p.floatValue())
 			case 291:
-				m.ctx.txt.isBgFill = p.floatValue() != 0
+				m.Ctx.Txt.IsBgFill = p.floatValue() != 0
 			case 292:
-				m.ctx.txt.isBgMaskFill = p.floatValue() != 0
+				m.Ctx.Txt.IsBgMaskFill = p.floatValue() != 0
 			case 173:
-				m.ctx.txt.colType = uint16(p.floatValue())
+				m.Ctx.Txt.ColType = uint16(p.floatValue())
 			case 293:
-				m.ctx.txt.isHeightAuto = p.floatValue() != 0
+				m.Ctx.Txt.IsHeightAuto = p.floatValue() != 0
 			case 142:
-				m.ctx.txt.colWidth = p.floatValue()
+				m.Ctx.Txt.ColWidth = p.floatValue()
 			case 143:
-				m.ctx.txt.colGutter = p.floatValue()
+				m.Ctx.Txt.ColGutter = p.floatValue()
 			case 294:
-				m.ctx.txt.isColFlowReversed = p.floatValue() != 0
+				m.Ctx.Txt.IsColFlowReversed = p.floatValue() != 0
 			case 144:
-				m.ctx.txt.colSizes = append(m.ctx.txt.colSizes, p.floatValue())
+				m.Ctx.Txt.ColSizes = append(m.Ctx.Txt.ColSizes, p.floatValue())
 			case 295:
-				m.ctx.txt.wordBreak = p.floatValue() != 0
+				m.Ctx.Txt.WordBreak = p.floatValue() != 0
 			}
 			continue
 		}
-		if m.ctx.hasContentBlk {
+		if m.Ctx.HasContentBlk {
 			// blk 内容分支：296 开关 + 341 块表 + 14/15/16 三组 3BD +
 			// 46 旋转 + 93 颜色 + 47×16 变换矩阵（dxfin 同序）
 			switch code {
 			case 341:
 				if h, ok := dxfPairHandle(p); ok {
-					m.ctx.blk.blockTable = h
+					m.Ctx.Blk.BlockTable = h
 				}
 			case 14:
-				m.ctx.blk.normal.x = p.floatValue()
+				m.Ctx.Blk.Normal.X = p.floatValue()
 			case 24:
-				m.ctx.blk.normal.y = p.floatValue()
+				m.Ctx.Blk.Normal.Y = p.floatValue()
 			case 34:
-				m.ctx.blk.normal.z = p.floatValue()
+				m.Ctx.Blk.Normal.Z = p.floatValue()
 			case 15:
-				m.ctx.blk.location.x = p.floatValue()
+				m.Ctx.Blk.Location.X = p.floatValue()
 			case 25:
-				m.ctx.blk.location.y = p.floatValue()
+				m.Ctx.Blk.Location.Y = p.floatValue()
 			case 35:
-				m.ctx.blk.location.z = p.floatValue()
+				m.Ctx.Blk.Location.Z = p.floatValue()
 			case 16:
-				m.ctx.blk.scale.x = p.floatValue()
+				m.Ctx.Blk.Scale.X = p.floatValue()
 			case 26:
-				m.ctx.blk.scale.y = p.floatValue()
+				m.Ctx.Blk.Scale.Y = p.floatValue()
 			case 36:
-				m.ctx.blk.scale.z = p.floatValue()
+				m.Ctx.Blk.Scale.Z = p.floatValue()
 			case 46:
-				m.ctx.blk.rotation = p.floatValue() * math.Pi / 180
+				m.Ctx.Blk.Rotation = p.floatValue() * math.Pi / 180
 			case 93:
-				dxfSetMLeaderCMC(&m.ctx.blk.color, p)
+				dxfSetMLeaderCMC(&m.Ctx.Blk.Color, p)
 			case 47:
 				if blkTf < 16 {
-					m.ctx.blk.transform[blkTf] = p.floatValue()
+					m.Ctx.Blk.Transform[blkTf] = p.floatValue()
 					blkTf++
 				}
 			}
@@ -2019,88 +2020,88 @@ func (st *dxfState) buildMLeader(rec *dxfRec, base *baseEntity) any {
 		switch p.code {
 		case 340:
 			if h, ok := dxfPairHandle(p); ok {
-				m.mleaderStyle = h
+				m.MleaderStyle = h
 			}
 		case 90:
-			m.flags = uint32(p.floatValue())
+			m.Flags = uint32(p.floatValue())
 		case 170:
-			m.mleaderType = uint16(p.floatValue())
+			m.MleaderType = uint16(p.floatValue())
 		case 91:
-			m.lineColor.index = uint16(uint32(p.floatValue()) & 0xFFFFFFFF)
-			m.lineColor.isTrue = true
+			m.LineColor.Index = uint16(uint32(p.floatValue()) & 0xFFFFFFFF)
+			m.LineColor.IsTrue = true
 		case 341:
 			if h, ok := dxfPairHandle(p); ok {
-				m.lineLtype = h
+				m.LineLtype = h
 			}
 		case 171:
-			m.lineLinewt = int32(p.floatValue())
+			m.LineLinewt = int32(p.floatValue())
 		case 290:
-			m.hasLanding = p.floatValue() != 0
+			m.HasLanding = p.floatValue() != 0
 		case 291:
-			m.hasDogleg = p.floatValue() != 0
+			m.HasDogleg = p.floatValue() != 0
 		case 41:
-			m.landingDist = p.floatValue()
+			m.LandingDist = p.floatValue()
 		case 342:
 			if h, ok := dxfPairHandle(p); ok {
-				m.arrowHandle = h
+				m.ArrowHandle = h
 			}
 		case 42:
-			m.arrowSize = p.floatValue()
+			m.ArrowSize = p.floatValue()
 		case 172:
-			m.styleContent = uint16(p.floatValue())
+			m.StyleContent = uint16(p.floatValue())
 		case 343:
 			if h, ok := dxfPairHandle(p); ok {
-				m.textStyle = h
+				m.TextStyle = h
 			}
 		case 173:
-			m.textLeft = uint16(p.floatValue())
+			m.TextLeft = uint16(p.floatValue())
 		case 95:
-			m.textRight = uint16(p.floatValue())
+			m.TextRight = uint16(p.floatValue())
 		case 174:
-			m.textAngletype = uint16(p.floatValue())
+			m.TextAngletype = uint16(p.floatValue())
 		case 175:
-			m.textAlignment = uint16(p.floatValue())
+			m.TextAlignment = uint16(p.floatValue())
 		case 92:
-			m.textColor.index = uint16(uint32(p.floatValue()) & 0xFFFFFFFF)
-			m.textColor.isTrue = true
+			m.TextColor.Index = uint16(uint32(p.floatValue()) & 0xFFFFFFFF)
+			m.TextColor.IsTrue = true
 		case 292:
-			m.hasTextFrame = p.floatValue() != 0
+			m.HasTextFrame = p.floatValue() != 0
 		case 344:
 			if h, ok := dxfPairHandle(p); ok {
-				m.blockStyle = h
+				m.BlockStyle = h
 			}
 		case 93:
-			m.blockColor.index = uint16(uint32(p.floatValue()) & 0xFFFFFFFF)
-			m.blockColor.isTrue = true
+			m.BlockColor.Index = uint16(uint32(p.floatValue()) & 0xFFFFFFFF)
+			m.BlockColor.IsTrue = true
 		case 176:
-			m.styleAttachment = uint16(p.floatValue())
+			m.StyleAttachment = uint16(p.floatValue())
 		case 293:
-			m.isAnnotative = p.floatValue() != 0
+			m.IsAnnotative = p.floatValue() != 0
 		case 294:
-			m.isNegTextdir = p.floatValue() != 0
+			m.IsNegTextdir = p.floatValue() != 0
 		case 178:
-			m.ipeAlignment = uint16(p.floatValue())
+			m.IpeAlignment = uint16(p.floatValue())
 		case 179:
-			m.justification = uint16(p.floatValue())
+			m.Justification = uint16(p.floatValue())
 		case 45:
-			m.scaleFactor = p.floatValue()
+			m.ScaleFactor = p.floatValue()
 		case 271:
-			m.attachDir = uint16(p.floatValue())
+			m.AttachDir = uint16(p.floatValue())
 		case 273:
-			m.attachTop = uint16(p.floatValue())
+			m.AttachTop = uint16(p.floatValue())
 		case 272:
-			m.attachBottom = uint16(p.floatValue())
+			m.AttachBottom = uint16(p.floatValue())
 		case 295:
-			m.isTextExtended = p.floatValue() != 0
+			m.IsTextExtended = p.floatValue() != 0
 		case 10:
 			// 顶层块缩放（3BD，dxfin 尾段与 ctx 段 10 分属两遍扫描）
-			m.blockScale.x = p.floatValue()
+			m.BlockScale.X = p.floatValue()
 		case 20:
-			m.blockScale.y = p.floatValue()
+			m.BlockScale.Y = p.floatValue()
 		case 30:
-			m.blockScale.z = p.floatValue()
+			m.BlockScale.Z = p.floatValue()
 		case 43:
-			m.blockRotation = p.floatValue() * math.Pi / 180
+			m.BlockRotation = p.floatValue() * math.Pi / 180
 		}
 	}
 	return m
@@ -2115,25 +2116,25 @@ func dxfPairHandle(p dxfPair) (uint64, bool) {
 // dxfSetMLeaderCMC DXF 整数形态的 MLEADER 颜色组码（90/91/92/93）：
 // 值 >257 为真彩 rgb（0xc2/0xc3 前缀 method + 24 位 RGB，index 置 256），
 // 否则为 ACI 索引（对齐 in_dxf add_MULTILEADER 的 CMC 双分支）。
-func dxfSetMLeaderCMC(c *mleaderCMC, p dxfPair) {
+func dxfSetMLeaderCMC(c *entity.MleaderCMC, p dxfPair) {
 	v := uint32(p.floatValue())
 	if v > 257 {
-		c.rgb = v
-		c.index = 256
+		c.Rgb = v
+		c.Index = 256
 		return
 	}
-	c.index = uint16(v)
+	c.Index = uint16(v)
 }
 
 // buildTolerance TOLERANCE：10 插入点、11 对称轴方向、210 挤出、1 标注
 // 文本（组码对照 dwg.spec TOLERANCE 的 DXF 分支；3 为 dimstyle 名，无
 // 句柄对应不恢复；R13/R14 专属 height/dimgap 位流字段 DXF 不输出）。
-func (st *dxfState) buildTolerance(rec *dxfRec, base *baseEntity) any {
-	t := &entTolerance{baseEntity: *base}
-	t.insertion = rec.point3(10)
-	t.xDirection = rec.point3(11)
-	t.extrusion = rec.point3(210)
-	t.text = rec.str(1)
+func (st *dxfState) buildTolerance(rec *dxfRec, base *entity.BaseEntity) any {
+	t := &entity.EntTolerance{BaseEntity: *base}
+	t.Insertion = rec.point3(10)
+	t.XDirection = rec.point3(11)
+	t.Extrusion = rec.point3(210)
+	t.Text = rec.str(1)
 	return t
 }
 
@@ -2141,72 +2142,72 @@ func (st *dxfState) buildTolerance(rec *dxfRec, base *baseEntity) any {
 // 16/17 视向与目标、42-45 镜头/前后裁剪/视高、50/51 角度、72 圆缩放、
 // 90 状态、1 样式表、281 渲染模式、71/74 UCS 标志、110-112 UCS 三轴、
 // 79 正交视图、146 标高（组码对照 dwg.spec VIEWPORT 的 DXF 分支）。
-func (st *dxfState) buildViewport(rec *dxfRec, base *baseEntity) any {
-	vp := &entViewport{baseEntity: *base}
-	vp.center = rec.point3(10)
+func (st *dxfState) buildViewport(rec *dxfRec, base *entity.BaseEntity) any {
+	vp := &entity.EntViewport{BaseEntity: *base}
+	vp.Center = rec.point3(10)
 	if v, ok := rec.floatVal(40); ok {
-		vp.width = v
+		vp.Width = v
 	}
 	if v, ok := rec.floatVal(41); ok {
-		vp.height = v
+		vp.Height = v
 	}
-	vp.viewCtr = rec.point2(12)
-	vp.snapBase = rec.point2(13)
-	vp.snapUnit = rec.point2(14)
-	vp.gridUnit = rec.point2(15)
-	vp.viewDir = rec.point3(16)
-	vp.viewTarget = rec.point3(17)
+	vp.ViewCtr = rec.point2(12)
+	vp.SnapBase = rec.point2(13)
+	vp.SnapUnit = rec.point2(14)
+	vp.GridUnit = rec.point2(15)
+	vp.ViewDir = rec.point3(16)
+	vp.ViewTarget = rec.point3(17)
 	if v, ok := rec.floatVal(42); ok {
-		vp.lensLength = v
+		vp.LensLength = v
 	}
 	if v, ok := rec.floatVal(43); ok {
-		vp.frontZ = v
+		vp.FrontZ = v
 	}
 	if v, ok := rec.floatVal(44); ok {
-		vp.backZ = v
+		vp.BackZ = v
 	}
 	if v, ok := rec.floatVal(45); ok {
-		vp.viewSize = v
+		vp.ViewSize = v
 	}
 	if v, ok := rec.floatVal(50); ok {
-		vp.snapAng = dxfDegToRad(v)
+		vp.SnapAng = dxfDegToRad(v)
 	}
 	if v, ok := rec.floatVal(51); ok {
-		vp.viewTwist = dxfDegToRad(v)
+		vp.ViewTwist = dxfDegToRad(v)
 	}
 	if v, ok := rec.intVal(72); ok {
-		vp.circleZoom = uint16(v)
+		vp.CircleZoom = uint16(v)
 	}
 	if v, ok := rec.intVal(90); ok {
-		vp.statusFlag = uint32(v)
+		vp.StatusFlag = uint32(v)
 	}
-	vp.styleSheet = rec.str(1)
+	vp.StyleSheet = rec.str(1)
 	if v, ok := rec.intVal(281); ok {
-		vp.renderMode = uint8(v & 0xFF)
+		vp.RenderMode = uint8(v & 0xFF)
 	}
 	if v, ok := rec.intVal(71); ok {
-		vp.ucsVP = v != 0
+		vp.UcsVP = v != 0
 	}
 	if v, ok := rec.intVal(74); ok {
-		vp.ucsAtOrigin = v != 0
+		vp.UcsAtOrigin = v != 0
 	}
-	vp.ucsorg = rec.point3(110)
-	vp.ucsxdir = rec.point3(111)
-	vp.ucsydir = rec.point3(112)
+	vp.Ucsorg = rec.point3(110)
+	vp.Ucsxdir = rec.point3(111)
+	vp.Ucsydir = rec.point3(112)
 	if v, ok := rec.intVal(79); ok {
-		vp.ucsOrthoView = uint16(v)
+		vp.UcsOrthoView = uint16(v)
 	}
 	if v, ok := rec.floatVal(146); ok {
-		vp.ucsElevation = v
+		vp.UcsElevation = v
 	}
 	if v, ok := rec.intVal(61); ok {
-		vp.gridMajor = uint16(v)
+		vp.GridMajor = uint16(v)
 	}
 	if v, ok := rec.intVal(292); ok {
-		vp.useDefaultLights = v != 0
+		vp.UseDefaultLights = v != 0
 	}
 	if v, ok := rec.intVal(282); ok {
-		vp.defaultLightingType = uint8(v & 0xFF)
+		vp.DefaultLightingType = uint8(v & 0xFF)
 	}
 	return vp
 }
@@ -2216,15 +2217,15 @@ func (st *dxfState) buildViewport(rec *dxfRec, base *baseEntity) any {
 // 按码值逐行拼接后做 in_dxf 同款解密（'^ ' 还原为明文 'A'，其余字节
 // b≤32 保留、否则 159-b）得 acisData；290 acis_empty/70 version 一并
 // 消费。几何内核不在解析范围，与 DWG 侧 entAcis 同构。
-func (st *dxfState) buildAcis(rec *dxfRec, base *baseEntity) any {
-	a := &entAcis{baseEntity: *base, kind: rec.typ}
+func (st *dxfState) buildAcis(rec *dxfRec, base *entity.BaseEntity) any {
+	a := &entity.EntAcis{BaseEntity: *base, Kind: rec.typ}
 	if v, ok := rec.intVal(290); ok {
-		a.acisEmpty = v != 0
+		a.AcisEmpty = v != 0
 	}
 	if v, ok := rec.intVal(70); ok {
-		a.version = uint16(v)
+		a.Version = uint16(v)
 	}
-	if a.acisEmpty {
+	if a.AcisEmpty {
 		return a
 	}
 	var buf []byte
@@ -2249,8 +2250,8 @@ func (st *dxfState) buildAcis(rec *dxfRec, base *baseEntity) any {
 		}
 	}
 	if len(buf) > 0 {
-		a.acisData = buf
-		a.blocks = [][]byte{buf}
+		a.AcisData = buf
+		a.Blocks = [][]byte{buf}
 	}
 	return a
 }

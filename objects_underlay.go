@@ -11,27 +11,28 @@ import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
 // underlayFields UNDERLAY 引用实体的专有字段（UNDERLAY_fields）与
 // 公共头提取结果。
 type underlayFields struct {
-	definitionID uint64            // definition_id 硬引用（*_DEFINITION 对象）
-	extrusion    []float64         // 3BD 拉伸矢量
-	insPt        []float64         // 3BD 插入点
-	angle        float64           // BD 旋转角（弧度）
-	scale        []float64         // 3BD_1 缩放
-	flag         uint8             // RC0 标志（bit4=有 clip_inverts）
-	contrast     uint8             // RCd 对比度（20-100）
-	fade         uint8             // RCd 淡入度（0-80）
-	clipVerts    [][2]float64      // 2RD 裁剪多边形顶点
-	clipInverts  [][2]float64      // flag&16 时的反向裁剪顶点
-	owner        uint64            // COMMON_ENTITY_HANDLE_DATA ownerhandle
-	layer        uint64            // COMMON_ENTITY_HANDLE_DATA layer
-	objSizeBit   uint64            // handle 流起点（body 局部位，公共头扫描结果）
-	auditBitsize uint64            // gold 口径 bitsize
-	head         *commonEntityHead // 公共头扫描结果（preview/color 等提取源）
+	DefinitionID uint64                   // definition_id 硬引用（*_DEFINITION 对象）
+	Extrusion    []float64                // 3BD 拉伸矢量
+	InsPt        []float64                // 3BD 插入点
+	Angle        float64                  // BD 旋转角（弧度）
+	Scale        []float64                // 3BD_1 缩放
+	Flag         uint8                    // RC0 标志（bit4=有 clip_inverts）
+	Contrast     uint8                    // RCd 对比度（20-100）
+	Fade         uint8                    // RCd 淡入度（0-80）
+	ClipVerts    [][2]float64             // 2RD 裁剪多边形顶点
+	ClipInverts  [][2]float64             // flag&16 时的反向裁剪顶点
+	Owner        uint64                   // COMMON_ENTITY_HANDLE_DATA ownerhandle
+	Layer        uint64                   // COMMON_ENTITY_HANDLE_DATA layer
+	ObjSizeBit   uint64                   // handle 流起点（body 局部位，公共头扫描结果）
+	AuditBitsize uint64                   // gold 口径 bitsize
+	Head         *entity.CommonEntityHead // 公共头扫描结果（preview/color 等提取源）
 }
 
 // decodeUnderlayEntity 解析 UNDERLAY 引用实体并转为 objGeneric。
@@ -42,11 +43,11 @@ func decodeUnderlayEntity(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver 
 	// 实体头布局：typecode 后先有流内 RL objSize（R2010+ 除外）再有
 	// 主句柄（H），与对象头顺序不同。逐布局探出主句柄供
 	// scanEntityBest 的头句柄一致性校验，再回卷交给扫描
-	parsers := headParsersForVersion(ver)
+	parsers := entity.HeadParsersForVersion(ver)
 	var objHandle uint64
 	for _, p := range parsers {
 		r.SetBitPos(base)
-		if !p.externalSize {
+		if !p.ExternalSize {
 			if _, err := r.ReadRL(); err != nil {
 				continue
 			}
@@ -58,80 +59,80 @@ func decodeUnderlayEntity(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver 
 		}
 	}
 	r.SetBitPos(base)
-	res, _, ferr := scanEntityBest(r, base, dataEnd, uint64(rec.HandleSizeFieldBits),
+	res, _, ferr := entity.ScanEntityBest(r, base, dataEnd, uint64(rec.HandleSizeFieldBits),
 		parsers, objHandle, rec.Size, className, typeCode,
-		func(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
+		func(r *bitstream.BitStream, head *entity.CommonEntityHead) (any, error) {
 			return readUnderlayFields(r, head)
 		})
 	if ferr != nil {
 		return nil, ferr
 	}
 	uf, ok := res.(*underlayFields)
-	if !ok || uf == nil || uf.head == nil {
+	if !ok || uf == nil || uf.Head == nil {
 		return nil, fmt.Errorf("cad: %s 解码结果异常", className)
 	}
-	head := uf.head
+	head := uf.Head
 	g := &objGeneric{
 		Name:        className,
-		Handle:      head.handle,
-		Owner:       uf.owner,
-		ObjSizeBit:  uf.objSizeBit,
-		NumReactors: int(head.numReactors),
-		XdicMissing: head.xdicMissing,
+		Handle:      head.Handle,
+		Owner:       uf.Owner,
+		ObjSizeBit:  uf.ObjSizeBit,
+		NumReactors: int(head.NumReactors),
+		XdicMissing: head.XdicMissing,
 	}
 	g.Fields = append(g.Fields,
-		objField{"definition_id", int64(uf.definitionID)},
-		objField{"extrusion", uf.extrusion},
-		objField{"ins_pt", uf.insPt},
-		objField{"angle", uf.angle},
-		objField{"scale", uf.scale},
-		objField{"flag", int64(uf.flag)},
-		objField{"contrast", int64(uf.contrast)},
-		objField{"fade", int64(uf.fade)},
+		objField{"definition_id", int64(uf.DefinitionID)},
+		objField{"extrusion", uf.Extrusion},
+		objField{"ins_pt", uf.InsPt},
+		objField{"angle", uf.Angle},
+		objField{"scale", uf.Scale},
+		objField{"flag", int64(uf.Flag)},
+		objField{"contrast", int64(uf.Contrast)},
+		objField{"fade", int64(uf.Fade)},
 	)
-	g.Fields = append(g.Fields, objField{"num_clip_verts", int64(len(uf.clipVerts))})
-	for i, v := range uf.clipVerts {
+	g.Fields = append(g.Fields, objField{"num_clip_verts", int64(len(uf.ClipVerts))})
+	for i, v := range uf.ClipVerts {
 		g.Fields = append(g.Fields, objField{fmt.Sprintf("clip_verts[%d]", i), []float64{v[0], v[1]}})
 	}
-	for i, v := range uf.clipInverts {
+	for i, v := range uf.ClipInverts {
 		g.Fields = append(g.Fields, objField{fmt.Sprintf("clip_inverts[%d]", i), []float64{v[0], v[1]}})
 	}
 	// 公共头关键字段（键名对齐 dwgread JSON）
 	g.Fields = append(g.Fields,
-		objField{"preview_exists", head.previewExists},
-		objField{"preview_size", int64(len(head.preview))},
-		objField{"preview", fmt.Sprintf("%x", head.preview)},
-		objField{"entmode", int64(head.entityMode)},
-		objField{"color", underlayColorMap(head.color)},
-		objField{"ltype_scale", head.ltypeScale},
-		objField{"ltype_flags", int64(head.ltypeFlags)},
-		objField{"plotstyle_flags", int64(head.plotstyleFlgs)},
-		objField{"invisible", int64(head.invisible)},
-		objField{"linewt", int64(head.linewt)},
+		objField{"preview_exists", head.PreviewExists},
+		objField{"preview_size", int64(len(head.Preview))},
+		objField{"preview", fmt.Sprintf("%x", head.Preview)},
+		objField{"entmode", int64(head.EntityMode)},
+		objField{"color", underlayColorMap(head.Color)},
+		objField{"ltype_scale", head.LtypeScale},
+		objField{"ltype_flags", int64(head.LtypeFlags)},
+		objField{"plotstyle_flags", int64(head.PlotstyleFlgs)},
+		objField{"invisible", int64(head.Invisible)},
+		objField{"linewt", int64(head.Linewt)},
 	)
-	if uf.layer != 0 {
-		g.Handles = append(g.Handles, uf.layer)
+	if uf.Layer != 0 {
+		g.Handles = append(g.Handles, uf.Layer)
 	}
-	g.Handles = append(g.Handles, uf.definitionID)
+	g.Handles = append(g.Handles, uf.DefinitionID)
 	// 公共元数据键（与其他内部对象同形，供导出与审计）
 	g.Fields = append(g.Fields,
 		objField{"object", g.Name},
 		objField{"type", int64(typeCode)},
 		objField{"size", int64(rec.Size)},
-		objField{"bitsize", int64(uf.auditBitsize)},
-		objField{"num_reactors", int64(head.numReactors)},
-		objField{"is_xdic_missing", head.xdicMissing},
-		objField{"has_ds_data", head.hasDsBinary},
+		objField{"bitsize", int64(uf.AuditBitsize)},
+		objField{"num_reactors", int64(head.NumReactors)},
+		objField{"is_xdic_missing", head.XdicMissing},
+		objField{"has_ds_data", head.HasDsBinary},
 		objField{"dxfname", g.Name},
 	)
 	// 位串收集（对齐 UNKNOWN_OBJ 兜底语义）：hdOffsetBits 为类型码后
 	// 前导位，headRawBits 覆盖公共头+专有字段至 handle 流起点，
 	// RawHandleBits 覆盖 handle 流起点至记录尾
 	g.hdOffsetBits = base - rec.BodyBitOffset
-	if uf.objSizeBit > base {
-		g.headRawBits = bitstream.CollectBits(r, base, uf.objSizeBit)
+	if uf.ObjSizeBit > base {
+		g.headRawBits = bitstream.CollectBits(r, base, uf.ObjSizeBit)
 	}
-	g.RawHandleBits = bitstream.CollectBits(r, uf.objSizeBit, uint64(len(r.Src))*8)
+	g.RawHandleBits = bitstream.CollectBits(r, uf.ObjSizeBit, uint64(len(r.Src))*8)
 	return g, nil
 }
 
@@ -142,45 +143,45 @@ func decodeUnderlayEntity(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver 
 // 之后紧跟 definition_id；dat 流 = extrusion → ins_pt → angle → scale →
 // flag → contrast → fade → num_clip_verts → clip_verts →（flag&16）
 // clip_inverts。
-func readUnderlayFields(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
+func readUnderlayFields(r *bitstream.BitStream, head *entity.CommonEntityHead) (any, error) {
 	uf := &underlayFields{}
 	// hdl 流：公共实体句柄 + definition_id（硬引用 *_DEFINITION 对象）
 	savedByte, savedBit := r.Cursor()
-	r.SetBitPos(head.objSizeBit)
-	owner, layer, err := parseCommonEntityHandles(r, head)
+	r.SetBitPos(head.ObjSizeBit)
+	owner, layer, err := entity.ParseCommonEntityHandles(r, head)
 	if err != nil {
 		r.Restore(savedByte, savedBit)
 		return nil, err
 	}
-	defID, err := objrec.ReadHandleReference(r, head.handle)
+	defID, err := objrec.ReadHandleReference(r, head.Handle)
 	if err != nil {
 		r.Restore(savedByte, savedBit)
 		return nil, err
 	}
 	r.Restore(savedByte, savedBit)
-	uf.owner = owner
-	uf.layer = layer
-	uf.definitionID = defID
+	uf.Owner = owner
+	uf.Layer = layer
+	uf.DefinitionID = defID
 	// dat 流：标量字段
-	if uf.extrusion, err = readBD3(r); err != nil {
+	if uf.Extrusion, err = readBD3(r); err != nil {
 		return nil, err
 	}
-	if uf.insPt, err = readBD3(r); err != nil {
+	if uf.InsPt, err = readBD3(r); err != nil {
 		return nil, err
 	}
-	if uf.angle, err = r.ReadBD(); err != nil {
+	if uf.Angle, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if uf.scale, err = readBD3(r); err != nil {
+	if uf.Scale, err = readBD3(r); err != nil {
 		return nil, err
 	}
-	if uf.flag, err = r.ReadRC(); err != nil {
+	if uf.Flag, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
-	if uf.contrast, err = r.ReadRC(); err != nil {
+	if uf.Contrast, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
-	if uf.fade, err = r.ReadRC(); err != nil {
+	if uf.Fade, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
 	numClip, err := r.ReadBL()
@@ -200,9 +201,9 @@ func readUnderlayFields(r *bitstream.BitStream, head *commonEntityHead) (any, er
 		if e != nil {
 			return nil, e
 		}
-		uf.clipVerts = append(uf.clipVerts, [2]float64{x, y})
+		uf.ClipVerts = append(uf.ClipVerts, [2]float64{x, y})
 	}
-	if uf.flag&16 != 0 {
+	if uf.Flag&16 != 0 {
 		// flag&16：clip_inverts 存在。语料实证（Underlay.dwg 三实例）
 		// LibreDWG 在此处已越出 bitsize 读出垃圾计数（68/7880）且 gold
 		// 输出为空数组——对齐其宽容行为：计数非法或空间不足时留空，
@@ -218,13 +219,13 @@ func readUnderlayFields(r *bitstream.BitStream, head *commonEntityHead) (any, er
 				if e != nil {
 					break
 				}
-				uf.clipInverts = append(uf.clipInverts, [2]float64{x, y})
+				uf.ClipInverts = append(uf.ClipInverts, [2]float64{x, y})
 			}
 		}
 	}
-	uf.objSizeBit = head.objSizeBit
-	uf.auditBitsize = head.auditBitsize
-	uf.head = head
+	uf.ObjSizeBit = head.ObjSizeBit
+	uf.AuditBitsize = head.AuditBitsize
+	uf.Head = head
 	return uf, nil
 }
 
@@ -247,13 +248,13 @@ func readBD3(r *bitstream.BitStream) ([]float64, error) {
 }
 
 // underlayColorMap 将实体头颜色转为 dwgread JSON 的 color 键形状。
-func underlayColorMap(c entColor) map[string]any {
-	m := map[string]any{"index": int64(c.index)}
-	if c.hasTrue {
-		m["rgb"] = fmt.Sprintf("%06x", c.trueColor&0xFFFFFF)
+func underlayColorMap(c entity.EntColor) map[string]any {
+	m := map[string]any{"index": int64(c.Index)}
+	if c.HasTrue {
+		m["rgb"] = fmt.Sprintf("%06x", c.TrueColor&0xFFFFFF)
 	} else {
 		m["rgb"] = "000000"
 	}
-	m["flag"] = int64(c.flag)
+	m["flag"] = int64(c.Flag)
 	return m
 }

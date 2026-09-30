@@ -5,6 +5,7 @@ package cad
 
 import (
 	"bytes"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"image"
 	"image/color"
 	"image/png"
@@ -123,7 +124,7 @@ func TestTextLayoutOf(t *testing.T) {
 // 方向互换且含正确符号。
 func TestTextLabelWithBasis(t *testing.T) {
 	ts := newTessellator(&Document{})
-	e := &entText{baseEntity: baseEntity{}, text: "AB", insertion: point3{1, 2, 0}, height: 3}
+	e := &entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "AB", Insertion: entity.Point3{1, 2, 0}, Height: 3}
 	p := ts.textLabelWith(1, 2, 3, mathPiHalf(), 2, identityXform(), e, "TEXT", textInfo{lines: []string{"AB"}})
 	tx := p.lb.tx
 	if tx == nil {
@@ -146,14 +147,14 @@ func mathPiHalf() float64 { return 3.14159265358979323846 / 2 }
 // TestTextLabelAnchorSelection 非默认对齐时锚点取 alignment_pt（DXF 语义）。
 func TestTextLabelAnchorSelection(t *testing.T) {
 	ts := newTessellator(&Document{})
-	e := &entText{baseEntity: baseEntity{}, text: "X", insertion: point3{9, 9, 0},
-		height: 1, hAlign: 1, vAlign: 2, alignPt: &point2{3, 4}}
+	e := &entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "X", Insertion: entity.Point3{9, 9, 0},
+		Height: 1, HAlign: 1, VAlign: 2, AlignPt: &entity.Point2{3, 4}}
 	prim := ts.appendEntity(nil, e, identityXform(), 0)
 	if len(prim) != 1 || prim[0].lb.x != 3 || prim[0].lb.y != 4 {
 		t.Fatalf("对齐锚点应取 alignment_pt: %+v", prim[0].lb)
 	}
 	// 默认对齐回到 insertion
-	e2 := &entText{baseEntity: baseEntity{}, text: "X", insertion: point3{9, 9, 0}, height: 1}
+	e2 := &entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "X", Insertion: entity.Point3{9, 9, 0}, Height: 1}
 	prim2 := ts.appendEntity(nil, e2, identityXform(), 0)
 	if prim2[0].lb.x != 9 || prim2[0].lb.y != 9 {
 		t.Fatalf("默认对齐锚点应为 insertion: (%v,%v)", prim2[0].lb.x, prim2[0].lb.y)
@@ -163,8 +164,8 @@ func TestTextLabelAnchorSelection(t *testing.T) {
 // TestMTextLabelInfo MTEXT 版式信息传播：\P 分行、attachment/rectWidth 透传。
 func TestMTextLabelInfo(t *testing.T) {
 	ts := newTessellator(&Document{})
-	e := &entMText{baseEntity: baseEntity{}, text: "A\\PB", insertion: point3{0, 0, 0},
-		textHeight: 2, attachment: 7, rectWidth: 10}
+	e := &entity.EntMText{BaseEntity: entity.BaseEntity{}, Text: "A\\PB", Insertion: entity.Point3{0, 0, 0},
+		TextHeight: 2, Attachment: 7, RectWidth: 10}
 	prim := ts.appendEntity(nil, e, identityXform(), 0)
 	tx := prim[0].lb.tx
 	if tx == nil || tx.attachment != 7 || tx.rectWidth != 10 {
@@ -280,7 +281,7 @@ func TestWarpMaskDegenerate(t *testing.T) {
 func TestRenderPNGGlyphTextE2E(t *testing.T) {
 	requireRenderFont(t)
 	doc := &Document{modelSpace: []any{
-		&entText{baseEntity: baseEntity{}, text: "测试ABC", insertion: point3{0, 0, 0}, height: 1},
+		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "测试ABC", Insertion: entity.Point3{0, 0, 0}, Height: 1},
 	}}
 	data, err := RenderPNG(doc, RenderOptions{Width: 512})
 	if err != nil {
@@ -306,7 +307,7 @@ func TestRenderPNGGlyphTextE2E(t *testing.T) {
 // （本机有 wqy）仍出字形；整体不 panic。
 func TestRenderPNGFontPathOverride(t *testing.T) {
 	doc := &Document{modelSpace: []any{
-		&entText{baseEntity: baseEntity{}, text: "OK", insertion: point3{0, 0, 0}, height: 1},
+		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "OK", Insertion: entity.Point3{0, 0, 0}, Height: 1},
 	}}
 	data, err := RenderPNG(doc, RenderOptions{Width: 256, FontPath: "/nonexistent/font.ttf"})
 	if err != nil {

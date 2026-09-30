@@ -6,6 +6,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 )
@@ -177,8 +178,8 @@ func inspectCandidate(objectsData []byte, c objrec.ObjectRef, ver container.DwgV
 	if info.isEntity {
 		r := rec.BodyBitStream()
 		r.SetBitPos(h.DataStartBit)
-		if head, err := parseCommonEntityHeadR2013(r, rec.DataEndBit()); err == nil {
-			info.decodedHandle = head.handle
+		if head, err := entity.ParseCommonEntityHeadR2013(r, rec.DataEndBit()); err == nil {
+			info.decodedHandle = head.Handle
 			info.hasDecoded = true
 		}
 	}

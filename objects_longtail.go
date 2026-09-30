@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
@@ -147,7 +148,7 @@ func decodeGenericPROXY_OBJECT(r *bitstream.BitStream, ver container.DwgVersion,
 	if g.ObjSizeBit > 0 {
 		if pos := r.TellBits(); g.ObjSizeBit > pos {
 			n := g.ObjSizeBit - pos
-			if n > proxyDataMaxBits {
+			if n > entity.ProxyDataMaxBits {
 				return fmt.Errorf("cad: PROXY_OBJECT data 位长异常 %d", n)
 			}
 			g.Fields = append(g.Fields, objField{"data_numbits", int64(n)})

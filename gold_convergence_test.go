@@ -3,6 +3,7 @@ package cad
 import (
 	"bufio"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"math"
 	"os"
 	"strconv"
@@ -116,43 +117,43 @@ func DebugEntitiesFlat(data []byte) map[uint64][2]string {
 		}
 		return strconv.FormatFloat(v, 'f', 12, 64)
 	}
-	p3 := func(p point3) string { return fv(p.x) + " " + fv(p.y) + " " + fv(p.z) }
+	p3 := func(p entity.Point3) string { return fv(p.X) + " " + fv(p.Y) + " " + fv(p.Z) }
 	var walk func(ents []any)
 	walk = func(ents []any) {
 		for _, e := range ents {
-			base := entBase(e)
+			base := entity.EntityBase(e)
 			if base == nil {
 				continue
 			}
 			var typ, fields string
 			switch t := e.(type) {
-			case *entLine:
-				typ, fields = "LINE", p3(t.start)+" "+p3(t.end)
-			case *entCircle:
-				typ, fields = "CIRCLE", p3(t.center)+" "+fv(t.radius)
-			case *entArc:
-				typ, fields = "ARC", p3(t.center)+" "+fv(t.radius)+" "+fv(t.angleStart)+" "+fv(t.angleEnd)
-			case *entPoint:
-				typ, fields = "POINT", p3(t.location)+" "+fv(t.rotation)
-			case *entEllipse:
-				typ, fields = "ELLIPSE", p3(t.center)+" "+p3(t.majorAxis)+" "+fv(t.ratio)+" "+fv(t.startAng)+" "+fv(t.endAng)
-			case *entLwPolyline:
+			case *entity.EntLine:
+				typ, fields = "LINE", p3(t.Start)+" "+p3(t.End)
+			case *entity.EntCircle:
+				typ, fields = "CIRCLE", p3(t.Center)+" "+fv(t.Radius)
+			case *entity.EntArc:
+				typ, fields = "ARC", p3(t.Center)+" "+fv(t.Radius)+" "+fv(t.AngleStart)+" "+fv(t.AngleEnd)
+			case *entity.EntPoint:
+				typ, fields = "POINT", p3(t.Location)+" "+fv(t.Rotation)
+			case *entity.EntEllipse:
+				typ, fields = "ELLIPSE", p3(t.Center)+" "+p3(t.MajorAxis)+" "+fv(t.Ratio)+" "+fv(t.StartAng)+" "+fv(t.EndAng)
+			case *entity.EntLwPolyline:
 				typ = "LWPOLYLINE"
-				fields = strconv.Itoa(len(t.vertices))
-				for i, v := range t.vertices {
+				fields = strconv.Itoa(len(t.Vertices))
+				for i, v := range t.Vertices {
 					bulge := 0.0
-					if i < len(t.bulges) {
-						bulge = t.bulges[i]
+					if i < len(t.Bulges) {
+						bulge = t.Bulges[i]
 					}
-					fields += " " + fv(v.x) + " " + fv(v.y) + " " + fv(bulge)
+					fields += " " + fv(v.X) + " " + fv(v.Y) + " " + fv(bulge)
 				}
-			case *entText:
-				typ, fields = "TEXT", strings.ReplaceAll(t.text, " ", `\s`)+" "+fv(t.height)+" "+fv(t.insertion.x)+" "+fv(t.insertion.y)
-			case *entMText:
-				typ, fields = "MTEXT", strings.ReplaceAll(t.text, " ", `\s`)+" "+fv(t.textHeight)+" "+fv(t.insertion.x)+" "+fv(t.insertion.y)
-			case *entInsert:
-				typ, fields = "INSERT", p3(t.position)+" "+p3(t.scale)+" "+fv(t.rotation)+" "+strconv.FormatUint(t.blockHeader, 10)
-			case *entSpline:
+			case *entity.EntText:
+				typ, fields = "TEXT", strings.ReplaceAll(t.Text, " ", `\s`)+" "+fv(t.Height)+" "+fv(t.Insertion.X)+" "+fv(t.Insertion.Y)
+			case *entity.EntMText:
+				typ, fields = "MTEXT", strings.ReplaceAll(t.Text, " ", `\s`)+" "+fv(t.TextHeight)+" "+fv(t.Insertion.X)+" "+fv(t.Insertion.Y)
+			case *entity.EntInsert:
+				typ, fields = "INSERT", p3(t.Position)+" "+p3(t.Scale)+" "+fv(t.Rotation)+" "+strconv.FormatUint(t.BlockHeader, 10)
+			case *entity.EntSpline:
 				typ = "SPLINE"
 				optU := func(v uint32, has bool) string {
 					if !has {
@@ -160,110 +161,110 @@ func DebugEntitiesFlat(data []byte) map[uint64][2]string {
 					}
 					return fmt.Sprintf("Some(%d)", v)
 				}
-				fields = fmt.Sprintf("%d %s %s %d %d %d", t.scenario, optU(t.splineFlags1, t.r2013Plus), optU(t.knotParameter, t.r2013Plus), t.degree, len(t.knots), len(t.controlPoints))
-				for _, k := range t.knots {
+				fields = fmt.Sprintf("%d %s %s %d %d %d", t.Scenario, optU(t.SplineFlags1, t.R2013Plus), optU(t.KnotParameter, t.R2013Plus), t.Degree, len(t.Knots), len(t.ControlPoints))
+				for _, k := range t.Knots {
 					fields += " " + fv(k)
 				}
-				for _, p := range t.controlPoints {
+				for _, p := range t.ControlPoints {
 					fields += " " + p3(p)
 				}
-				for _, p := range t.fitPoints {
-					fields += fmt.Sprintf(" F %s %s", fv(p.x), fv(p.y))
+				for _, p := range t.FitPoints {
+					fields += fmt.Sprintf(" F %s %s", fv(p.X), fv(p.Y))
 				}
-			case *entRay:
+			case *entity.EntRay:
 				kind0 := "RAY"
-				if t.xline {
+				if t.Xline {
 					kind0 = "XLINE"
 				}
-				typ, fields = kind0, p3(t.start)+" "+p3(t.unitVector)
-			case *entSolid:
+				typ, fields = kind0, p3(t.Start)+" "+p3(t.UnitVector)
+			case *entity.EntSolid:
 				kind0 := "SOLID"
-				if t.trace {
+				if t.Trace {
 					kind0 = "TRACE"
 				}
-				typ, fields = kind0, fv(t.p1.x)+" "+fv(t.p1.y)+" "+fv(t.p2.x)+" "+fv(t.p2.y)+" "+
-					fv(t.p3.x)+" "+fv(t.p3.y)+" "+fv(t.p4.x)+" "+fv(t.p4.y)+" "+fv(t.elevation)+
-					" "+fv(t.thickness)+" "+fv(t.extrusion.x)+" "+fv(t.extrusion.y)
-			case *entFace3d:
-				typ, fields = "3DFACE", p3(t.p1)+" "+p3(t.p2)+" "+p3(t.p3)+" "+p3(t.p4)+" "+strconv.Itoa(int(t.invisibleEdgeFlags))
-			case *entLeader:
+				typ, fields = kind0, fv(t.P1.X)+" "+fv(t.P1.Y)+" "+fv(t.P2.X)+" "+fv(t.P2.Y)+" "+
+					fv(t.P3.X)+" "+fv(t.P3.Y)+" "+fv(t.P4.X)+" "+fv(t.P4.Y)+" "+fv(t.Elevation)+
+					" "+fv(t.Thickness)+" "+fv(t.Extrusion.X)+" "+fv(t.Extrusion.Y)
+			case *entity.EntFace3d:
+				typ, fields = "3DFACE", p3(t.P1)+" "+p3(t.P2)+" "+p3(t.P3)+" "+p3(t.P4)+" "+strconv.Itoa(int(t.InvisibleEdgeFlags))
+			case *entity.EntLeader:
 				typ = "LEADER"
-				fields = strconv.Itoa(int(t.annotationType)) + " " + strconv.Itoa(int(t.pathType)) + " " + strconv.Itoa(len(t.points))
-				for _, p := range t.points {
+				fields = strconv.Itoa(int(t.AnnotationType)) + " " + strconv.Itoa(int(t.PathType)) + " " + strconv.Itoa(len(t.Points))
+				for _, p := range t.Points {
 					fields += " " + p3(p)
 				}
-			case *entMLine:
+			case *entity.EntMLine:
 				typ = "MLINE"
-				fields = fv(t.scale) + " " + strconv.Itoa(int(t.justification)) + " " + strconv.Itoa(int(t.openClosed)) + " " +
-					strconv.Itoa(int(t.linesInStyle)) + " " + strconv.Itoa(len(t.vertices))
-				for _, v := range t.vertices {
-					fields += " " + p3(v.position)
+				fields = fv(t.Scale) + " " + strconv.Itoa(int(t.Justification)) + " " + strconv.Itoa(int(t.OpenClosed)) + " " +
+					strconv.Itoa(int(t.LinesInStyle)) + " " + strconv.Itoa(len(t.Vertices))
+				for _, v := range t.Vertices {
+					fields += " " + p3(v.Position)
 				}
-			case *entVertex2d:
-				typ, fields = "VERTEX_2D", strconv.Itoa(int(t.flags))+" "+p3(t.position)+" "+fv(t.startWidth)+" "+fv(t.endWidth)+" "+fv(t.bulge)
-			case *entVertex3d:
-				typ, fields = "VERTEX_3D", strconv.Itoa(int(t.flags))+" "+p3(t.position)
-			case *entPolyline2d:
+			case *entity.EntVertex2d:
+				typ, fields = "VERTEX_2D", strconv.Itoa(int(t.Flags))+" "+p3(t.Position)+" "+fv(t.StartWidth)+" "+fv(t.EndWidth)+" "+fv(t.Bulge)
+			case *entity.EntVertex3d:
+				typ, fields = "VERTEX_3D", strconv.Itoa(int(t.Flags))+" "+p3(t.Position)
+			case *entity.EntPolyline2d:
 				typ = "POLYLINE_2D"
-				fields = "0 0 " + strconv.Itoa(len(t.ownedHandles))
-				for _, h := range t.ownedHandles {
+				fields = "0 0 " + strconv.Itoa(len(t.OwnedHandles))
+				for _, h := range t.OwnedHandles {
 					fields += " " + strconv.FormatUint(h, 10)
 				}
-			case *entPolyline3d:
+			case *entity.EntPolyline3d:
 				typ = "POLYLINE_3D"
-				fields = strconv.Itoa(int(t.flags75)) + " " + strconv.Itoa(int(t.flags70)) + " " + strconv.Itoa(len(t.ownedHandles))
-				for _, h := range t.ownedHandles {
+				fields = strconv.Itoa(int(t.Flags75)) + " " + strconv.Itoa(int(t.Flags70)) + " " + strconv.Itoa(len(t.OwnedHandles))
+				for _, h := range t.OwnedHandles {
 					fields += " " + strconv.FormatUint(h, 10)
 				}
-			case *entDimension:
+			case *entity.EntDimension:
 				// 与探针格式一致：每点仅 x y 两值；测量值用 Rust Debug 全精度（最短往返）
 				typ = "DIM"
-				f2 := func(p point3) string { return fv(p.x) + " " + fv(p.y) }
-				fields = f2(t.point10) + " " + f2(t.point13) + " " + f2(t.point14) + " " +
-					f2(t.textMidpoint) + " Some(" + rustDbgF64(t.actualMeasurement) + ")"
-			case *entHatch:
+				f2 := func(p entity.Point3) string { return fv(p.X) + " " + fv(p.Y) }
+				fields = f2(t.Point10) + " " + f2(t.Point13) + " " + f2(t.Point14) + " " +
+					f2(t.TextMidpoint) + " Some(" + rustDbgF64(t.ActualMeasurement) + ")"
+			case *entity.EntHatch:
 				typ = "HATCH"
 				sfb, ab := 0, 0
-				if t.solidFill {
+				if t.SolidFill {
 					sfb = 1
 				}
-				if t.associative {
+				if t.Associative {
 					ab = 1
 				}
-				fields = fmt.Sprintf("%d %d %d %s", sfb, ab, len(t.paths), t.name)
-				for _, p := range t.paths {
+				fields = fmt.Sprintf("%d %d %d %s", sfb, ab, len(t.Paths), t.Name)
+				for _, p := range t.Paths {
 					cb := 0
-					if p.closed {
+					if p.Closed {
 						cb = 1
 					}
-					fields += fmt.Sprintf(" P%d %d", cb, len(p.points))
-					for _, v := range p.points {
-						fields += fmt.Sprintf(" %s,%s", fv(v.x), fv(v.y))
+					fields += fmt.Sprintf(" P%d %d", cb, len(p.Points))
+					for _, v := range p.Points {
+						fields += fmt.Sprintf(" %s,%s", fv(v.X), fv(v.Y))
 					}
 				}
-			case *entTolerance:
-				typ, fields = "TOLERANCE", strings.ReplaceAll(t.text, " ", `\s`)+" "+p3(t.insertion)+" "+fv(t.xDirection.x)+" "+fv(t.xDirection.y)
-			case *entPolylinePface:
-				typ, fields = "POLYLINE_PFACE", strconv.Itoa(t.numVertices)+" "+strconv.Itoa(t.numFaces)
-			case *entViewport:
+			case *entity.EntTolerance:
+				typ, fields = "TOLERANCE", strings.ReplaceAll(t.Text, " ", `\s`)+" "+p3(t.Insertion)+" "+fv(t.XDirection.X)+" "+fv(t.XDirection.Y)
+			case *entity.EntPolylinePface:
+				typ, fields = "POLYLINE_PFACE", strconv.Itoa(t.NumVertices)+" "+strconv.Itoa(t.NumFaces)
+			case *entity.EntViewport:
 				typ, fields = "VIEWPORT", ""
-			case *entShape:
-				typ, fields = "SHAPE", p3(t.insertion)+" "+fv(t.scale)+" "+fv(t.rotation)+" "+fv(t.widthFactor)+" "+
-					fv(t.oblique)+" "+fv(t.thickness)+" "+strconv.Itoa(int(t.styleId))+" "+fv(t.extrusion.x)
-			case *entPolylineMesh:
+			case *entity.EntShape:
+				typ, fields = "SHAPE", p3(t.Insertion)+" "+fv(t.Scale)+" "+fv(t.Rotation)+" "+fv(t.WidthFactor)+" "+
+					fv(t.Oblique)+" "+fv(t.Thickness)+" "+strconv.Itoa(int(t.StyleId))+" "+fv(t.Extrusion.X)
+			case *entity.EntPolylineMesh:
 				typ = "POLYLINE_MESH"
-				fields = strconv.Itoa(int(t.flags)) + " " + strconv.Itoa(int(t.curveType)) + " " +
-					strconv.Itoa(int(t.mVertexCount)) + " " + strconv.Itoa(int(t.nVertexCount)) + " " +
-					strconv.Itoa(int(t.mDensity)) + " " + strconv.Itoa(int(t.nDensity)) + " " +
-					strconv.Itoa(len(t.ownedHandles))
-				for _, h := range t.ownedHandles {
+				fields = strconv.Itoa(int(t.Flags)) + " " + strconv.Itoa(int(t.CurveType)) + " " +
+					strconv.Itoa(int(t.MVertexCount)) + " " + strconv.Itoa(int(t.NVertexCount)) + " " +
+					strconv.Itoa(int(t.MDensity)) + " " + strconv.Itoa(int(t.NDensity)) + " " +
+					strconv.Itoa(len(t.OwnedHandles))
+				for _, h := range t.OwnedHandles {
 					fields += " " + strconv.FormatUint(h, 10)
 				}
 			default:
 				continue
 			}
-			if _, dup := out[base.handle]; !dup {
-				out[base.handle] = [2]string{typ, fields}
+			if _, dup := out[base.Handle]; !dup {
+				out[base.Handle] = [2]string{typ, fields}
 			}
 		}
 	}

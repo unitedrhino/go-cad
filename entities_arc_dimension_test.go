@@ -6,6 +6,7 @@ package cad
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
@@ -16,8 +17,8 @@ import (
 // COMMON_ENTITY_DIMENSION 公共段 + 弧长专属 10 字段。注意 R2007+ 的
 // user_text 走字符串流，主位流不占位，构造时不写 TV。
 func TestDecodeArcDimensionR2018(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x20) // 类型码仅占位，走直接分发
-	writeCommonHead(w, 921, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x20) // 类型码仅占位，走直接分发
+	testsupport.WriteCommonHead(w, 921, 2)
 	w.RC(0)          // R2010b class_version
 	w.B3BD(0, 0, 1)  // extrusion
 	w.RD(100).RD(50) // text midpoint x/y
@@ -49,42 +50,42 @@ func TestDecodeArcDimensionR2018(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
+	head, err := entity.ParseEntityHead(r, 0, entity.FeatMaterialFlags|entity.FeatVisualStyles|entity.FeatDSBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeDimension(r, &head, container.VerR2018, dimLayoutArc)
+	ent, err := entity.DecodeDimension(r, &head, container.VerR2018, entity.DimLayoutArc)
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := ent.(*entDimension)
-	if d.defPt.x != 1 || d.point13.x != 3 || d.point14.x != 5 || d.point15.x != 7 {
-		t.Fatalf("专属点: def=%v p13=%v p14=%v p15=%v", d.defPt, d.point13, d.point14, d.point15)
+	d := ent.(*entity.EntDimension)
+	if d.DefPt.X != 1 || d.Point13.X != 3 || d.Point14.X != 5 || d.Point15.X != 7 {
+		t.Fatalf("专属点: def=%v p13=%v p14=%v p15=%v", d.DefPt, d.Point13, d.Point14, d.Point15)
 	}
-	if !d.isPartial || math.Abs(d.arcStartParam-0.5) > 1e-9 || math.Abs(d.arcEndParam-2.5) > 1e-9 {
-		t.Fatalf("弧参数: partial=%v start=%v end=%v", d.isPartial, d.arcStartParam, d.arcEndParam)
+	if !d.IsPartial || math.Abs(d.ArcStartParam-0.5) > 1e-9 || math.Abs(d.ArcEndParam-2.5) > 1e-9 {
+		t.Fatalf("弧参数: partial=%v start=%v end=%v", d.IsPartial, d.ArcStartParam, d.ArcEndParam)
 	}
-	if !d.hasLeader || d.leader1Pt.x != 9 || d.leader2Pt.x != 11 {
-		t.Fatalf("引线: leader=%v p1=%v p2=%v", d.hasLeader, d.leader1Pt, d.leader2Pt)
+	if !d.HasLeader || d.Leader1Pt.X != 9 || d.Leader2Pt.X != 11 {
+		t.Fatalf("引线: leader=%v p1=%v p2=%v", d.HasLeader, d.Leader1Pt, d.Leader2Pt)
 	}
 	// flag 合成：flag1=0x0b → bit0=1 清 bit7、bit1=1 置 bit5，ARC 低 3 位=5
-	if d.dimFlag != 0x25 {
-		t.Fatalf("flag: %#x", d.dimFlag)
+	if d.DimFlag != 0x25 {
+		t.Fatalf("flag: %#x", d.DimFlag)
 	}
-	if d.classVersion != 0 {
-		t.Fatalf("class_version: %d", d.classVersion)
+	if d.ClassVersion != 0 {
+		t.Fatalf("class_version: %d", d.ClassVersion)
 	}
-	if entityField(d, "is_partial") != int64(1) ||
-		entityField(d, "has_leader") != int64(1) {
+	if entity.EntityField(d, "is_partial") != int64(1) ||
+		entity.EntityField(d, "has_leader") != int64(1) {
 		t.Fatalf("审计键: is_partial=%v has_leader=%v",
-			entityField(d, "is_partial"), entityField(d, "has_leader"))
+			entity.EntityField(d, "is_partial"), entity.EntityField(d, "has_leader"))
 	}
-	if entityField(d, "entity") == "ARC_DIMENSION" {
+	if entity.EntityField(d, "entity") == "ARC_DIMENSION" {
 		t.Fatal("直接调用不经 fillMeta，entity 键应为空")
 	}
 	// dimGoldEntityName 对无 DIM_ 前缀的 ARC_DIMENSION 直通
-	if dimGoldEntityName("ARC_DIMENSION") != "ARC_DIMENSION" {
-		t.Fatalf("entity 映射: %v", dimGoldEntityName("ARC_DIMENSION"))
+	if entity.DimGoldEntityName("ARC_DIMENSION") != "ARC_DIMENSION" {
+		t.Fatalf("entity 映射: %v", entity.DimGoldEntityName("ARC_DIMENSION"))
 	}
 }
 
@@ -99,21 +100,21 @@ func TestArcDimensionGoldR13(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, ok := doc.EntityByHandle(921).(*entDimension)
+	d, ok := doc.EntityByHandle(921).(*entity.EntDimension)
 	if !ok {
 		t.Fatalf("handle 921 不是 entDimension: %T", doc.EntityByHandle(921))
 	}
-	if d.dimFlag != 37 || d.dimFlags != 11 {
-		t.Fatalf("flag=%d flag1=%d", d.dimFlag, d.dimFlags)
+	if d.DimFlag != 37 || d.DimFlags != 11 {
+		t.Fatalf("flag=%d flag1=%d", d.DimFlag, d.DimFlags)
 	}
-	if math.Abs(d.defPt.x-6125.3814140265295) > 1e-6 || math.Abs(d.defPt.y-2865.1655686581416) > 1e-6 {
-		t.Fatalf("def_pt: %v", d.defPt)
+	if math.Abs(d.DefPt.X-6125.3814140265295) > 1e-6 || math.Abs(d.DefPt.Y-2865.1655686581416) > 1e-6 {
+		t.Fatalf("def_pt: %v", d.DefPt)
 	}
-	if math.Abs(d.arcStartParam-4.13129349503489) > 1e-9 || math.Abs(d.arcEndParam-1.16526492696508) > 1e-9 {
-		t.Fatalf("弧参数: %v..%v", d.arcStartParam, d.arcEndParam)
+	if math.Abs(d.ArcStartParam-4.13129349503489) > 1e-9 || math.Abs(d.ArcEndParam-1.16526492696508) > 1e-9 {
+		t.Fatalf("弧参数: %v..%v", d.ArcStartParam, d.ArcEndParam)
 	}
-	if d.isPartial || d.hasLeader {
-		t.Fatalf("partial=%v leader=%v", d.isPartial, d.hasLeader)
+	if d.IsPartial || d.HasLeader {
+		t.Fatalf("partial=%v leader=%v", d.IsPartial, d.HasLeader)
 	}
 }
 
@@ -128,17 +129,17 @@ func TestArcDimensionGoldR2013(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, ok := doc.EntityByHandle(921).(*entDimension)
+	d, ok := doc.EntityByHandle(921).(*entity.EntDimension)
 	if !ok {
 		t.Fatalf("handle 921 不是 entDimension: %T", doc.EntityByHandle(921))
 	}
-	if d.classVersion != 0 {
-		t.Fatalf("class_version: %d", d.classVersion)
+	if d.ClassVersion != 0 {
+		t.Fatalf("class_version: %d", d.ClassVersion)
 	}
-	if math.Abs(d.arcStartParam-4.13129349503489) > 1e-9 {
-		t.Fatalf("arc_start_param: %v", d.arcStartParam)
+	if math.Abs(d.ArcStartParam-4.13129349503489) > 1e-9 {
+		t.Fatalf("arc_start_param: %v", d.ArcStartParam)
 	}
-	if entityField(d, "class_version") != int64(0) {
-		t.Fatalf("审计键 class_version: %v", entityField(d, "class_version"))
+	if entity.EntityField(d, "class_version") != int64(0) {
+		t.Fatalf("审计键 class_version: %v", entity.EntityField(d, "class_version"))
 	}
 }

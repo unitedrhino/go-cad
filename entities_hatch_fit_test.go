@@ -5,6 +5,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"path/filepath"
@@ -38,41 +39,41 @@ func TestUhengshenhuaHatchFit(t *testing.T) {
 			t.Errorf("h=%d: 实体缺失", h)
 			continue
 		}
-		hh, ok := ent.(*entHatch)
+		hh, ok := ent.(*entity.EntHatch)
 		if !ok {
 			t.Errorf("h=%d: 类型 %T, 期望 *entHatch", h, ent)
 			continue
 		}
-		if len(hh.paths) == 0 {
+		if len(hh.Paths) == 0 {
 			t.Errorf("h=%d: 无边界路径", h)
 		}
 	}
 	// 字段抽查：h=104946 为渐变实心填充（样条+双圆弧边界），名称走主
 	// 数据流零占位 + 对象字符串区恢复（gold: HEMISPHERICAL / SOLID,_O）。
 	ent := doc.EntityByHandle(104946)
-	hh, ok := ent.(*entHatch)
+	hh, ok := ent.(*entity.EntHatch)
 	if !ok {
 		t.Fatalf("h=104946: 类型 %T", ent)
 	}
-	if hh.isGradientFill == 0 {
+	if hh.IsGradientFill == 0 {
 		t.Errorf("h=104946: is_gradient_fill=0, 期望 1")
 	}
-	if !hh.solidFill {
+	if !hh.SolidFill {
 		t.Errorf("h=104946: is_solid_fill=0, 期望 1")
 	}
-	if hh.gradientName != "HEMISPHERICAL" {
-		t.Errorf("h=104946: gradient_name=%q, 期望 HEMISPHERICAL", hh.gradientName)
+	if hh.GradientName != "HEMISPHERICAL" {
+		t.Errorf("h=104946: gradient_name=%q, 期望 HEMISPHERICAL", hh.GradientName)
 	}
-	if hh.name != "SOLID,_O" {
-		t.Errorf("h=104946: name=%q, 期望 SOLID,_O", hh.name)
+	if hh.Name != "SOLID,_O" {
+		t.Errorf("h=104946: name=%q, 期望 SOLID,_O", hh.Name)
 	}
-	if len(hh.paths) != 1 || len(hh.paths[0].segs) != 3 {
-		t.Fatalf("h=104946: paths=%d segs=%d, 期望 1 路径 3 段", len(hh.paths), len(hh.paths[0].segs))
+	if len(hh.Paths) != 1 || len(hh.Paths[0].Segs) != 3 {
+		t.Fatalf("h=104946: paths=%d segs=%d, 期望 1 路径 3 段", len(hh.Paths), len(hh.Paths[0].Segs))
 	}
-	if ct := hh.paths[0].segs[0].curveType; ct != 4 {
+	if ct := hh.Paths[0].Segs[0].CurveType; ct != 4 {
 		t.Errorf("h=104946: segs[0].curve_type=%d, 期望 4（样条）", ct)
 	}
-	if len(hh.paths[0].segs[0].fitPts) != 0 {
-		t.Errorf("h=104946: 样条拟合点 %d 个, 期望 0（切线段不读）", len(hh.paths[0].segs[0].fitPts))
+	if len(hh.Paths[0].Segs[0].FitPts) != 0 {
+		t.Errorf("h=104946: 样条拟合点 %d 个, 期望 0（切线段不读）", len(hh.Paths[0].Segs[0].FitPts))
 	}
 }

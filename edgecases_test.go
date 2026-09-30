@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"os"
 	"path/filepath"
 	"testing"
@@ -180,14 +181,14 @@ func TestEncodeEntityReplayGuards(t *testing.T) {
 	if _, _, err := encodeEntityR200x(nil, container.VerR2000); err == nil {
 		t.Error("nil 实体应报错")
 	}
-	if _, _, err := encodeEntityR200x(&entLine{}, container.VerR2000); err == nil {
+	if _, _, err := encodeEntityR200x(&entity.EntLine{}, container.VerR2000); err == nil {
 		t.Error("缺位串实体应报错")
 	}
 	// 真实样本实体：版本参数不影响回放输出
 	doc := parseSample(t, "lw_example2018.dwg")
 	for _, e := range doc.modelSpace {
-		b := entBase(e)
-		if b == nil || b.headRawBits == "" || b.RawHandleBits == "" {
+		b := entity.EntityBase(e)
+		if b == nil || b.HeadRawBits == "" || b.RawHandleBits == "" {
 			continue
 		}
 		out1, _, err1 := encodeEntityR200x(e, container.VerR2000)

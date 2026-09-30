@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"testing"
@@ -50,20 +51,20 @@ func TestOle2FrameEntityAudit(t *testing.T) {
 			t.Errorf("OLE2FRAME h=%d 实体缺失（未解出）", h)
 			continue
 		}
-		ole, ok := ent.(*entOle2Frame)
+		ole, ok := ent.(*entity.EntOle2Frame)
 		if !ok {
 			t.Errorf("OLE2FRAME h=%d 类型不符: %T", h, ent)
 			continue
 		}
 		if want, ok := o["data"].(string); ok {
-			got := entityField(ent, "data").(string)
+			got := entity.EntityField(ent, "data").(string)
 			if got != want {
 				t.Errorf("OLE2FRAME h=%d data 块不符: got len=%d want len=%d（hex 级全等失败）",
 					h, len(got), len(want))
 			}
 		}
 		if want, ok := o["mode"].(float64); ok {
-			if got := int64(ole.mode); got != int64(want) {
+			if got := int64(ole.Mode); got != int64(want) {
 				t.Errorf("OLE2FRAME h=%d mode 不符: got=%d want=%d", h, got, int64(want))
 			}
 		}
@@ -78,8 +79,8 @@ func TestOle2FrameEntityAudit(t *testing.T) {
 // TestDecodeOle2FrameFromBits 合成位流：R2000+ 布局 type/mode/data_size/data/
 // lock_aspect 逐字段解码验证。
 func TestDecodeOle2FrameFromBits(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x4A)
-	writeCommonHead(w, 300, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x4A)
+	testsupport.WriteCommonHead(w, 300, 2)
 	w.BS(2)                    // type=2 Embedded
 	w.BS(1)                    // mode=1 pspace
 	w.BL(9)                    // data_size
@@ -88,54 +89,54 @@ func TestDecodeOle2FrameFromBits(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
+	head, err := entity.ParseEntityHead(r, 0, entity.FeatMaterialFlags|entity.FeatVisualStyles|entity.FeatDSBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeOle2FrameVer(r, &head, container.VerR2013)
+	ent, err := entity.DecodeOle2FrameVer(r, &head, container.VerR2013)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ole := ent.(*entOle2Frame)
-	if ole.oleType != 2 || ole.mode != 1 || ole.lockAspect != 1 {
-		t.Fatalf("OLE2FRAME 标量字段: type=%d mode=%d lock=%d", ole.oleType, ole.mode, ole.lockAspect)
+	ole := ent.(*entity.EntOle2Frame)
+	if ole.OleType != 2 || ole.Mode != 1 || ole.LockAspect != 1 {
+		t.Fatalf("OLE2FRAME 标量字段: type=%d mode=%d lock=%d", ole.OleType, ole.Mode, ole.LockAspect)
 	}
-	if string(ole.data) != "OLEDATA!!" {
-		t.Fatalf("OLE2FRAME data: %q", ole.data)
+	if string(ole.Data) != "OLEDATA!!" {
+		t.Fatalf("OLE2FRAME data: %q", ole.Data)
 	}
 }
 
 // TestDecodeOleFrameFromBits 合成位流：R13/R14 布局（无 mode）flag/data_size/data。
 func TestDecodeOleFrameFromBits(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x2B)
-	writeCommonHead(w, 400, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x2B)
+	testsupport.WriteCommonHead(w, 400, 2)
 	w.BS(0) // flag
 	w.BL(4) // data_size
 	w.RCS([]byte("OLE1"))
 	r := bitstream.NewBitStream(w.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
+	head, err := entity.ParseEntityHead(r, 0, entity.FeatMaterialFlags|entity.FeatVisualStyles|entity.FeatDSBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeOleFrameVer(r, &head, container.VerR14)
+	ent, err := entity.DecodeOleFrameVer(r, &head, container.VerR14)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ole := ent.(*entOleFrame)
-	if ole.flag != 0 || ole.mode != 0 {
-		t.Fatalf("OLEFRAME 标量字段: flag=%d mode=%d", ole.flag, ole.mode)
+	ole := ent.(*entity.EntOleFrame)
+	if ole.Flag != 0 || ole.Mode != 0 {
+		t.Fatalf("OLEFRAME 标量字段: flag=%d mode=%d", ole.Flag, ole.Mode)
 	}
-	if string(ole.data) != "OLE1" {
-		t.Fatalf("OLEFRAME data: %q", ole.data)
+	if string(ole.Data) != "OLE1" {
+		t.Fatalf("OLEFRAME data: %q", ole.Data)
 	}
 }
 
 // TestDecodeOleFrameR2000FromBits R2000+ 布局补验：flag 后有 mode 字段。
 func TestDecodeOleFrameR2000FromBits(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x2B)
-	writeCommonHead(w, 401, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x2B)
+	testsupport.WriteCommonHead(w, 401, 2)
 	w.BS(1) // flag
 	w.BS(0) // mode
 	w.BL(2) // data_size
@@ -143,19 +144,19 @@ func TestDecodeOleFrameR2000FromBits(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
+	head, err := entity.ParseEntityHead(r, 0, entity.FeatMaterialFlags|entity.FeatVisualStyles|entity.FeatDSBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeOleFrameVer(r, &head, container.VerR2000)
+	ent, err := entity.DecodeOleFrameVer(r, &head, container.VerR2000)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ole := ent.(*entOleFrame)
-	if ole.flag != 1 || ole.mode != 0 {
-		t.Fatalf("OLEFRAME R2000 标量字段: flag=%d mode=%d", ole.flag, ole.mode)
+	ole := ent.(*entity.EntOleFrame)
+	if ole.Flag != 1 || ole.Mode != 0 {
+		t.Fatalf("OLEFRAME R2000 标量字段: flag=%d mode=%d", ole.Flag, ole.Mode)
 	}
-	if len(ole.data) != 2 || ole.data[0] != 0xDE {
-		t.Fatalf("OLEFRAME R2000 data: %v", ole.data)
+	if len(ole.Data) != 2 || ole.Data[0] != 0xDE {
+		t.Fatalf("OLEFRAME R2000 data: %v", ole.Data)
 	}
 }

@@ -1,6 +1,6 @@
 // entities_full_test.go 实体解码器单元测试：用 bitWriter 构造标准位流，
 // 逐一验证全部图元的字段解码（公共头 + 专属数据 + handle 流）。
-package cad
+package entity
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
@@ -11,40 +11,10 @@ import (
 	"testing"
 )
 
-// writeEntityPrefix 写记录前缀：UMC handle-stream-size（1 字节）+ OT 类型码。
-func writeEntityPrefix(w *testsupport.BitWriter, typeCode uint16) *testsupport.BitWriter {
-	return w.UMC(8).OT(typeCode)
-}
-
-// writeCommonHead 构造 R2013 布局（idxFlags-noShadow-noLW）公共实体头：
-// H handle + EED(0) + pic(0) + entmode + reactors + xdic + ds + nolinks +
-// color unknown 位 + ltscale + ltype + plot + mat + visual×3 + invis。
-// 与读取侧特征位（featMaterialFlags|featVisualStyles|featDSBinary，noShadow-noLW 变体）严格对称。
-// nolinks=1（ByLayer 颜色）路径：color 为 1 位 unknown。
-func writeCommonHead(w *testsupport.BitWriter, handle uint64, entmode uint8) *testsupport.BitWriter {
-	w.H(0, handle)
-	w.BS(0)          // EED 结束
-	w.B(0)           // pic 无
-	w.BB(entmode)    // entmode
-	w.BL(0)          // reactors
-	w.B(0)           // xdic 存在
-	w.B(0)           // ds binary
-	w.B(1)           // nolinks=1 → ByLayer
-	w.B(0)           // color unknown 位
-	w.BD(1.0)        // ltscale
-	w.BB(0)          // ltype flags
-	w.BB(0)          // plotstyle flags
-	w.BB(0)          // material flags
-	w.B(0).B(0).B(0) // visual styles
-	w.BS(0)          // invisibility
-	// 无 lineweight：与 hasLineWt=false 布局对称
-	return w
-}
-
 func TestDecodeLineFromBits(t *testing.T) {
 	// 公共头 + z_is_zero=1 + xs RD + xe DD + ys RD + ye DD + thickness + extrusion
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x13)
-	writeCommonHead(w, 100, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x13)
+	testsupport.WriteCommonHead(w, 100, 2)
 	w.B(1) // z 全零
 	w.RD(10.0)
 	w.DD(20.0, 10.0)
@@ -59,29 +29,29 @@ func TestDecodeLineFromBits(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
+	Head, err := ParseEntityHead(r, 0, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if head.handle != 100 || head.entityMode != 2 {
-		t.Fatalf("公共头: handle=%d entmode=%d", head.handle, head.entityMode)
+	if Head.Handle != 100 || Head.EntityMode != 2 {
+		t.Fatalf("公共头: handle=%d entmode=%d", Head.Handle, Head.EntityMode)
 	}
-	ent, err := decodeLine(r, &head)
+	ent, err := decodeLine(r, &Head)
 	if err != nil {
 		t.Fatal(err)
 	}
-	line := ent.(*entLine)
-	if line.start.x != 10.0 || line.end.x != 20.0 || line.start.y != -5.5 || line.end.y != -5.5 {
-		t.Fatalf("LINE 几何: start=%v end=%v", line.start, line.end)
+	line := ent.(*EntLine)
+	if line.Start.X != 10.0 || line.End.X != 20.0 || line.Start.Y != -5.5 || line.End.Y != -5.5 {
+		t.Fatalf("LINE 几何: start=%v end=%v", line.Start, line.End)
 	}
-	if line.mode != 2 {
-		t.Fatalf("LINE entmode=%d", line.mode)
+	if line.Mode != 2 {
+		t.Fatalf("LINE entmode=%d", line.Mode)
 	}
 }
 
 func TestDecodeCircleFromBits(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x12)
-	writeCommonHead(w, 7, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x12)
+	testsupport.WriteCommonHead(w, 7, 2)
 	w.B3BD(1.0, 2.0, 0) // center
 	w.BD(5.0)           // radius
 	w.BT(0)
@@ -89,23 +59,23 @@ func TestDecodeCircleFromBits(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
+	Head, err := ParseEntityHead(r, 0, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeCircle(r, &head)
+	ent, err := decodeCircle(r, &Head)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := ent.(*entCircle)
-	if c.center.x != 1.0 || c.center.y != 2.0 || c.radius != 5.0 {
-		t.Fatalf("CIRCLE: center=%v r=%v", c.center, c.radius)
+	c := ent.(*EntCircle)
+	if c.Center.X != 1.0 || c.Center.Y != 2.0 || c.Radius != 5.0 {
+		t.Fatalf("CIRCLE: center=%v r=%v", c.Center, c.Radius)
 	}
 }
 
 func TestDecodeArcFromBits(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x11)
-	writeCommonHead(w, 8, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x11)
+	testsupport.WriteCommonHead(w, 8, 2)
 	w.B3BD(0, 0, 0)
 	w.BD(10.0)
 	w.BT(0)
@@ -115,20 +85,20 @@ func TestDecodeArcFromBits(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
-	ent, err := decodeArc(r, &head)
+	Head, _ := ParseEntityHead(r, 0, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
+	ent, err := decodeArc(r, &Head)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := ent.(*entArc)
-	if a.radius != 10.0 || a.angleStart != 0 || math.Abs(a.angleEnd-math.Pi/2) > 1e-9 {
-		t.Fatalf("ARC: r=%v a0=%v a1=%v", a.radius, a.angleStart, a.angleEnd)
+	a := ent.(*EntArc)
+	if a.Radius != 10.0 || a.AngleStart != 0 || math.Abs(a.AngleEnd-math.Pi/2) > 1e-9 {
+		t.Fatalf("ARC: r=%v a0=%v a1=%v", a.Radius, a.AngleStart, a.AngleEnd)
 	}
 }
 
 func TestDecodePointFromBits(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x1B)
-	writeCommonHead(w, 9, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x1B)
+	testsupport.WriteCommonHead(w, 9, 2)
 	w.B3BD(3.0, 4.0, 5.0)
 	w.BT(0) // thickness（BT：1 位标志）
 	w.BE(0, 0, 1)
@@ -136,20 +106,20 @@ func TestDecodePointFromBits(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
-	ent, err := decodePoint(r, &head)
+	Head, _ := ParseEntityHead(r, 0, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
+	ent, err := decodePoint(r, &Head)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := ent.(*entPoint)
-	if p.location.x != 3 || p.location.y != 4 || p.location.z != 5 {
-		t.Fatalf("POINT: %v", p.location)
+	P := ent.(*EntPoint)
+	if P.Location.X != 3 || P.Location.Y != 4 || P.Location.Z != 5 {
+		t.Fatalf("POINT: %v", P.Location)
 	}
 }
 
 func TestDecodeEllipseFromBits(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x23)
-	writeCommonHead(w, 10, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x23)
+	testsupport.WriteCommonHead(w, 10, 2)
 	w.B3BD(1, 1, 0) // center
 	w.B3BD(2, 0, 0) // major axis
 	w.B3BD(0, 0, 1) // extrusion（在 ratio 之前）
@@ -160,20 +130,20 @@ func TestDecodeEllipseFromBits(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
-	ent, err := decodeEllipse(r, &head)
+	Head, _ := ParseEntityHead(r, 0, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
+	ent, err := decodeEllipse(r, &Head)
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := ent.(*entEllipse)
-	if e.center.x != 1 || math.Abs(e.ratio-0.5) > 1e-9 || math.Abs(e.endAng-math.Pi) > 1e-9 {
-		t.Fatalf("ELLIPSE: ratio=%v end=%v", e.ratio, e.endAng)
+	e := ent.(*EntEllipse)
+	if e.Center.X != 1 || math.Abs(e.Ratio-0.5) > 1e-9 || math.Abs(e.EndAng-math.Pi) > 1e-9 {
+		t.Fatalf("ELLIPSE: ratio=%v end=%v", e.Ratio, e.EndAng)
 	}
 }
 
 func TestDecodeLwPolylineFromBits(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x4D)
-	writeCommonHead(w, 11, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x4D)
+	testsupport.WriteCommonHead(w, 11, 2)
 	w.BS(0) // flags：无可选段
 	w.BL(3) // 顶点数
 	w.RD(0)
@@ -186,20 +156,20 @@ func TestDecodeLwPolylineFromBits(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
-	ent, err := decodeLwPolyline(r, &head, 30, true)
+	Head, _ := ParseEntityHead(r, 0, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
+	ent, err := decodeLwPolyline(r, &Head, 30, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := ent.(*entLwPolyline)
-	if len(p.vertices) != 3 || p.vertices[2].x != 10 || p.vertices[2].y != 10 {
-		t.Fatalf("LWPOLYLINE: %v", p.vertices)
+	P := ent.(*EntLwPolyline)
+	if len(P.Vertices) != 3 || P.Vertices[2].X != 10 || P.Vertices[2].Y != 10 {
+		t.Fatalf("LWPOLYLINE: %v", P.Vertices)
 	}
 }
 
 func TestDecodeLwPolylineClosedWithBulges(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x4D)
-	writeCommonHead(w, 12, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x4D)
+	testsupport.WriteCommonHead(w, 12, 2)
 	w.BS(lwFlagHasNormal | lwFlagHasBulges) // extrusion + bulges
 	w.B3BD(0, 0, 1)                         // extrusion（spec FIELD_3BD，无 BE 默认前缀位）
 	// 位流顺序：numVerts → numBulges → numIDs → numWidths → 顶点 → bulges
@@ -217,31 +187,31 @@ func TestDecodeLwPolylineClosedWithBulges(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
-	ent, err := decodeLwPolyline(r, &head, 30, true)
+	Head, _ := ParseEntityHead(r, 0, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
+	ent, err := decodeLwPolyline(r, &Head, 30, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := ent.(*entLwPolyline)
-	if len(p.vertices) != 3 || len(p.bulges) != 3 || p.bulges[0] != 0.5 {
-		t.Fatalf("LWPOLYLINE verts=%d bulges=%v", len(p.vertices), p.bulges)
+	P := ent.(*EntLwPolyline)
+	if len(P.Vertices) != 3 || len(P.Bulges) != 3 || P.Bulges[0] != 0.5 {
+		t.Fatalf("LWPOLYLINE verts=%d bulges=%v", len(P.Vertices), P.Bulges)
 	}
-	if p.isClosedByGeometry() {
+	if P.IsClosedByGeometry() {
 		t.Fatal("首尾不重合不应判定闭合")
 	}
 	// 首尾重合 → 几何闭合
-	p.vertices = append(p.vertices, p.vertices[0])
-	if !p.isClosedByGeometry() {
+	P.Vertices = append(P.Vertices, P.Vertices[0])
+	if !P.IsClosedByGeometry() {
 		t.Fatal("首尾重合应判定闭合")
 	}
 }
 
 func TestDecodeTextFromBits(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x01)
-	writeCommonHead(w, 13, 2)
-	flags := uint8(textFlagNoElevation | textFlagNoAlign | textFlagNoOblique | textFlagNoWidth |
-		textFlagNoGen | textFlagNoHAlign | textFlagNoVAlign) // 仅 rotation + 必要字段
-	w.RC(flags)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x01)
+	testsupport.WriteCommonHead(w, 13, 2)
+	Flags := uint8(TextFlagNoElevation | TextFlagNoAlign | TextFlagNoOblique | TextFlagNoWidth |
+		TextFlagNoGen | TextFlagNoHAlign | TextFlagNoVAlign) // 仅 rotation + 必要字段
+	w.RC(Flags)
 	// 无 elevation
 	w.RD(1.0) // insertion x
 	w.RD(2.0) // insertion y
@@ -256,24 +226,24 @@ func TestDecodeTextFromBits(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
-	ent, err := decodeText(r, &head, 30)
+	Head, _ := ParseEntityHead(r, 0, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
+	ent, err := decodeText(r, &Head, 30)
 	if err != nil {
 		t.Fatal(err)
 	}
-	txt := ent.(*entText)
-	if txt.text != "Hello" || txt.insertion.x != 1.0 || txt.height != 2.5 {
-		t.Fatalf("TEXT: %q ins=%v h=%v", txt.text, txt.insertion, txt.height)
+	Txt := ent.(*EntText)
+	if Txt.Text != "Hello" || Txt.Insertion.X != 1.0 || Txt.Height != 2.5 {
+		t.Fatalf("TEXT: %q ins=%v h=%v", Txt.Text, Txt.Insertion, Txt.Height)
 	}
 	// 角度按弧度存储（渲染层转角度）
-	if math.Abs(txt.rotation-math.Pi/2) > 1e-9 {
-		t.Fatalf("TEXT rotation=%v", txt.rotation)
+	if math.Abs(Txt.Rotation-math.Pi/2) > 1e-9 {
+		t.Fatalf("TEXT rotation=%v", Txt.Rotation)
 	}
 }
 
 func TestDecodeInsertFromBits(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x07)
-	writeCommonHead(w, 14, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x07)
+	testsupport.WriteCommonHead(w, 14, 2)
 	w.B3BD(5, 6, 0) // position
 	w.BB(0x03)      // scale 全 1
 	w.BD(0)         // rotation
@@ -291,20 +261,20 @@ func TestDecodeInsertFromBits(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, dataEndBit, featMaterialFlags|featVisualStyles|featDSBinary)
+	Head, err := ParseEntityHead(r, dataEndBit, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeInsert(r, &head, container.VerR2013)
+	ent, err := DecodeInsert(r, &Head, container.VerR2013)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ins := ent.(*entInsert)
-	if ins.position.x != 5 || ins.position.y != 6 || ins.scale.x != 1 {
-		t.Fatalf("INSERT: pos=%v scale=%v", ins.position, ins.scale)
+	ins := ent.(*EntInsert)
+	if ins.Position.X != 5 || ins.Position.Y != 6 || ins.Scale.X != 1 {
+		t.Fatalf("INSERT: pos=%v scale=%v", ins.Position, ins.Scale)
 	}
-	if ins.blockHeader != 77 || ins.layer != 902 {
-		t.Fatalf("INSERT handle 流: blockHeader=%d layer=%d", ins.blockHeader, ins.layer)
+	if ins.BlockHeader != 77 || ins.Layer != 902 {
+		t.Fatalf("INSERT handle 流: blockHeader=%d layer=%d", ins.BlockHeader, ins.Layer)
 	}
 }
 
@@ -312,7 +282,7 @@ func TestReadHandleReferenceAllCodes(t *testing.T) {
 	cases := []struct {
 		code uint8
 		val  uint64
-		base uint64
+		Base uint64
 		want uint64
 	}{
 		{0x02, 5, 100, 5},   // 绝对
@@ -325,7 +295,7 @@ func TestReadHandleReferenceAllCodes(t *testing.T) {
 	}
 	for _, c := range cases {
 		r := bitstream.NewBitStream(testsupport.NewBitWriter().H(c.code, c.val).Bytes())
-		got, err := objrec.ReadHandleReference(r, c.base)
+		got, err := objrec.ReadHandleReference(r, c.Base)
 		if err != nil {
 			t.Fatalf("code=%#x: %v", c.code, err)
 		}
@@ -342,20 +312,20 @@ func TestReadHandleReferenceAllCodes(t *testing.T) {
 
 func TestCommonHeadScoreDiscrimination(t *testing.T) {
 	// handle 匹配的候选应显著优于不匹配的
-	good := commonEntityHead{handle: 42, ltypeScale: 1.0, entityMode: 2, color: entColor{hasIndex: true, index: 7}}
-	bad := commonEntityHead{handle: 99, ltypeScale: -1e300, entityMode: 9}
+	good := CommonEntityHead{Handle: 42, LtypeScale: 1.0, EntityMode: 2, Color: EntColor{HasIndex: true, Index: 7}}
+	bad := CommonEntityHead{Handle: 99, LtypeScale: -1e300, EntityMode: 9}
 	if commonHeadScore(&good, 42) <= commonHeadScore(&bad, 42) {
 		t.Fatalf("评分区分失败: good=%d bad=%d", commonHeadScore(&good, 42), commonHeadScore(&bad, 42))
 	}
 }
 
 func TestEntityGeometryScoreRejectsGarbage(t *testing.T) {
-	garbage := &entLine{start: point3{1e300, 2, 0}, end: point3{3, 4, 0}}
-	sane := &entLine{start: point3{1, 2, 0}, end: point3{3, 4, 0}}
-	if entityGeometryScore(garbage) >= entityGeometryScore(sane) {
+	garbage := &EntLine{Start: Point3{1e300, 2, 0}, End: Point3{3, 4, 0}}
+	sane := &EntLine{Start: Point3{1, 2, 0}, End: Point3{3, 4, 0}}
+	if EntityGeometryScore(garbage) >= EntityGeometryScore(sane) {
 		t.Fatal("垃圾几何评分应低于正常几何")
 	}
-	if entityGeometryScore(&entLine{start: point3{math.Inf(1), 0, 0}, end: point3{}}) >= 0 {
+	if EntityGeometryScore(&EntLine{Start: Point3{math.Inf(1), 0, 0}, End: Point3{}}) >= 0 {
 		t.Fatal("Inf 坐标应为负分")
 	}
 }

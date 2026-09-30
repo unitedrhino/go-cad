@@ -9,6 +9,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"image"
 	"image/color"
 	"testing"
@@ -198,16 +199,16 @@ func TestMTextBlockBounds(t *testing.T) {
 // linespace_factor 键带入 entMText.lineFactor（渲染行距口径的数据来源）。
 func TestMTextLineFactorDecodeWiring(t *testing.T) {
 	o := jsonObject{"linespace_factor": 0.9, "text": "x", "attachment": int64(1)}
-	m, ok := jsonBuildMText(o).(*entMText)
+	m, ok := jsonBuildMText(o).(*entity.EntMText)
 	if !ok {
 		t.Fatalf("jsonBuildMText 返回类型: %T", jsonBuildMText(o))
 	}
-	if m.lineFactor != 0.9 {
-		t.Fatalf("lineFactor=%v, 期望 0.9", m.lineFactor)
+	if m.LineFactor != 0.9 {
+		t.Fatalf("lineFactor=%v, 期望 0.9", m.LineFactor)
 	}
 	// 缺键 → 0（绘制侧按缺省行距兜底）
-	m2 := jsonBuildMText(jsonObject{"text": "x"}).(*entMText)
-	if m2.lineFactor != 0 {
-		t.Fatalf("缺键 lineFactor 应为 0，实际 %v", m2.lineFactor)
+	m2 := jsonBuildMText(jsonObject{"text": "x"}).(*entity.EntMText)
+	if m2.LineFactor != 0 {
+		t.Fatalf("缺键 lineFactor 应为 0，实际 %v", m2.LineFactor)
 	}
 }

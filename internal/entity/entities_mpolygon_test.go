@@ -3,7 +3,7 @@
 // 图案定义段与 MPOLYGON 专属字段（style 双读/x_dir/CMC 占位）。
 // MPOLYGON 无上游语料实例（dwg.spec DEBUG_CLASSES 分支），按 spec 逐位
 // 构造并验证解码一致性。
-package cad
+package entity
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
@@ -14,10 +14,10 @@ import (
 
 // writeMpolygonHead 写 R2004+ 公共头与 MPOLYGON 主体首段（style + 渐变段 +
 // 高程/挤出/名称占位/填充标志）。R2013 口径（streamName，名称零占位）。
-func writeMpolygonHead(w *testsupport.BitWriter, handle uint64, style uint16) {
-	writeEntityPrefix(w, 500)
-	writeCommonHead(w, handle, 2)
-	w.BS(style)     // 主体首 style
+func writeMpolygonHead(w *testsupport.BitWriter, Handle uint64, Style uint16) {
+	testsupport.WriteEntityPrefix(w, 500)
+	testsupport.WriteCommonHead(w, Handle, 2)
+	w.BS(Style)     // 主体首 style
 	w.BL(0)         // is_gradient_fill=0
 	w.BL(0)         // reserved
 	w.BD(0)         // gradient angle
@@ -86,61 +86,61 @@ func TestDecodeMpolygonFromBits(t *testing.T) {
 	// handle 流（xdic + layer）
 	w.H(5, 30)
 	w.H(5, 31)
-	const objSizeBit = uint64(0) // 由解码断言单独核对路径，不依赖 objSizeBit
+	const ObjSizeBit = uint64(0) // 由解码断言单独核对路径，不依赖 objSizeBit
 	r := bitstream.NewBitStream(w.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
+	Head, err := ParseEntityHead(r, 0, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	head.objSizeBit = objSizeBit
-	ent, err := decodeMpolygonVer(r, &head, container.VerR2013, 30)
+	Head.ObjSizeBit = ObjSizeBit
+	ent, err := decodeMpolygonVer(r, &Head, container.VerR2013, 30)
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := ent.(*entMpolygon)
-	if m.style != 1 || m.styleTail != 0 || m.hatch.patternType != 1 {
+	m := ent.(*EntMpolygon)
+	if m.Style != 1 || m.StyleTail != 0 || m.Hatch.PatternType != 1 {
 		t.Fatalf("MPOLYGON style/pattern: style=%d tail=%d pattern=%d",
-			m.style, m.styleTail, m.hatch.patternType)
+			m.Style, m.StyleTail, m.Hatch.PatternType)
 	}
-	if m.hatch.elevation != 2.5 || !m.hatch.solidFill {
-		t.Fatalf("MPOLYGON 主体: elevation=%v solid=%v", m.hatch.elevation, m.hatch.solidFill)
+	if m.Hatch.Elevation != 2.5 || !m.Hatch.SolidFill {
+		t.Fatalf("MPOLYGON 主体: elevation=%v solid=%v", m.Hatch.Elevation, m.Hatch.SolidFill)
 	}
-	if len(m.hatch.paths) != 2 {
-		t.Fatalf("MPOLYGON 路径数: %d", len(m.hatch.paths))
+	if len(m.Hatch.Paths) != 2 {
+		t.Fatalf("MPOLYGON 路径数: %d", len(m.Hatch.Paths))
 	}
-	p1 := m.hatch.paths[0]
-	if p1.isPolyline || len(p1.segs) != 4 {
-		t.Fatalf("路径 1: polyline=%v segs=%d", p1.isPolyline, len(p1.segs))
+	P1 := m.Hatch.Paths[0]
+	if P1.IsPolyline || len(P1.Segs) != 4 {
+		t.Fatalf("路径 1: polyline=%v segs=%d", P1.IsPolyline, len(P1.Segs))
 	}
 	wantTypes := [4]uint8{1, 2, 3, 4}
-	for i, seg := range p1.segs {
-		if seg.curveType != wantTypes[i] {
-			t.Fatalf("路径 1 seg[%d] 类型: %d", i, seg.curveType)
+	for i, seg := range P1.Segs {
+		if seg.CurveType != wantTypes[i] {
+			t.Fatalf("路径 1 seg[%d] 类型: %d", i, seg.CurveType)
 		}
 	}
-	if p1.segs[0].first.x != 0 || p1.segs[0].second.x != 10 {
-		t.Fatalf("路径 1 直线段端点: %v→%v", p1.segs[0].first, p1.segs[0].second)
+	if P1.Segs[0].First.X != 0 || P1.Segs[0].Second.X != 10 {
+		t.Fatalf("路径 1 直线段端点: %v→%v", P1.Segs[0].First, P1.Segs[0].Second)
 	}
-	if p1.segs[1].radius != 5 || !p1.segs[1].ccw {
-		t.Fatalf("路径 1 圆弧段: r=%v ccw=%v", p1.segs[1].radius, p1.segs[1].ccw)
+	if P1.Segs[1].Radius != 5 || !P1.Segs[1].Ccw {
+		t.Fatalf("路径 1 圆弧段: r=%v ccw=%v", P1.Segs[1].Radius, P1.Segs[1].Ccw)
 	}
-	if p1.segs[2].ratio != 0.5 || p1.segs[2].endpoint.x != 5 {
-		t.Fatalf("路径 1 椭圆段: ratio=%v ep=%v", p1.segs[2].ratio, p1.segs[2].endpoint)
+	if P1.Segs[2].Ratio != 0.5 || P1.Segs[2].Endpoint.X != 5 {
+		t.Fatalf("路径 1 椭圆段: ratio=%v ep=%v", P1.Segs[2].Ratio, P1.Segs[2].Endpoint)
 	}
-	if p1.segs[3].degree != 3 || len(p1.segs[3].ctrl) != 2 {
-		t.Fatalf("路径 1 样条段: degree=%d ctrl=%d", p1.segs[3].degree, len(p1.segs[3].ctrl))
+	if P1.Segs[3].Degree != 3 || len(P1.Segs[3].Ctrl) != 2 {
+		t.Fatalf("路径 1 样条段: degree=%d ctrl=%d", P1.Segs[3].Degree, len(P1.Segs[3].Ctrl))
 	}
-	if len(p1.points) == 0 {
+	if len(P1.Points) == 0 {
 		t.Fatal("路径 1 细分点列为空")
 	}
-	p2 := m.hatch.paths[1]
-	if !p2.isPolyline || !p2.closed || len(p2.polyVerts) != 3 {
-		t.Fatalf("路径 2: polyline=%v closed=%v verts=%d", p2.isPolyline, p2.closed, len(p2.polyVerts))
+	P2 := m.Hatch.Paths[1]
+	if !P2.IsPolyline || !P2.Closed || len(P2.PolyVerts) != 3 {
+		t.Fatalf("路径 2: polyline=%v closed=%v verts=%d", P2.IsPolyline, P2.Closed, len(P2.PolyVerts))
 	}
-	if m.xDir.x != 1 || m.xDir.y != 0 {
-		t.Fatalf("MPOLYGON x_dir: %v", m.xDir)
+	if m.XDir.X != 1 || m.XDir.Y != 0 {
+		t.Fatalf("MPOLYGON x_dir: %v", m.XDir)
 	}
 }
 
@@ -148,8 +148,8 @@ func TestDecodeMpolygonFromBits(t *testing.T) {
 // 渐变段全零 + 图案定义线段（angle/scale/double/定义线含划线数组）。
 // 用 R2007 口径（名称走字符串区，主流程零占位）。
 func TestDecodeMpolygonPatternFromBits(t *testing.T) {
-	w2 := writeEntityPrefix(testsupport.NewBitWriter(), 500)
-	writeCommonHead(w2, 701, 2)
+	w2 := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 500)
+	testsupport.WriteCommonHead(w2, 701, 2)
 	w2.BS(0)         // style=0
 	w2.BL(0)         // is_gradient_fill
 	w2.BL(0)         // reserved
@@ -184,34 +184,34 @@ func TestDecodeMpolygonPatternFromBits(t *testing.T) {
 	r := bitstream.NewBitStream(w2.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
+	Head, err := ParseEntityHead(r, 0, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeMpolygonVer(r, &head, container.VerR2007, 30)
+	ent, err := decodeMpolygonVer(r, &Head, container.VerR2007, 30)
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := ent.(*entMpolygon)
-	if m.style != 0 || m.styleTail != 2 || m.hatch.patternType != 2 {
+	m := ent.(*EntMpolygon)
+	if m.Style != 0 || m.StyleTail != 2 || m.Hatch.PatternType != 2 {
 		t.Fatalf("MPOLYGON pattern style: style=%d tail=%d pattern=%d",
-			m.style, m.styleTail, m.hatch.patternType)
+			m.Style, m.StyleTail, m.Hatch.PatternType)
 	}
-	if m.hatch.solidFill {
+	if m.Hatch.SolidFill {
 		t.Fatal("MPOLYGON 应为图案填充")
 	}
-	if m.hatch.angle != 45.0 || m.hatch.scaleSpacing != 2.0 || m.hatch.doubleFlag {
+	if m.Hatch.Angle != 45.0 || m.Hatch.ScaleSpacing != 2.0 || m.Hatch.DoubleFlag {
 		t.Fatalf("MPOLYGON 图案段: angle=%v scale=%v double=%v",
-			m.hatch.angle, m.hatch.scaleSpacing, m.hatch.doubleFlag)
+			m.Hatch.Angle, m.Hatch.ScaleSpacing, m.Hatch.DoubleFlag)
 	}
-	if len(m.hatch.deflines) != 1 {
-		t.Fatalf("MPOLYGON 定义线数: %d", len(m.hatch.deflines))
+	if len(m.Hatch.Deflines) != 1 {
+		t.Fatalf("MPOLYGON 定义线数: %d", len(m.Hatch.Deflines))
 	}
-	dl := m.hatch.deflines[0]
-	if dl.angle != 30.0 || len(dl.dashes) != 2 || dl.dashes[1] != 0.25 {
-		t.Fatalf("MPOLYGON 定义线: angle=%v dashes=%v", dl.angle, dl.dashes)
+	dl := m.Hatch.Deflines[0]
+	if dl.Angle != 30.0 || len(dl.Dashes) != 2 || dl.Dashes[1] != 0.25 {
+		t.Fatalf("MPOLYGON 定义线: angle=%v dashes=%v", dl.Angle, dl.Dashes)
 	}
-	if m.xDir.x != 1 || m.xDir.y != 0 {
-		t.Fatalf("MPOLYGON x_dir: %v", m.xDir)
+	if m.XDir.X != 1 || m.XDir.Y != 0 {
+		t.Fatalf("MPOLYGON x_dir: %v", m.XDir)
 	}
 }

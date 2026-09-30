@@ -7,6 +7,7 @@ package cad
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -280,10 +281,10 @@ func TestAPITextsConsistency(t *testing.T) {
 		for _, ent := range doc.modelSpace {
 			var txt string
 			switch e := ent.(type) {
-			case *entText:
-				txt = stripMTextFormat(e.text)
-			case *entMText:
-				txt = stripMTextFormat(e.text)
+			case *entity.EntText:
+				txt = stripMTextFormat(e.Text)
+			case *entity.EntMText:
+				txt = stripMTextFormat(e.Text)
 			default:
 				continue
 			}

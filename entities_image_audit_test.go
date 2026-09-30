@@ -11,6 +11,7 @@ package cad
 
 import (
 	"encoding/json"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"os"
 	"regexp"
 	"strings"
@@ -105,7 +106,7 @@ func TestImageEntityAudit(t *testing.T) {
 					continue
 				}
 				total++
-				got := entityField(ent, k)
+				got := entity.EntityField(ent, k)
 				if got == nil {
 					// 公共键（bitsize/size/preview 等）允许缺失，仅计入汇总
 					if isImageCoreKey(k) {
@@ -127,7 +128,7 @@ func TestImageEntityAudit(t *testing.T) {
 			// R2010+ 的 clip_mode 键单独核对（不在 gold 键集时跳过）
 			if v, ok := flat["clip_mode"]; ok {
 				coreChecked++
-				if got := entityField(ent, "clip_mode"); got == nil || !auditValueMatch("clip_mode", got, v) {
+				if got := entity.EntityField(ent, "clip_mode"); got == nil || !auditValueMatch("clip_mode", got, v) {
 					t.Errorf("  [%s] h=%d 核心键 clip_mode 不符: got=%v want=%v", c.name, h, got, v)
 				}
 			}

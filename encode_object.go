@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"os"
 	"strings"
 )
@@ -371,7 +372,7 @@ func gfWritePoint2RD(w *bitstream.EncWriter, g *objGeneric, key string) {
 // gfWritePoint3 3BD 点（gfRead Point3 的逆）。
 func gfWritePoint3(w *bitstream.EncWriter, g *objGeneric, key string) {
 	p := gfPoint(g, key, 3)
-	write3BD(w, point3{p[0], p[1], p[2]})
+	write3BD(w, entity.Point3{p[0], p[1], p[2]})
 }
 
 // gfWriteCommonTableFlags COMMON_TABLE_FLAGS 写出（readCommonTableFlags

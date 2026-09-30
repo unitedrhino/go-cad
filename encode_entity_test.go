@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"testing"
 )
@@ -84,40 +85,40 @@ func TestEntityRoundTripSynthetic(t *testing.T) {
 	}
 	rr := rec.BodyBitStream()
 	rr.SetBitPos(h.DataStartBit)
-	e1, err := decodeEntityFieldsVer(rr, h, 50, rec.Size, "LINE", 0x13, container.VerR2000, 0, nil, "")
+	e1, err := entity.DecodeEntityFieldsVer(rr, h, 50, rec.Size, "LINE", 0x13, container.VerR2000, 0, nil, "")
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
-	ln, ok := e1.(*entLine)
+	ln, ok := e1.(*entity.EntLine)
 	if !ok {
 		t.Fatalf("类型: %T != *entLine", e1)
 	}
-	if ln.handle != 50 {
-		t.Errorf("handle: %d != 50", ln.handle)
+	if ln.Handle != 50 {
+		t.Errorf("handle: %d != 50", ln.Handle)
 	}
-	if ln.start.x != 1.0 || ln.start.y != 3.0 || ln.start.z != 0.0 ||
-		ln.end.x != 2.0 || ln.end.y != 4.0 || ln.end.z != 0.0 {
-		t.Errorf("几何: start=%v end=%v", ln.start, ln.end)
+	if ln.Start.X != 1.0 || ln.Start.Y != 3.0 || ln.Start.Z != 0.0 ||
+		ln.End.X != 2.0 || ln.End.Y != 4.0 || ln.End.Z != 0.0 {
+		t.Errorf("几何: start=%v end=%v", ln.Start, ln.End)
 	}
-	if ln.color.index != 7 {
-		t.Errorf("color.index: %d != 7", ln.color.index)
+	if ln.Color.Index != 7 {
+		t.Errorf("color.index: %d != 7", ln.Color.Index)
 	}
-	if ln.layer != 11 {
-		t.Errorf("layer: %d != 11", ln.layer)
+	if ln.Layer != 11 {
+		t.Errorf("layer: %d != 11", ln.Layer)
 	}
 	// 位串收集完整性：preBits = BS 类型码前导位，RawHandleBits 从
 	// handle 流起点到记录尾
-	b := entBase(e1)
-	if uint64(len(b.preBits)) != h.DataStartBit {
-		t.Errorf("preBits 位长: %d != %d", len(b.preBits), h.DataStartBit)
+	b := entity.EntityBase(e1)
+	if uint64(len(b.PreBits)) != h.DataStartBit {
+		t.Errorf("preBits 位长: %d != %d", len(b.PreBits), h.DataStartBit)
 	}
-	if b.objSizeBit != datEnd {
-		t.Errorf("objSizeBit: %d != %d", b.objSizeBit, datEnd)
+	if b.ObjSizeBit != datEnd {
+		t.Errorf("objSizeBit: %d != %d", b.ObjSizeBit, datEnd)
 	}
 	if uint64(len(b.RawHandleBits)) != uint64(len(original))*8-datEnd {
 		t.Errorf("RawHandleBits 位长: %d != %d", len(b.RawHandleBits), uint64(len(original))*8-datEnd)
 	}
-	if b.r2010Plus {
+	if b.R2010Plus {
 		t.Errorf("r2010Plus 应为 false")
 	}
 	// 回放编码：要求与构造位流逐字节一致（位级门禁）
@@ -139,23 +140,23 @@ func TestEntityRoundTripSynthetic(t *testing.T) {
 	}
 	rr2 := rec2.BodyBitStream()
 	rr2.SetBitPos(h2.DataStartBit)
-	e2, err := decodeEntityFieldsVer(rr2, h2, 50, rec2.Size, "LINE", 0x13, container.VerR2000, 0, nil, "")
+	e2, err := entity.DecodeEntityFieldsVer(rr2, h2, 50, rec2.Size, "LINE", 0x13, container.VerR2000, 0, nil, "")
 	if err != nil {
 		t.Fatalf("重解码失败: %v", err)
 	}
-	ln2 := e2.(*entLine)
-	if ln2.handle != ln.handle || ln2.layer != ln.layer || ln2.owner != ln.owner ||
-		ln2.start != ln.start || ln2.end != ln.end || ln2.color.index != ln.color.index {
+	ln2 := e2.(*entity.EntLine)
+	if ln2.Handle != ln.Handle || ln2.Layer != ln.Layer || ln2.Owner != ln.Owner ||
+		ln2.Start != ln.Start || ln2.End != ln.End || ln2.Color.Index != ln.Color.Index {
 		t.Errorf("重解码字段不一致: %+v vs %+v", ln2, ln)
 	}
 	// entityField 键级一致（got==nil 的键跳过，与审计口径一致）
 	for _, k := range []string{"handle", "entmode", "color", "start", "end", "thickness", "z_is_zero", "bitsize"} {
-		v1 := entityField(e1, k)
+		v1 := entity.EntityField(e1, k)
 		if v1 == nil {
 			continue
 		}
-		if !entityValueEqual(v1, entityField(e2, k)) {
-			t.Errorf("entityField %s: %v != %v", k, entityField(e2, k), v1)
+		if !entity.EntityValueEqual(v1, entity.EntityField(e2, k)) {
+			t.Errorf("entityField %s: %v != %v", k, entity.EntityField(e2, k), v1)
 		}
 	}
 }

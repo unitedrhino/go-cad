@@ -12,6 +12,7 @@ package cad
 import (
 	"bufio"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
@@ -833,9 +834,9 @@ func TestWriteDXFImage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var src *entImage
+	var src *entity.EntImage
 	for _, e := range doc.modelSpace {
-		if im, ok := e.(*entImage); ok {
+		if im, ok := e.(*entity.EntImage); ok {
 			src = im
 			break
 		}
@@ -852,39 +853,39 @@ func TestWriteDXFImage(t *testing.T) {
 	start := -1
 	for i := range codes {
 		if codes[i] == 0 && vals[i] == "IMAGE" && codes[i+1] == 5 {
-			if h, err := strconv.ParseUint(strings.TrimSpace(vals[i+1]), 16, 64); err == nil && h == src.handle {
+			if h, err := strconv.ParseUint(strings.TrimSpace(vals[i+1]), 16, 64); err == nil && h == src.Handle {
 				start = i
 				break
 			}
 		}
 	}
 	if start < 0 {
-		t.Fatalf("输出缺 IMAGE h=%X", src.handle)
+		t.Fatalf("输出缺 IMAGE h=%X", src.Handle)
 	}
 	g := dxfCollectEntityPairs(codes, vals, start)
 	if len(g.valsOf(100)) < 2 || g.valsOf(100)[1] != "AcDbRasterImage" {
 		t.Errorf("子类标记不符: %v", g.valsOf(100))
 	}
-	if v := mustF(g.first(90)); v != float64(src.classVersion) {
-		t.Errorf("90 class_version=%v（期望 %d）", v, src.classVersion)
+	if v := mustF(g.first(90)); v != float64(src.ClassVersion) {
+		t.Errorf("90 class_version=%v（期望 %d）", v, src.ClassVersion)
 	}
-	if v := mustF(g.first(10)); math.Abs(v-src.pt0.x) > 1e-9 {
-		t.Errorf("10 pt0.x=%v（期望 %v）", v, src.pt0.x)
+	if v := mustF(g.first(10)); math.Abs(v-src.Pt0.X) > 1e-9 {
+		t.Errorf("10 pt0.x=%v（期望 %v）", v, src.Pt0.X)
 	}
-	if v := mustF(g.first(13)); math.Abs(v-src.imageSize.x) > 1e-9 {
-		t.Errorf("13 image_size.x=%v（期望 %v）", v, src.imageSize.x)
+	if v := mustF(g.first(13)); math.Abs(v-src.ImageSize.X) > 1e-9 {
+		t.Errorf("13 image_size.x=%v（期望 %v）", v, src.ImageSize.X)
 	}
-	if v := mustF(g.first(70)); v != float64(src.displayProps) {
-		t.Errorf("70 display_props=%v（期望 %d）", v, src.displayProps)
+	if v := mustF(g.first(70)); v != float64(src.DisplayProps) {
+		t.Errorf("70 display_props=%v（期望 %d）", v, src.DisplayProps)
 	}
-	if v := mustF(g.first(280)); v != float64(boolToInt(src.clipping)) {
-		t.Errorf("280 clipping=%v（期望 %d）", v, boolToInt(src.clipping))
+	if v := mustF(g.first(280)); v != float64(boolToInt(src.Clipping)) {
+		t.Errorf("280 clipping=%v（期望 %d）", v, boolToInt(src.Clipping))
 	}
-	if v := mustF(g.first(281)); v != float64(src.brightness) {
-		t.Errorf("281 brightness=%v（期望 %d）", v, src.brightness)
+	if v := mustF(g.first(281)); v != float64(src.Brightness) {
+		t.Errorf("281 brightness=%v（期望 %d）", v, src.Brightness)
 	}
-	if v := mustF(g.first(71)); v != float64(src.clipBoundaryType) {
-		t.Errorf("71 clip_boundary_type=%v（期望 %d）", v, src.clipBoundaryType)
+	if v := mustF(g.first(71)); v != float64(src.ClipBoundaryType) {
+		t.Errorf("71 clip_boundary_type=%v（期望 %d）", v, src.ClipBoundaryType)
 	}
 	// dxf2dwg 读回闭环
 	if tool := findDxf2dwg(); tool != "" {
@@ -921,9 +922,9 @@ func TestWriteDXFWipeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var src *entWipeout
+	var src *entity.EntWipeout
 	for _, e := range doc.modelSpace {
-		if w, ok := e.(*entWipeout); ok {
+		if w, ok := e.(*entity.EntWipeout); ok {
 			src = w
 			break
 		}
@@ -939,7 +940,7 @@ func TestWriteDXFWipeout(t *testing.T) {
 	codes, vals := parseDXFGroups(t, []byte(buf.String()))
 	for i := range codes {
 		if codes[i] == 0 && vals[i] == "WIPEOUT" && codes[i+1] == 5 {
-			if h, _ := strconv.ParseUint(strings.TrimSpace(vals[i+1]), 16, 64); h != src.handle {
+			if h, _ := strconv.ParseUint(strings.TrimSpace(vals[i+1]), 16, 64); h != src.Handle {
 				continue
 			}
 		} else {
@@ -955,7 +956,7 @@ func TestWriteDXFWipeout(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("输出缺 WIPEOUT h=%X", src.handle)
+		t.Fatalf("输出缺 WIPEOUT h=%X", src.Handle)
 	}
 }
 
@@ -1021,9 +1022,9 @@ func TestWriteDXFViewport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var src *entViewport
+	var src *entity.EntViewport
 	for _, e := range doc.modelSpace {
-		if vp, ok := e.(*entViewport); ok {
+		if vp, ok := e.(*entity.EntViewport); ok {
 			src = vp
 			break
 		}
@@ -1047,32 +1048,32 @@ func TestWriteDXFViewport(t *testing.T) {
 		t.Fatal("输出缺 VIEWPORT")
 	}
 	g := dxfCollectEntityPairs(codes, vals, start)
-	if v := mustF(g.first(40)); math.Abs(v-src.width) > 1e-9 {
-		t.Errorf("40 width=%v（期望 %v）", v, src.width)
+	if v := mustF(g.first(40)); math.Abs(v-src.Width) > 1e-9 {
+		t.Errorf("40 width=%v（期望 %v）", v, src.Width)
 	}
-	if v := mustF(g.first(41)); math.Abs(v-src.height) > 1e-9 {
-		t.Errorf("41 height=%v（期望 %v）", v, src.height)
+	if v := mustF(g.first(41)); math.Abs(v-src.Height) > 1e-9 {
+		t.Errorf("41 height=%v（期望 %v）", v, src.Height)
 	}
 	if v := mustF(g.first(68)); v != 0 || mustF(g.first(69)) != 0 {
 		t.Errorf("68/69 期望 0/0 得 %v/%v", mustF(g.first(68)), mustF(g.first(69)))
 	}
-	if v := mustF(g.first(72)); v != float64(src.circleZoom) {
-		t.Errorf("72 circle_zoom=%v（期望 %d）", v, src.circleZoom)
+	if v := mustF(g.first(72)); v != float64(src.CircleZoom) {
+		t.Errorf("72 circle_zoom=%v（期望 %d）", v, src.CircleZoom)
 	}
-	if v := mustF(g.first(90)); v != float64(src.statusFlag) {
-		t.Errorf("90 status=%v（期望 %d）", v, src.statusFlag)
+	if v := mustF(g.first(90)); v != float64(src.StatusFlag) {
+		t.Errorf("90 status=%v（期望 %d）", v, src.StatusFlag)
 	}
-	if v := mustF(g.first(281)); v != float64(src.renderMode) {
-		t.Errorf("281 render_mode=%v（期望 %d）", v, src.renderMode)
+	if v := mustF(g.first(281)); v != float64(src.RenderMode) {
+		t.Errorf("281 render_mode=%v（期望 %d）", v, src.RenderMode)
 	}
-	if v := mustF(g.first(146)); math.Abs(v-src.ucsElevation) > 1e-9 {
-		t.Errorf("146 elevation=%v（期望 %v）", v, src.ucsElevation)
+	if v := mustF(g.first(146)); math.Abs(v-src.UcsElevation) > 1e-9 {
+		t.Errorf("146 elevation=%v（期望 %v）", v, src.UcsElevation)
 	}
-	if v := mustF(g.first(111)); math.Abs(v-src.ucsxdir.x) > 1e-9 {
-		t.Errorf("111 ucsxdir.x=%v（期望 %v）", v, src.ucsxdir.x)
+	if v := mustF(g.first(111)); math.Abs(v-src.Ucsxdir.X) > 1e-9 {
+		t.Errorf("111 ucsxdir.x=%v（期望 %v）", v, src.Ucsxdir.X)
 	}
-	if v := mustF(g.first(45)); math.Abs(v-src.viewSize) > 1e-9 {
-		t.Errorf("45 view_size=%v（期望 %v）", v, src.viewSize)
+	if v := mustF(g.first(45)); math.Abs(v-src.ViewSize) > 1e-9 {
+		t.Errorf("45 view_size=%v（期望 %v）", v, src.ViewSize)
 	}
 	if tool := findDxf2dwg(); tool != "" {
 		dxfPath := filepath.Join(t.TempDir(), "vp.dxf")
@@ -1116,9 +1117,9 @@ func TestWriteDXFPfaceMesh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var pf *entPolylinePface
+	var pf *entity.EntPolylinePface
 	for _, e := range doc.modelSpace {
-		if p, ok := e.(*entPolylinePface); ok {
+		if p, ok := e.(*entity.EntPolylinePface); ok {
 			pf = p
 			break
 		}
@@ -1168,15 +1169,15 @@ func TestWriteDXFPfaceMesh(t *testing.T) {
 		t.Errorf("面记录 73 索引=%v（期望 3）", v)
 	}
 	// MESH：单元级构造（顶点实体经 owner 归组与 ownedHandles 吞集）
-	mesh := &entPolylineMesh{
-		baseEntity: baseEntity{handle: 0x99, layer: 0, mode: 2},
-		flags:      16, mVertexCount: 2, nVertexCount: 2,
-		mDensity: 6, nDensity: 6, curveType: 0,
-		ownedHandles: []uint64{0x9A},
+	mesh := &entity.EntPolylineMesh{
+		BaseEntity: entity.BaseEntity{Handle: 0x99, Layer: 0, Mode: 2},
+		Flags:      16, MVertexCount: 2, NVertexCount: 2,
+		MDensity: 6, NDensity: 6, CurveType: 0,
+		OwnedHandles: []uint64{0x9A},
 	}
-	vert := &entVertexPface{
-		baseEntity: baseEntity{handle: 0x9A, owner: 0x99, mode: 0},
-		flag:       192, position: point3{1, 2, 3},
+	vert := &entity.EntVertexPface{
+		BaseEntity: entity.BaseEntity{Handle: 0x9A, Owner: 0x99, Mode: 0},
+		Flag:       192, Position: entity.Point3{1, 2, 3},
 	}
 	meshDoc := &Document{version: container.VerR2000}
 	meshDoc.modelSpace = []any{mesh, vert}
@@ -1274,9 +1275,9 @@ func acisSatSample() string {
 // 如实跳过数据段（骨架保留），注释见 writeAcis。
 func TestWriteDXFAcis(t *testing.T) {
 	sat := acisSatSample()
-	body := &entAcis{
-		baseEntity: baseEntity{handle: 0x77, layer: 0, mode: 2},
-		kind:       "3DSOLID", version: 1, acisData: []byte(sat),
+	body := &entity.EntAcis{
+		BaseEntity: entity.BaseEntity{Handle: 0x77, Layer: 0, Mode: 2},
+		Kind:       "3DSOLID", Version: 1, AcisData: []byte(sat),
 	}
 	doc := &Document{version: container.VerR2000}
 	doc.modelSpace = []any{body}
@@ -1363,16 +1364,16 @@ func TestParseDXFAcis(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, ok := dxfSyntheticByName(t, doc, "*cad.entAcis").(*entAcis)
+	a, ok := dxfSyntheticByName(t, doc, "*entity.EntAcis").(*entity.EntAcis)
 	if !ok {
 		t.Fatal("类型不符")
 	}
-	if a.kind != "3DSOLID" || a.acisEmpty || a.version != 1 {
-		t.Fatalf("基础字段不符: kind=%s empty=%v ver=%d", a.kind, a.acisEmpty, a.version)
+	if a.Kind != "3DSOLID" || a.AcisEmpty || a.Version != 1 {
+		t.Fatalf("基础字段不符: kind=%s empty=%v ver=%d", a.Kind, a.AcisEmpty, a.Version)
 	}
 	want := "ACIS 11 Sat File\nEnd of ACIS data\n"
-	if string(a.acisData) != want {
-		t.Errorf("SAT 明文不符:\n got=%q\nwant=%q", a.acisData, want)
+	if string(a.AcisData) != want {
+		t.Errorf("SAT 明文不符:\n got=%q\nwant=%q", a.AcisData, want)
 	}
 }
 
@@ -1386,9 +1387,9 @@ func TestWriteDXFOle2Frame(t *testing.T) {
 	for i := range data {
 		data[i] = byte(i)
 	}
-	ole := &entOle2Frame{
-		baseEntity: baseEntity{handle: 0x31, layer: 0, mode: 2},
-		oleType:    1, mode: 0, lockAspect: 1, dataSize: uint32(len(data)), data: data,
+	ole := &entity.EntOle2Frame{
+		BaseEntity: entity.BaseEntity{Handle: 0x31, Layer: 0, Mode: 2},
+		OleType:    1, Mode: 0, LockAspect: 1, DataSize: uint32(len(data)), Data: data,
 	}
 	doc := &Document{version: container.VerR2000}
 	doc.modelSpace = []any{ole}
@@ -1441,11 +1442,11 @@ func TestWriteDXFOle2Frame(t *testing.T) {
 func TestWriteDXFProxyEntity(t *testing.T) {
 	proxyData := []byte{0xDE, 0xAD, 0xBE, 0xEF}
 	rawBits := []byte{0x01, 0x02, 0x03} // 17 位（1 字节余数）
-	px := &entProxyEntity{
-		baseEntity: baseEntity{handle: 0x41, layer: 0, mode: 2},
-		proxyID:    499, version: 0x0F1B, fromDxf: false,
-		proxyDataSize: uint32(len(proxyData)), proxyData: proxyData,
-		dataNumBits: 17, data: rawBits,
+	px := &entity.EntProxyEntity{
+		BaseEntity: entity.BaseEntity{Handle: 0x41, Layer: 0, Mode: 2},
+		ProxyID:    499, Version: 0x0F1B, FromDxf: false,
+		ProxyDataSize: uint32(len(proxyData)), ProxyData: proxyData,
+		DataNumBits: 17, Data: rawBits,
 	}
 	doc := &Document{version: container.VerR2000}
 	doc.modelSpace = []any{px}

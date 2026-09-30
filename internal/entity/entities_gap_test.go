@@ -1,6 +1,6 @@
 // entities_gap_test.go 实体侧 spec 查漏补缺批次（批次 G）新增实体的
 // 单元测试：合成位流解码验证 + LibreDWG 官方语料对照。
-package cad
+package entity
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
@@ -13,17 +13,17 @@ import (
 
 // decodeEntityByName 经 decodeEntityByType 分发解码合成位流实体，
 // 同时覆盖类型码 → 类型名 → 解码器分发的完整链路。
-func decodeEntityByName(t *testing.T, w *testsupport.BitWriter, typeCode uint16, dynamic map[uint16]string) any {
+func decodeEntityByName(t *testing.T, w *testsupport.BitWriter, TypeCode uint16, dynamic map[uint16]string) any {
 	t.Helper()
 	r := bitstream.NewBitStream(w.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
+	Head, err := ParseEntityHead(r, 0, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
 	if err != nil {
 		t.Fatalf("公共头解析失败: %v", err)
 	}
-	h := objrec.ObjHeader{TypeCode: typeCode}
-	ent, err := decodeEntityByTypeVer(r, &head, h, head.handle, container.VerR2018, h.TypeCode, dynamic, "")
+	h := objrec.ObjHeader{TypeCode: TypeCode}
+	ent, err := decodeEntityByTypeVer(r, &Head, h, Head.Handle, container.VerR2018, h.TypeCode, dynamic, "")
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
@@ -34,8 +34,8 @@ func decodeEntityByName(t *testing.T, w *testsupport.BitWriter, typeCode uint16,
 // COMMON_ENTITY_DIMENSION 公共段 + def_pt/chord_pt/jog_angle/ovr_center/
 // jog_pt 专属尾部，经 decodeEntityByType 动态类名分发链路解码。
 func TestDecodeLargeRadialDimR2018(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x1F4)
-	writeCommonHead(w, 900, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x1F4)
+	testsupport.WriteCommonHead(w, 900, 2)
 	w.RC(0)          // class_version
 	w.B3BD(0, 0, 1)  // extrusion
 	w.RD(100).RD(50) // text midpoint
@@ -64,33 +64,33 @@ func TestDecodeLargeRadialDimR2018(t *testing.T) {
 		t.Fatal("isEntityType 未识别 LARGE_RADIAL_DIMENSION")
 	}
 	ent := decodeEntityByName(t, w, 0x1F4, dynamic)
-	d, ok := ent.(*entDimension)
+	d, ok := ent.(*EntDimension)
 	if !ok {
 		t.Fatalf("类型: %T", ent)
 	}
-	if d.point13.x != 30 || d.point13.y != 40 || d.point14.x != 60 || d.point14.y != 80 {
-		t.Fatalf("def_pt/chord_pt: p13=%v p14=%v", d.point13, d.point14)
+	if d.Point13.X != 30 || d.Point13.Y != 40 || d.Point14.X != 60 || d.Point14.Y != 80 {
+		t.Fatalf("def_pt/chord_pt: p13=%v p14=%v", d.Point13, d.Point14)
 	}
-	if math.Abs(d.extLineRotation-math.Pi/4) > 1e-9 {
-		t.Fatalf("jog_angle: %v", d.extLineRotation)
+	if math.Abs(d.ExtLineRotation-math.Pi/4) > 1e-9 {
+		t.Fatalf("jog_angle: %v", d.ExtLineRotation)
 	}
-	if d.point15.x != 5 || d.point15.y != 6 || d.point10.x != 70 || d.point10.y != 90 {
-		t.Fatalf("ovr_center/jog_pt: p15=%v p10=%v", d.point15, d.point10)
+	if d.Point15.X != 5 || d.Point15.Y != 6 || d.Point10.X != 70 || d.Point10.Y != 90 {
+		t.Fatalf("ovr_center/jog_pt: p15=%v p10=%v", d.Point15, d.Point10)
 	}
-	if d.actualMeasurement != 42.0 || d.insertPoint.x != 10 || d.insertPoint.y != 20 {
-		t.Fatalf("公共段: measure=%v p12=%v", d.actualMeasurement, d.insertPoint)
+	if d.ActualMeasurement != 42.0 || d.InsertPoint.X != 10 || d.InsertPoint.Y != 20 {
+		t.Fatalf("公共段: measure=%v p12=%v", d.ActualMeasurement, d.InsertPoint)
 	}
 	// flag 合成：flag1=0 → bit7=1、bit5=0、无类型位 → 0x80
-	if d.dimFlag != 0x80 {
-		t.Fatalf("dimFlag: %#x", d.dimFlag)
+	if d.DimFlag != 0x80 {
+		t.Fatalf("dimFlag: %#x", d.DimFlag)
 	}
 }
 
 // TestDecodeLargeRadialDimR2000 R2000 布局：无 class_version 字节、
 // 无 R2007+ 三标志位，attachment 段存在，TV 文本在主位流。
 func TestDecodeLargeRadialDimR2000(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x1F4)
-	writeCommonHead(w, 901, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x1F4)
+	testsupport.WriteCommonHead(w, 901, 2)
 	w.B3BD(0, 0, 1)     // extrusion（无版本字节）
 	w.RD(1).RD(2)       // text midpoint
 	w.BD(0)             // elevation
@@ -113,25 +113,25 @@ func TestDecodeLargeRadialDimR2000(t *testing.T) {
 	r := bitstream.NewBitStream(w.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
+	Head, err := ParseEntityHead(r, 0, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ent, err := decodeDimension(r, &head, container.VerR2000, dimLayoutLargeRadial)
+	ent, err := DecodeDimension(r, &Head, container.VerR2000, DimLayoutLargeRadial)
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := ent.(*entDimension)
-	if d.point13.x != 11 || d.point13.y != 22 || d.point14.x != 33 || d.point14.y != 44 {
-		t.Fatalf("def_pt/chord_pt: p13=%v p14=%v", d.point13, d.point14)
+	d := ent.(*EntDimension)
+	if d.Point13.X != 11 || d.Point13.Y != 22 || d.Point14.X != 33 || d.Point14.Y != 44 {
+		t.Fatalf("def_pt/chord_pt: p13=%v p14=%v", d.Point13, d.Point14)
 	}
-	if math.Abs(d.extLineRotation-0.5) > 1e-9 {
-		t.Fatalf("jog_angle: %v", d.extLineRotation)
+	if math.Abs(d.ExtLineRotation-0.5) > 1e-9 {
+		t.Fatalf("jog_angle: %v", d.ExtLineRotation)
 	}
-	if d.point15.x != 1 || d.point10.x != 55 || d.point10.y != 66 {
-		t.Fatalf("ovr_center/jog_pt: p15=%v p10=%v", d.point15, d.point10)
+	if d.Point15.X != 1 || d.Point10.X != 55 || d.Point10.Y != 66 {
+		t.Fatalf("ovr_center/jog_pt: p15=%v p10=%v", d.Point15, d.Point10)
 	}
-	if d.actualMeasurement != 7.5 {
-		t.Fatalf("测量值: %v", d.actualMeasurement)
+	if d.ActualMeasurement != 7.5 {
+		t.Fatalf("测量值: %v", d.ActualMeasurement)
 	}
 }

@@ -6,6 +6,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"image/color"
 	"testing"
 )
@@ -74,7 +75,7 @@ func TestEntityColorLayerPlainIndex(t *testing.T) {
 // TestEntityColorEntityTrueColor 实体真彩 32 位（0xC2 高字节）取色不受高字节干扰。
 func TestEntityColorEntityTrueColor(t *testing.T) {
 	doc := &Document{layerColors: map[uint64]layerColor{}}
-	p := &primitive{kind: 0, layer: 1, color: entColor{hasTrue: true, trueColor: 0xC2FFFFFF}}
+	p := &primitive{kind: 0, layer: 1, color: entity.EntColor{HasTrue: true, TrueColor: 0xC2FFFFFF}}
 	if got := entityColor(doc, p, true); got != (color.RGBA{255, 255, 255, 255}) {
 		t.Errorf("实体真彩白取色: got %v", got)
 	}

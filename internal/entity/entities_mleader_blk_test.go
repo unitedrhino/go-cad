@@ -3,7 +3,7 @@
 // 内容）按 dwg2.spec MLEADER_CONTEXT_DATA_fields 的 else 路径构造已知
 // 位流，解码后逐字段断言——has_content_blk 位、normal/location/scale/
 // rotation/color/transform 七个 dat 流字段，以及不误读后续 base 组。
-package cad
+package entity
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
@@ -15,10 +15,10 @@ import (
 // TestMLeaderContextBlkContent blk 内容分支合成验证（verR2000 布局：
 // CMC 为 BS 索引单形态、无字符串流）。
 func TestMLeaderContextBlkContent(t *testing.T) {
-	w3bd := func(w *bitstream.EncWriter, x, y, z float64) {
-		w.WriteBD(x)
-		w.WriteBD(y)
-		w.WriteBD(z)
+	w3bd := func(w *bitstream.EncWriter, X, Y, Z float64) {
+		w.WriteBD(X)
+		w.WriteBD(Y)
+		w.WriteBD(Z)
 	}
 	w := bitstream.NewEncWriter()
 	// ctx 标量组
@@ -48,37 +48,37 @@ func TestMLeaderContextBlkContent(t *testing.T) {
 	w3bd(w, 1, 0, 0)
 	w.WriteB(true)
 
-	m := &entMLeader{}
-	if err := decodeMLeaderContext(bitstream.NewBitStream(w.Bytes()), m, container.VerR2000, 0, nil); err != nil {
+	m := &EntMLeader{}
+	if err := DecodeMLeaderContext(bitstream.NewBitStream(w.Bytes()), m, container.VerR2000, 0, nil); err != nil {
 		t.Fatalf("decodeMLeaderContext 失败: %v", err)
 	}
-	c := &m.ctx
-	if c.hasContentTxt || !c.hasContentBlk {
-		t.Fatalf("内容分支: hasTxt=%v hasBlk=%v（应为 blk 分支）", c.hasContentTxt, c.hasContentBlk)
+	c := &m.Ctx
+	if c.HasContentTxt || !c.HasContentBlk {
+		t.Fatalf("内容分支: hasTxt=%v hasBlk=%v（应为 blk 分支）", c.HasContentTxt, c.HasContentBlk)
 	}
-	b := &c.blk
-	if !testsupport.NearEq(b.normal.z, 1) || !testsupport.NearEq(b.location.x, 5) || !testsupport.NearEq(b.location.y, 6) || !testsupport.NearEq(b.location.z, 7) {
-		t.Errorf("blk normal/location = %v / %v", b.normal, b.location)
+	b := &c.Blk
+	if !testsupport.NearEq(b.Normal.Z, 1) || !testsupport.NearEq(b.Location.X, 5) || !testsupport.NearEq(b.Location.Y, 6) || !testsupport.NearEq(b.Location.Z, 7) {
+		t.Errorf("blk normal/location = %v / %v", b.Normal, b.Location)
 	}
-	if !testsupport.NearEq(b.scale.x, 2) || !testsupport.NearEq(b.scale.z, 2) {
-		t.Errorf("blk scale = %v", b.scale)
+	if !testsupport.NearEq(b.Scale.X, 2) || !testsupport.NearEq(b.Scale.Z, 2) {
+		t.Errorf("blk scale = %v", b.Scale)
 	}
-	if !testsupport.NearEq(b.rotation, 1.5708) {
-		t.Errorf("blk rotation = %v", b.rotation)
+	if !testsupport.NearEq(b.Rotation, 1.5708) {
+		t.Errorf("blk rotation = %v", b.Rotation)
 	}
-	if b.color.index != 3 {
-		t.Errorf("blk color index = %d", b.color.index)
+	if b.Color.Index != 3 {
+		t.Errorf("blk color index = %d", b.Color.Index)
 	}
 	for i := 0; i < 16; i++ {
-		if !testsupport.NearEq(b.transform[i], float64(i)*0.25) {
-			t.Fatalf("transform[%d] = %v", i, b.transform[i])
+		if !testsupport.NearEq(b.Transform[i], float64(i)*0.25) {
+			t.Fatalf("transform[%d] = %v", i, b.Transform[i])
 		}
 	}
 	// 联合段后的 base 组必须精确对齐（位序无误的证据）
-	if !testsupport.NearEq(c.base.x, 9) || !testsupport.NearEq(c.base.y, 8) || !testsupport.NearEq(c.base.z, 7) {
-		t.Errorf("base = %v（blk 段消费错位）", c.base)
+	if !testsupport.NearEq(c.Base.X, 9) || !testsupport.NearEq(c.Base.Y, 8) || !testsupport.NearEq(c.Base.Z, 7) {
+		t.Errorf("base = %v（blk 段消费错位）", c.Base)
 	}
-	if !c.isNormalReversed {
+	if !c.IsNormalReversed {
 		t.Error("is_normal_reversed = false, want true")
 	}
 }

@@ -2,7 +2,7 @@
 // LIGHTINGUNITS=2 触发的 IES 子段）真实样本不触发，此处按 dwg2.spec
 // 位序构造已知内容的 LIGHT 记录（R2004 布局，name/webfile TV 内联），
 // 解码后逐字段断言；同时验证非光度场景不误读子段（位流回归检查）。
-package cad
+package entity
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
@@ -69,26 +69,26 @@ func writeLightPhotometric(w *testsupport.BitWriter) {
 // decodeLightFromBits 走 TestDecodeLwPolylineFromBits 同款框架：
 // 位 0 = UMC → OT → 公共头（R2013 noShadow-noLW 布局），随后 LIGHT 主体。
 // dataEndBit 须在写 handle 流之前计算（主体结束位 = handle 流起点）。
-func decodeLightFromBits(t *testing.T, body *testsupport.BitWriter, dataEndBit uint64, photometric bool, ver container.DwgVersion) *entLight {
+func decodeLightFromBits(t *testing.T, body *testsupport.BitWriter, dataEndBit uint64, photometric bool, ver container.DwgVersion) *EntLight {
 	t.Helper()
 	r := bitstream.NewBitStream(body.Bytes())
 	_, _ = r.ReadUMC()
 	_, _ = r.ReadOT()
-	head, err := parseEntityHead(r, dataEndBit, featMaterialFlags|featVisualStyles|featDSBinary)
+	Head, err := ParseEntityHead(r, dataEndBit, FeatMaterialFlags|FeatVisualStyles|FeatDSBinary)
 	if err != nil {
 		t.Fatalf("公共头解析失败: %v", err)
 	}
-	ent, err := decodeLight(r, &head, ver, 30, photometric)
+	ent, err := decodeLight(r, &Head, ver, 30, photometric)
 	if err != nil {
 		t.Fatalf("LIGHT 解码失败: %v", err)
 	}
-	return ent.(*entLight)
+	return ent.(*EntLight)
 }
 
 // TestDecodeLightPhotometric 光度分支：基线 + IES 子段全部字段一致。
 func TestDecodeLightPhotometric(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x60)
-	writeCommonHead(w, 200, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x60)
+	testsupport.WriteCommonHead(w, 200, 2)
 	writeLightBase(w)
 	writeLightPhotometric(w)
 	// handle 流起点（主体结束位）：须在写 handle 流之前取
@@ -99,15 +99,15 @@ func TestDecodeLightPhotometric(t *testing.T) {
 
 	l := decodeLightFromBits(t, w, dataEndBit, true, container.VerR2004)
 	// 基线字段
-	if l.classVersion != 2 || l.name != "L1" || l.lightType != 0 || !l.status {
-		t.Errorf("基线字段: ver=%d name=%q type=%d status=%v", l.classVersion, l.name, l.lightType, l.status)
+	if l.ClassVersion != 2 || l.Name != "L1" || l.LightType != 0 || !l.Status {
+		t.Errorf("基线字段: ver=%d name=%q type=%d status=%v", l.ClassVersion, l.Name, l.LightType, l.Status)
 	}
 	// rgb 0xc2000000|0x0000ff（蓝）经调色板反查 index=5（decodeCodepage 同口径）
-	if l.lightColorIndex != 5 || !testsupport.NearEq(l.intensity, 1.5) {
-		t.Errorf("颜色/强度: idx=%d intensity=%v", l.lightColorIndex, l.intensity)
+	if l.LightColorIndex != 5 || !testsupport.NearEq(l.Intensity, 1.5) {
+		t.Errorf("颜色/强度: idx=%d intensity=%v", l.LightColorIndex, l.Intensity)
 	}
-	if !l.castShadows || l.shadowMapSize != 512 || l.shadowMapSoftness != 3 {
-		t.Errorf("shadow: cast=%v size=%d soft=%d", l.castShadows, l.shadowMapSize, l.shadowMapSoftness)
+	if !l.CastShadows || l.ShadowMapSize != 512 || l.ShadowMapSoftness != 3 {
+		t.Errorf("shadow: cast=%v size=%d soft=%d", l.CastShadows, l.ShadowMapSize, l.ShadowMapSoftness)
 	}
 	// 光度字段
 	if !l.isPhotometric || !l.hasPhotometricImg || !l.hasWebfile {
@@ -119,7 +119,7 @@ func TestDecodeLightPhotometric(t *testing.T) {
 	if !testsupport.NearEq(l.illuminanceDist, 2.5) || l.lampColorType != 0 || !testsupport.NearEq(l.lampColorTemp, 3000) || l.lampColorPreset != 4 {
 		t.Errorf("照度/灯色: dist=%v type=%d temp=%v preset=%d", l.illuminanceDist, l.lampColorType, l.lampColorTemp, l.lampColorPreset)
 	}
-	if !testsupport.NearEq(l.webRotation.x, 0.1) || !testsupport.NearEq(l.webRotation.y, 0.2) || !testsupport.NearEq(l.webRotation.z, 0.3) {
+	if !testsupport.NearEq(l.webRotation.X, 0.1) || !testsupport.NearEq(l.webRotation.Y, 0.2) || !testsupport.NearEq(l.webRotation.Z, 0.3) {
 		t.Errorf("web_rotation=%v", l.webRotation)
 	}
 	if l.extlightShape != 2 || !testsupport.NearEq(l.extlightLength, 0.4) || !testsupport.NearEq(l.extlightWidth, 0.5) || !testsupport.NearEq(l.extlightRadius, 0.6) {
@@ -144,16 +144,16 @@ func TestDecodeLightPhotometric(t *testing.T) {
 		t.Errorf("glyph_display_type=%d", l.glyphDisplayType)
 	}
 	// handle 流定位正确（光度段全部消费后）：layer=300
-	if l.layer != 300 {
-		t.Errorf("layer=%d want 300（光度子段未精确消费）", l.layer)
+	if l.Layer != 300 {
+		t.Errorf("layer=%d want 300（光度子段未精确消费）", l.Layer)
 	}
 }
 
 // TestDecodeLightBaseline 非光度场景：基线后直接进 handle 流，
 // 若误读光度位会错位导致 layer 不符。
 func TestDecodeLightBaseline(t *testing.T) {
-	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x60)
-	writeCommonHead(w, 201, 2)
+	w := testsupport.WriteEntityPrefix(testsupport.NewBitWriter(), 0x60)
+	testsupport.WriteCommonHead(w, 201, 2)
 	writeLightBase(w)
 	writeLightPhotometric(w) // 位流里"多出"的子段：非光度路径必须整体跳过
 	dataEndBit := uint64((len(w.Data)-1)*8 + int(w.Bit))
@@ -164,10 +164,10 @@ func TestDecodeLightBaseline(t *testing.T) {
 	if l.isPhotometric {
 		t.Fatal("非光度上下文 isPhotometric 应为 false")
 	}
-	if l.classVersion != 2 || l.name != "L1" {
-		t.Errorf("基线字段: ver=%d name=%q", l.classVersion, l.name)
+	if l.ClassVersion != 2 || l.Name != "L1" {
+		t.Errorf("基线字段: ver=%d name=%q", l.ClassVersion, l.Name)
 	}
-	if l.layer != 301 {
-		t.Errorf("layer=%d want 301（基线路径不应消费光度位）", l.layer)
+	if l.Layer != 301 {
+		t.Errorf("layer=%d want 301（基线路径不应消费光度位）", l.Layer)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"math"
 	"os"
 	"path/filepath"
@@ -315,7 +316,7 @@ func runAlignmentAudit(t *testing.T, includeEntities bool) {
 				if ent == nil {
 					continue
 				}
-				getVal = func(k string) any { return entityField(ent, k) }
+				getVal = func(k string) any { return entity.EntityField(ent, k) }
 			} else {
 				g, ok := objs[h]
 				if !ok {

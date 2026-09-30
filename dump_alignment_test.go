@@ -6,6 +6,7 @@ package cad
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"os"
 	"strings"
 	"testing"
@@ -170,9 +171,9 @@ func dumpValueMatch(got, want any) bool {
 	case float64:
 		switch g := got.(type) {
 		case float64:
-			return nearF(g, w)
+			return entity.NearF(g, w)
 		case int64:
-			return nearF(float64(g), w)
+			return entity.NearF(float64(g), w)
 		}
 		return false
 	case string:
@@ -249,7 +250,7 @@ func dumpValueMatch(got, want any) bool {
 			g, flat = pad(g), pad(flat)
 		}
 		for i := range flat {
-			if !nearF(g[i], flat[i]) {
+			if !entity.NearF(g[i], flat[i]) {
 				return false
 			}
 		}

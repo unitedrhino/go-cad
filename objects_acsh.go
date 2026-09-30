@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
@@ -300,14 +301,14 @@ func decodeGenericACSH_BREP(r *bitstream.BitStream, ver container.DwgVersion, fr
 	if err != nil {
 		return err
 	}
-	g.Fields = append(g.Fields, objField{"acis_empty", b2int(acisEmpty != 0)})
+	g.Fields = append(g.Fields, objField{"acis_empty", entity.B2int(acisEmpty != 0)})
 	version := int64(0)
 	if acisEmpty == 0 {
 		unk, e := r.ReadB()
 		if e != nil {
 			return e
 		}
-		g.Fields = append(g.Fields, objField{"unknown", b2int(unk != 0)})
+		g.Fields = append(g.Fields, objField{"unknown", entity.B2int(unk != 0)})
 		v, e := r.ReadBS()
 		if e != nil {
 			return e
@@ -369,13 +370,13 @@ func decodeGenericACSH_BREP(r *bitstream.BitStream, ver container.DwgVersion, fr
 	if err != nil {
 		return err
 	}
-	g.Fields = append(g.Fields, objField{"wireframe_data_present", b2int(wire != 0)})
+	g.Fields = append(g.Fields, objField{"wireframe_data_present", entity.B2int(wire != 0)})
 	if wire != 0 {
 		pp, e := r.ReadB()
 		if e != nil {
 			return e
 		}
-		g.Fields = append(g.Fields, objField{"point_present", b2int(pp != 0)})
+		g.Fields = append(g.Fields, objField{"point_present", entity.B2int(pp != 0)})
 		if pp != 0 {
 			if _, _, _, e := r.Read3BD(); e != nil {
 				return e
@@ -388,7 +389,7 @@ func decodeGenericACSH_BREP(r *bitstream.BitStream, ver container.DwgVersion, fr
 		if e != nil {
 			return e
 		}
-		g.Fields = append(g.Fields, objField{"isoline_present", b2int(ip != 0)})
+		g.Fields = append(g.Fields, objField{"isoline_present", entity.B2int(ip != 0)})
 		if ip != 0 {
 			nw, e := r.ReadBL()
 			if e != nil {
@@ -439,7 +440,7 @@ func decodeGenericACSH_BREP(r *bitstream.BitStream, ver container.DwgVersion, fr
 	if err != nil {
 		return err
 	}
-	g.Fields = append(g.Fields, objField{"acis_empty_bit", b2int(aeb != 0)})
+	g.Fields = append(g.Fields, objField{"acis_empty_bit", entity.B2int(aeb != 0)})
 	// version>1 且 R2007+：num_materials（materials 数组，句柄在 handle 流）
 	if version > 1 && ver >= container.VerR2007 {
 		return fr.BL("num_materials", g)

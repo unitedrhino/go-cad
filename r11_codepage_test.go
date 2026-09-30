@@ -66,11 +66,11 @@ func TestPreR13TextCodepageDecode(t *testing.T) {
 	head := preR13EntHead{typ: preR13TypeText, opts: 0, elevation: 0}
 	r := &preR13Reader{data: w}
 	e := decodePreR13Text(r, head, 39)
-	if e.text != text {
-		t.Errorf("GBK 码页文本=%q, want %q", e.text, text)
+	if e.Text != text {
+		t.Errorf("GBK 码页文本=%q, want %q", e.Text, text)
 	}
-	if !testsupport.NearEq(e.insertion.x, 10.0) || !testsupport.NearEq(e.insertion.y, 20.0) || !testsupport.NearEq(e.height, 2.5) {
-		t.Errorf("TEXT 几何 = (%v,%v) h=%v", e.insertion.x, e.insertion.y, e.height)
+	if !testsupport.NearEq(e.Insertion.X, 10.0) || !testsupport.NearEq(e.Insertion.Y, 20.0) || !testsupport.NearEq(e.Height, 2.5) {
+		t.Errorf("TEXT 几何 = (%v,%v) h=%v", e.Insertion.X, e.Insertion.Y, e.Height)
 	}
 
 	// 默认码页 30（windows-1252 家族 Latin-1 近似）：GBK 字节不解合并，
@@ -78,11 +78,11 @@ func TestPreR13TextCodepageDecode(t *testing.T) {
 	// 2 字节 UTF-8，len=13+8×2=29）
 	r2 := &preR13Reader{data: w}
 	e2 := decodePreR13Text(r2, head, 30)
-	if e2.text == text {
+	if e2.Text == text {
 		t.Error("码页 30 不应解出 GBK 中文（行为回归检查）")
 	}
-	if len(e2.text) != 29 {
-		t.Errorf("码页 30 下应保持逐字节 Latin-1 映射：len=%d want 29", len(e2.text))
+	if len(e2.Text) != 29 {
+		t.Errorf("码页 30 下应保持逐字节 Latin-1 映射：len=%d want 29", len(e2.Text))
 	}
 }
 
@@ -115,13 +115,13 @@ func TestPreR13AttribCodepageDecode(t *testing.T) {
 	head := preR13EntHead{typ: preR13TypeAttdef, opts: 0}
 	r := &preR13Reader{data: w}
 	e := decodePreR13Attrib(r, head, true, 39)
-	if e.text != tag {
-		t.Errorf("ATTRIB text=%q, want %q", e.text, tag)
+	if e.Text != tag {
+		t.Errorf("ATTRIB text=%q, want %q", e.Text, tag)
 	}
-	if e.tag != tag {
-		t.Errorf("ATTRIB tag=%q, want %q", e.tag, tag)
+	if e.Tag != tag {
+		t.Errorf("ATTRIB tag=%q, want %q", e.Tag, tag)
 	}
-	if e.prompt != "P" {
-		t.Errorf("ATTRIB prompt=%q, want %q", e.prompt, "P")
+	if e.Prompt != "P" {
+		t.Errorf("ATTRIB prompt=%q, want %q", e.Prompt, "P")
 	}
 }

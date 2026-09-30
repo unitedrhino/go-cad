@@ -20,6 +20,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"image"
 	"image/color"
 	"math"
@@ -346,7 +347,7 @@ func textLayoutOf(c *canvas, lb *label, tx *textInfo) (textLayout, bool) {
 	if emPx < minTextPx {
 		return textLayout{}, false
 	}
-	px, py := c.toPixel(point2{lb.x, lb.y})
+	px, py := c.toPixel(entity.Point2{lb.x, lb.y})
 	return textLayout{
 		px: px, py: py,
 		upx: upx, upy: upy,

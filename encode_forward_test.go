@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
@@ -22,17 +23,17 @@ func fwdSynthDoc(t *testing.T, ents ...any) *Document {
 	doc := &Document{
 		version:     container.VerR2000,
 		blocks:      map[uint64][]any{},
-		attribs:     map[uint64]*entAttrib{},
+		attribs:     map[uint64]*entity.EntAttrib{},
 		layerColors: map[uint64]layerColor{0x10: {index: 3, name: "FWD"}},
 	}
 	for i, e := range ents {
-		b := entBase(e)
+		b := entity.EntityBase(e)
 		if b == nil {
 			t.Fatalf("实体 %d 非 entityCommon", i)
 		}
-		b.handle = uint64(0x30 + i)
-		b.mode = 2
-		b.layer = 0x10
+		b.Handle = uint64(0x30 + i)
+		b.Mode = 2
+		b.Layer = 0x10
 		doc.classify(e)
 	}
 	return doc
@@ -59,19 +60,19 @@ func nearGeo(a, b float64) bool { return math.Abs(a-b) < 0.01 }
 // ELLIPSE/LWPOLYLINE/TEXT/MTEXT/SOLID/3DFACE）→ WriteDwg → Parse，
 // 实体数、类型、几何与文本逐项对照。
 func TestWriteForwardSyntheticR2000(t *testing.T) {
-	line := &entLine{start: point3{0, 0, 0}, end: point3{100, 50, 0}}
-	circle := &entCircle{center: point3{10, 20, 0}, radius: 12.5}
-	arc := &entArc{center: point3{5, 6, 0}, radius: 7, angleStart: 0.5, angleEnd: 2.5}
-	point := &entPoint{location: point3{33, 44, 0}, rotation: 1.25}
-	ellipse := &entEllipse{center: point3{1, 2, 0}, majorAxis: point3{10, 0, 0}, ratio: 0.5, startAng: 0, endAng: math.Pi}
-	lwp := &entLwPolyline{
-		vertices: []point2{{0, 0}, {10, 0}, {10, 10}, {0, 10}},
-		bulges:   []float64{0, 0.5, 0, 0},
+	line := &entity.EntLine{Start: entity.Point3{0, 0, 0}, End: entity.Point3{100, 50, 0}}
+	circle := &entity.EntCircle{Center: entity.Point3{10, 20, 0}, Radius: 12.5}
+	arc := &entity.EntArc{Center: entity.Point3{5, 6, 0}, Radius: 7, AngleStart: 0.5, AngleEnd: 2.5}
+	point := &entity.EntPoint{Location: entity.Point3{33, 44, 0}, Rotation: 1.25}
+	ellipse := &entity.EntEllipse{Center: entity.Point3{1, 2, 0}, MajorAxis: entity.Point3{10, 0, 0}, Ratio: 0.5, StartAng: 0, EndAng: math.Pi}
+	lwp := &entity.EntLwPolyline{
+		Vertices: []entity.Point2{{0, 0}, {10, 0}, {10, 10}, {0, 10}},
+		Bulges:   []float64{0, 0.5, 0, 0},
 	}
-	text := &entText{text: "HELLO_FWD", insertion: point3{7, 8, 0}, height: 3.5, rotation: 0.25}
-	mtext := &entMText{text: "MTEXT_FWD", insertion: point3{9, 9, 0}, rectWidth: 20, textHeight: 2.5, attachment: 1, xAxisDir: point3{1, 0, 0}}
-	solid := &entSolid{p1: point2{0, 0}, p2: point2{10, 0}, p3: point2{0, 10}, p4: point2{10, 10}, elevation: 1.5, thickness: 0.25, extrusion: point3{0, 0, 1}}
-	face := &entFace3d{p1: point3{0, 0, 0}, p2: point3{20, 0, 0}, p3: point3{20, 15, 0}, p4: point3{0, 15, 0}}
+	text := &entity.EntText{Text: "HELLO_FWD", Insertion: entity.Point3{7, 8, 0}, Height: 3.5, Rotation: 0.25}
+	mtext := &entity.EntMText{Text: "MTEXT_FWD", Insertion: entity.Point3{9, 9, 0}, RectWidth: 20, TextHeight: 2.5, Attachment: 1, XAxisDir: entity.Point3{1, 0, 0}}
+	solid := &entity.EntSolid{P1: entity.Point2{0, 0}, P2: entity.Point2{10, 0}, P3: entity.Point2{0, 10}, P4: entity.Point2{10, 10}, Elevation: 1.5, Thickness: 0.25, Extrusion: entity.Point3{0, 0, 1}}
+	face := &entity.EntFace3d{P1: entity.Point3{0, 0, 0}, P2: entity.Point3{20, 0, 0}, P3: entity.Point3{20, 15, 0}, P4: entity.Point3{0, 15, 0}}
 	doc := fwdSynthDoc(t, line, circle, arc, point, ellipse, lwp, text, mtext, solid, face)
 	got := fwdWriteParse(t, doc)
 	if got.EntityCount() != len(doc.modelSpace) {
@@ -83,61 +84,61 @@ func TestWriteForwardSyntheticR2000(t *testing.T) {
 	// 逐类型取回读实体并对照几何（按句柄映射）
 	byHandle := map[uint64]any{}
 	for _, e := range got.modelSpace {
-		byHandle[entBase(e).handle] = e
+		byHandle[entity.EntityBase(e).Handle] = e
 	}
 	if len(byHandle) != len(doc.modelSpace) {
 		t.Fatalf("回读实体种类数: %d != %d", len(byHandle), len(doc.modelSpace))
 	}
-	gl := byHandle[line.handle].(*entLine)
-	if !nearGeo(gl.start.x, 0) || !nearGeo(gl.start.y, 0) || !nearGeo(gl.end.x, 100) || !nearGeo(gl.end.y, 50) {
-		t.Errorf("LINE 几何: %+v %+v", gl.start, gl.end)
+	gl := byHandle[line.Handle].(*entity.EntLine)
+	if !nearGeo(gl.Start.X, 0) || !nearGeo(gl.Start.Y, 0) || !nearGeo(gl.End.X, 100) || !nearGeo(gl.End.Y, 50) {
+		t.Errorf("LINE 几何: %+v %+v", gl.Start, gl.End)
 	}
-	gc := byHandle[circle.handle].(*entCircle)
-	if !nearGeo(gc.center.x, 10) || !nearGeo(gc.center.y, 20) || !nearGeo(gc.radius, 12.5) {
-		t.Errorf("CIRCLE 几何: %+v r=%v", gc.center, gc.radius)
+	gc := byHandle[circle.Handle].(*entity.EntCircle)
+	if !nearGeo(gc.Center.X, 10) || !nearGeo(gc.Center.Y, 20) || !nearGeo(gc.Radius, 12.5) {
+		t.Errorf("CIRCLE 几何: %+v r=%v", gc.Center, gc.Radius)
 	}
-	ga := byHandle[arc.handle].(*entArc)
-	if !nearGeo(ga.radius, 7) || !nearGeo(rad2deg(ga.angleStart), rad2deg(0.5)) || !nearGeo(rad2deg(ga.angleEnd), rad2deg(2.5)) {
-		t.Errorf("ARC 几何: r=%v a0=%v a1=%v", ga.radius, ga.angleStart, ga.angleEnd)
+	ga := byHandle[arc.Handle].(*entity.EntArc)
+	if !nearGeo(ga.Radius, 7) || !nearGeo(rad2deg(ga.AngleStart), rad2deg(0.5)) || !nearGeo(rad2deg(ga.AngleEnd), rad2deg(2.5)) {
+		t.Errorf("ARC 几何: r=%v a0=%v a1=%v", ga.Radius, ga.AngleStart, ga.AngleEnd)
 	}
-	gp := byHandle[point.handle].(*entPoint)
-	if !nearGeo(gp.location.x, 33) || !nearGeo(gp.location.y, 44) {
-		t.Errorf("POINT 几何: %+v", gp.location)
+	gp := byHandle[point.Handle].(*entity.EntPoint)
+	if !nearGeo(gp.Location.X, 33) || !nearGeo(gp.Location.Y, 44) {
+		t.Errorf("POINT 几何: %+v", gp.Location)
 	}
-	ge := byHandle[ellipse.handle].(*entEllipse)
-	if !nearGeo(ge.ratio, 0.5) || !nearGeo(ge.majorAxis.x, 10) {
-		t.Errorf("ELLIPSE 几何: ratio=%v major=%+v", ge.ratio, ge.majorAxis)
+	ge := byHandle[ellipse.Handle].(*entity.EntEllipse)
+	if !nearGeo(ge.Ratio, 0.5) || !nearGeo(ge.MajorAxis.X, 10) {
+		t.Errorf("ELLIPSE 几何: ratio=%v major=%+v", ge.Ratio, ge.MajorAxis)
 	}
-	gw := byHandle[lwp.handle].(*entLwPolyline)
-	if len(gw.vertices) != 4 {
-		t.Fatalf("LWPOLYLINE 顶点数: %d != 4", len(gw.vertices))
+	gw := byHandle[lwp.Handle].(*entity.EntLwPolyline)
+	if len(gw.Vertices) != 4 {
+		t.Fatalf("LWPOLYLINE 顶点数: %d != 4", len(gw.Vertices))
 	}
-	for i, want := range lwp.vertices {
-		if !nearGeo(gw.vertices[i].x, want.x) || !nearGeo(gw.vertices[i].y, want.y) {
-			t.Errorf("LWPOLYLINE 顶点 %d: %+v != %+v", i, gw.vertices[i], want)
+	for i, want := range lwp.Vertices {
+		if !nearGeo(gw.Vertices[i].X, want.X) || !nearGeo(gw.Vertices[i].Y, want.Y) {
+			t.Errorf("LWPOLYLINE 顶点 %d: %+v != %+v", i, gw.Vertices[i], want)
 		}
 	}
-	if len(gw.bulges) < 2 || !nearGeo(gw.bulges[1], 0.5) {
-		t.Errorf("LWPOLYLINE 凸度: %v", gw.bulges)
+	if len(gw.Bulges) < 2 || !nearGeo(gw.Bulges[1], 0.5) {
+		t.Errorf("LWPOLYLINE 凸度: %v", gw.Bulges)
 	}
-	gt := byHandle[text.handle].(*entText)
-	if gt.text != "HELLO_FWD" {
-		t.Errorf("TEXT 文本: %q", gt.text)
+	gt := byHandle[text.Handle].(*entity.EntText)
+	if gt.Text != "HELLO_FWD" {
+		t.Errorf("TEXT 文本: %q", gt.Text)
 	}
-	if !nearGeo(gt.height, 3.5) || !nearGeo(gt.insertion.x, 7) {
-		t.Errorf("TEXT 几何: h=%v ins=%+v", gt.height, gt.insertion)
+	if !nearGeo(gt.Height, 3.5) || !nearGeo(gt.Insertion.X, 7) {
+		t.Errorf("TEXT 几何: h=%v ins=%+v", gt.Height, gt.Insertion)
 	}
-	gm := byHandle[mtext.handle].(*entMText)
-	if gm.text != "MTEXT_FWD" || !nearGeo(gm.rectWidth, 20) || !nearGeo(gm.textHeight, 2.5) {
-		t.Errorf("MTEXT: %q w=%v h=%v", gm.text, gm.rectWidth, gm.textHeight)
+	gm := byHandle[mtext.Handle].(*entity.EntMText)
+	if gm.Text != "MTEXT_FWD" || !nearGeo(gm.RectWidth, 20) || !nearGeo(gm.TextHeight, 2.5) {
+		t.Errorf("MTEXT: %q w=%v h=%v", gm.Text, gm.RectWidth, gm.TextHeight)
 	}
-	gs := byHandle[solid.handle].(*entSolid)
-	if !nearGeo(gs.p3.x, 0) || !nearGeo(gs.p4.y, 10) || !nearGeo(gs.elevation, 1.5) {
-		t.Errorf("SOLID 几何: %+v %+v elev=%v", gs.p3, gs.p4, gs.elevation)
+	gs := byHandle[solid.Handle].(*entity.EntSolid)
+	if !nearGeo(gs.P3.X, 0) || !nearGeo(gs.P4.Y, 10) || !nearGeo(gs.Elevation, 1.5) {
+		t.Errorf("SOLID 几何: %+v %+v elev=%v", gs.P3, gs.P4, gs.Elevation)
 	}
-	gf := byHandle[face.handle].(*entFace3d)
-	if !nearGeo(gf.p2.x, 20) || !nearGeo(gf.p4.y, 15) {
-		t.Errorf("3DFACE 几何: %+v %+v", gf.p2, gf.p4)
+	gf := byHandle[face.Handle].(*entity.EntFace3d)
+	if !nearGeo(gf.P2.X, 20) || !nearGeo(gf.P4.Y, 15) {
+		t.Errorf("3DFACE 几何: %+v %+v", gf.P2, gf.P4)
 	}
 	// 文本提取闭环（Texts 语义）
 	texts := got.Texts()
@@ -158,54 +159,54 @@ func TestWriteForwardBlockInsert(t *testing.T) {
 	doc := fwdSynthDoc(t)
 	const blkHdl = uint64(0x200)
 	// 块内 POLYLINE_2D + 2 顶点（owner 归属块头/父实体）
-	poly := &entPolyline2d{flags: 0, curveType: 0, extrusion: point3{0, 0, 1}}
-	poly.handle = 0x210
-	poly.mode = 0
-	poly.owner = blkHdl
-	poly.layer = 0x10
-	poly.firstVertex = 0x211
-	poly.lastVertex = 0x212
-	v1 := &entVertex2d{position: point3{0, 0, 0}, bulge: 0}
-	v1.handle = 0x211
-	v1.mode = 0
-	v1.owner = poly.handle
-	v1.layer = 0x10
-	v2 := &entVertex2d{position: point3{30, 40, 0}}
-	v2.handle = 0x212
-	v2.mode = 0
-	v2.owner = poly.handle
-	v2.layer = 0x10
+	poly := &entity.EntPolyline2d{Flags: 0, CurveType: 0, Extrusion: entity.Point3{0, 0, 1}}
+	poly.Handle = 0x210
+	poly.Mode = 0
+	poly.Owner = blkHdl
+	poly.Layer = 0x10
+	poly.FirstVertex = 0x211
+	poly.LastVertex = 0x212
+	v1 := &entity.EntVertex2d{Position: entity.Point3{0, 0, 0}, Bulge: 0}
+	v1.Handle = 0x211
+	v1.Mode = 0
+	v1.Owner = poly.Handle
+	v1.Layer = 0x10
+	v2 := &entity.EntVertex2d{Position: entity.Point3{30, 40, 0}}
+	v2.Handle = 0x212
+	v2.Mode = 0
+	v2.Owner = poly.Handle
+	v2.Layer = 0x10
 	doc.blocks[blkHdl] = []any{poly, v1, v2}
 	// 模型空间 INSERT 引用块
-	ins := &entInsert{position: point3{1, 2, 0}, scale: point3{1, 1, 1}, blockHeader: blkHdl}
-	ins.handle = 0x300
-	ins.mode = 2
-	ins.layer = 0x10
+	ins := &entity.EntInsert{Position: entity.Point3{1, 2, 0}, Scale: entity.Point3{1, 1, 1}, BlockHeader: blkHdl}
+	ins.Handle = 0x300
+	ins.Mode = 2
+	ins.Layer = 0x10
 	doc.classify(ins)
 	got := fwdWriteParse(t, doc)
 	if got.EntityCount() == 0 {
 		t.Fatal("回读实体为空")
 	}
-	var gIns *entInsert
+	var gIns *entity.EntInsert
 	for _, e := range got.modelSpace {
-		if ins2, ok := e.(*entInsert); ok {
+		if ins2, ok := e.(*entity.EntInsert); ok {
 			gIns = ins2
 		}
 	}
 	if gIns == nil {
 		t.Fatal("回读缺少 INSERT")
 	}
-	if gIns.blockHeader != blkHdl {
-		t.Errorf("INSERT 块头句柄: %d != %d", gIns.blockHeader, blkHdl)
+	if gIns.BlockHeader != blkHdl {
+		t.Errorf("INSERT 块头句柄: %d != %d", gIns.BlockHeader, blkHdl)
 	}
-	if !nearGeo(gIns.position.y, 2) {
-		t.Errorf("INSERT 位置: %+v", gIns.position)
+	if !nearGeo(gIns.Position.Y, 2) {
+		t.Errorf("INSERT 位置: %+v", gIns.Position)
 	}
 	// 块内顶点按 owner 聚合：poly 的 owner 为块头，顶点的 owner 为 poly
-	var gotPoly *entPolyline2d
+	var gotPoly *entity.EntPolyline2d
 	for _, list := range got.blocks {
 		for _, v := range list {
-			if p, ok := v.(*entPolyline2d); ok {
+			if p, ok := v.(*entity.EntPolyline2d); ok {
 				gotPoly = p
 			}
 		}
@@ -213,21 +214,21 @@ func TestWriteForwardBlockInsert(t *testing.T) {
 	if gotPoly == nil {
 		t.Fatal("回读缺少 POLYLINE_2D")
 	}
-	verts, ok := got.blocks[gotPoly.handle]
+	verts, ok := got.blocks[gotPoly.Handle]
 	if !ok || len(verts) < 2 {
 		t.Fatalf("顶点归属聚合实体数: %d（want ≥2）", len(verts))
 	}
-	var gotVerts []*entVertex2d
+	var gotVerts []*entity.EntVertex2d
 	for _, v := range verts {
-		if vv, ok := v.(*entVertex2d); ok {
+		if vv, ok := v.(*entity.EntVertex2d); ok {
 			gotVerts = append(gotVerts, vv)
 		}
 	}
 	if len(gotVerts) != 2 {
 		t.Fatalf("回读顶点数: %d != 2", len(gotVerts))
 	}
-	if !nearGeo(gotVerts[1].position.x, 30) || !nearGeo(gotVerts[1].position.y, 40) {
-		t.Errorf("VERTEX_2D 几何: %+v", gotVerts[1].position)
+	if !nearGeo(gotVerts[1].Position.X, 30) || !nearGeo(gotVerts[1].Position.Y, 40) {
+		t.Errorf("VERTEX_2D 几何: %+v", gotVerts[1].Position)
 	}
 }
 
@@ -236,28 +237,28 @@ func TestWriteForwardBlockInsert(t *testing.T) {
 func TestWriteForwardInsertAttrib(t *testing.T) {
 	doc := fwdSynthDoc(t)
 	const blkHdl = uint64(0x210)
-	blkEnt := &entBlockLike{name: "SIGN"}
-	blkEnt.handle = 0x211
-	blkEnt.mode = 0
-	blkEnt.owner = blkHdl
-	blkEnt.typeName = "BLOCK"
-	endblk := &entBlockLike{}
-	endblk.handle = 0x212
-	endblk.mode = 0
-	endblk.owner = blkHdl
-	endblk.typeName = "ENDBLK"
+	blkEnt := &entity.EntBlockLike{Name: "SIGN"}
+	blkEnt.Handle = 0x211
+	blkEnt.Mode = 0
+	blkEnt.Owner = blkHdl
+	blkEnt.TypeName = "BLOCK"
+	endblk := &entity.EntBlockLike{}
+	endblk.Handle = 0x212
+	endblk.Mode = 0
+	endblk.Owner = blkHdl
+	endblk.TypeName = "ENDBLK"
 	doc.blocks[blkHdl] = []any{blkEnt, endblk}
-	attr := &entAttrib{text: "ROOM-101", tag: "ROOM", insertion: point3{1, 1, 0}, height: 2}
-	attr.handle = 0x220
-	attr.mode = 0
-	attr.owner = blkHdl
-	attr.layer = 0x10
+	attr := &entity.EntAttrib{Text: "ROOM-101", Tag: "ROOM", Insertion: entity.Point3{1, 1, 0}, Height: 2}
+	attr.Handle = 0x220
+	attr.Mode = 0
+	attr.Owner = blkHdl
+	attr.Layer = 0x10
 	doc.classify(attr)
-	doc.attribs[attr.handle] = attr
-	ins := &entInsert{position: point3{5, 6, 0}, scale: point3{1, 1, 1}, blockHeader: blkHdl, attribs: []uint64{attr.handle}}
-	ins.handle = 0x230
-	ins.mode = 2
-	ins.layer = 0x10
+	doc.attribs[attr.Handle] = attr
+	ins := &entity.EntInsert{Position: entity.Point3{5, 6, 0}, Scale: entity.Point3{1, 1, 1}, BlockHeader: blkHdl, Attribs: []uint64{attr.Handle}}
+	ins.Handle = 0x230
+	ins.Mode = 2
+	ins.Layer = 0x10
 	doc.classify(ins)
 	got := fwdWriteParse(t, doc)
 	if got.EntityCount() == 0 {
@@ -273,19 +274,19 @@ func TestWriteForwardInsertAttrib(t *testing.T) {
 	if !found {
 		t.Errorf("Texts 缺少正向写出的 ATTRIB 文本: %v", texts)
 	}
-	var gIns *entInsert
+	var gIns *entity.EntInsert
 	for _, e := range got.modelSpace {
-		if i2, ok := e.(*entInsert); ok {
+		if i2, ok := e.(*entity.EntInsert); ok {
 			gIns = i2
 		}
 	}
 	if gIns == nil {
 		t.Fatal("回读缺少 INSERT")
 	}
-	if len(gIns.attribs) < 2 || gIns.attribs[0] != attr.handle {
-		t.Errorf("INSERT 属性句柄: %v（want 首=%d）", gIns.attribs, attr.handle)
+	if len(gIns.Attribs) < 2 || gIns.Attribs[0] != attr.Handle {
+		t.Errorf("INSERT 属性句柄: %v（want 首=%d）", gIns.Attribs, attr.Handle)
 	}
-	if a, ok := got.attribs[attr.handle]; !ok || a.text != "ROOM-101" {
+	if a, ok := got.attribs[attr.Handle]; !ok || a.Text != "ROOM-101" {
 		t.Errorf("ATTRIB 回读: %+v", a)
 	}
 }
@@ -348,8 +349,8 @@ func compareForwardEntities(t *testing.T, base, got *Document) {
 	pick := func(doc *Document) map[uint64]any {
 		m := map[uint64]any{}
 		for _, e := range doc.modelSpaceEntities() {
-			if b := entBase(e); b != nil && b.handle != 0 {
-				m[b.handle] = e
+			if b := entity.EntityBase(e); b != nil && b.Handle != 0 {
+				m[b.Handle] = e
 			}
 		}
 		return m
@@ -363,49 +364,49 @@ func compareForwardEntities(t *testing.T, base, got *Document) {
 			continue
 		}
 		switch a := be.(type) {
-		case *entLine:
-			if b, ok := ge.(*entLine); ok {
-				if nearTol(a.start.x, b.start.x, tol) && nearTol(a.end.y, b.end.y, tol) {
+		case *entity.EntLine:
+			if b, ok := ge.(*entity.EntLine); ok {
+				if nearTol(a.Start.X, b.Start.X, tol) && nearTol(a.End.Y, b.End.Y, tol) {
 					checked++
 				} else {
 					t.Errorf("h=%d LINE 几何不一致: (%v,%v)-(%v,%v) vs (%v,%v)-(%v,%v)", h,
-						a.start.x, a.start.y, a.end.x, a.end.y, b.start.x, b.start.y, b.end.x, b.end.y)
+						a.Start.X, a.Start.Y, a.End.X, a.End.Y, b.Start.X, b.Start.Y, b.End.X, b.End.Y)
 				}
 			}
-		case *entCircle:
-			if b, ok := ge.(*entCircle); ok {
-				if nearTol(a.center.x, b.center.x, tol) && nearTol(a.radius, b.radius, tol) {
+		case *entity.EntCircle:
+			if b, ok := ge.(*entity.EntCircle); ok {
+				if nearTol(a.Center.X, b.Center.X, tol) && nearTol(a.Radius, b.Radius, tol) {
 					checked++
 				} else {
-					t.Errorf("h=%d CIRCLE 不一致: c=%v r=%v vs c=%v r=%v", h, a.center, a.radius, b.center, b.radius)
+					t.Errorf("h=%d CIRCLE 不一致: c=%v r=%v vs c=%v r=%v", h, a.Center, a.Radius, b.Center, b.Radius)
 				}
 			}
-		case *entArc:
-			if b, ok := ge.(*entArc); ok {
-				if nearTol(a.center.x, b.center.x, tol) && nearTol(a.radius, b.radius, tol) &&
-					nearTol(rad2deg(a.angleStart), rad2deg(b.angleStart), 0.5) {
+		case *entity.EntArc:
+			if b, ok := ge.(*entity.EntArc); ok {
+				if nearTol(a.Center.X, b.Center.X, tol) && nearTol(a.Radius, b.Radius, tol) &&
+					nearTol(rad2deg(a.AngleStart), rad2deg(b.AngleStart), 0.5) {
 					checked++
 				} else {
-					t.Errorf("h=%d ARC 不一致: c=%v r=%v vs c=%v r=%v", h, a.center, a.radius, b.center, b.radius)
+					t.Errorf("h=%d ARC 不一致: c=%v r=%v vs c=%v r=%v", h, a.Center, a.Radius, b.Center, b.Radius)
 				}
 			}
-		case *entPoint:
-			if b, ok := ge.(*entPoint); ok {
-				if nearTol(a.location.x, b.location.x, tol) && nearTol(a.location.y, b.location.y, tol) {
+		case *entity.EntPoint:
+			if b, ok := ge.(*entity.EntPoint); ok {
+				if nearTol(a.Location.X, b.Location.X, tol) && nearTol(a.Location.Y, b.Location.Y, tol) {
 					checked++
 				}
 			}
-		case *entEllipse:
-			if b, ok := ge.(*entEllipse); ok {
-				if nearTol(a.center.x, b.center.x, tol) && nearTol(a.ratio, b.ratio, tol) {
+		case *entity.EntEllipse:
+			if b, ok := ge.(*entity.EntEllipse); ok {
+				if nearTol(a.Center.X, b.Center.X, tol) && nearTol(a.Ratio, b.Ratio, tol) {
 					checked++
 				}
 			}
-		case *entLwPolyline:
-			if b, ok := ge.(*entLwPolyline); ok && len(a.vertices) == len(b.vertices) {
+		case *entity.EntLwPolyline:
+			if b, ok := ge.(*entity.EntLwPolyline); ok && len(a.Vertices) == len(b.Vertices) {
 				same := true
-				for i := range a.vertices {
-					if !nearTol(a.vertices[i].x, b.vertices[i].x, tol) || !nearTol(a.vertices[i].y, b.vertices[i].y, tol) {
+				for i := range a.Vertices {
+					if !nearTol(a.Vertices[i].X, b.Vertices[i].X, tol) || !nearTol(a.Vertices[i].Y, b.Vertices[i].Y, tol) {
 						same = false
 						break
 					}
@@ -416,132 +417,132 @@ func compareForwardEntities(t *testing.T, base, got *Document) {
 					t.Errorf("h=%d LWPOLYLINE 顶点不一致", h)
 				}
 			}
-		case *entText:
-			if b, ok := ge.(*entText); ok {
-				if a.text == b.text && nearTol(a.height, b.height, tol) {
+		case *entity.EntText:
+			if b, ok := ge.(*entity.EntText); ok {
+				if a.Text == b.Text && nearTol(a.Height, b.Height, tol) {
 					checked++
 				} else {
-					t.Errorf("h=%d TEXT 不一致: %q vs %q", h, a.text, b.text)
+					t.Errorf("h=%d TEXT 不一致: %q vs %q", h, a.Text, b.Text)
 				}
 			}
-		case *entMText:
-			if b, ok := ge.(*entMText); ok {
-				if stripMTextFormat(a.text) == stripMTextFormat(b.text) {
+		case *entity.EntMText:
+			if b, ok := ge.(*entity.EntMText); ok {
+				if stripMTextFormat(a.Text) == stripMTextFormat(b.Text) {
 					checked++
 				} else {
-					t.Errorf("h=%d MTEXT 不一致: %q vs %q", h, a.text, b.text)
+					t.Errorf("h=%d MTEXT 不一致: %q vs %q", h, a.Text, b.Text)
 				}
 			}
-		case *entInsert:
-			if b, ok := ge.(*entInsert); ok {
-				if nearTol(a.position.x, b.position.x, tol) && a.blockHeader == b.blockHeader {
+		case *entity.EntInsert:
+			if b, ok := ge.(*entity.EntInsert); ok {
+				if nearTol(a.Position.X, b.Position.X, tol) && a.BlockHeader == b.BlockHeader {
 					checked++
 				}
 			}
-		case *entSpline:
-			if b, ok := ge.(*entSpline); ok {
-				same := a.scenario == b.scenario && a.degree == b.degree &&
-					len(a.controlPoints) == len(b.controlPoints) &&
-					len(a.fitPoints) == len(b.fitPoints) &&
-					len(a.knots) == len(b.knots)
-				if same && len(a.controlPoints) > 0 {
-					same = nearTol(a.controlPoints[0].x, b.controlPoints[0].x, tol)
+		case *entity.EntSpline:
+			if b, ok := ge.(*entity.EntSpline); ok {
+				same := a.Scenario == b.Scenario && a.Degree == b.Degree &&
+					len(a.ControlPoints) == len(b.ControlPoints) &&
+					len(a.FitPoints) == len(b.FitPoints) &&
+					len(a.Knots) == len(b.Knots)
+				if same && len(a.ControlPoints) > 0 {
+					same = nearTol(a.ControlPoints[0].X, b.ControlPoints[0].X, tol)
 				}
-				if same && len(a.fitPoints) > 0 {
-					same = nearTol(a.fitPoints[0].y, b.fitPoints[0].y, tol)
+				if same && len(a.FitPoints) > 0 {
+					same = nearTol(a.FitPoints[0].Y, b.FitPoints[0].Y, tol)
 				}
 				if same {
 					checked++
 				} else {
 					t.Errorf("h=%d SPLINE 不一致: scenario %d/%d ctrl %d/%d fit %d/%d", h,
-						a.scenario, b.scenario, len(a.controlPoints), len(b.controlPoints),
-						len(a.fitPoints), len(b.fitPoints))
+						a.Scenario, b.Scenario, len(a.ControlPoints), len(b.ControlPoints),
+						len(a.FitPoints), len(b.FitPoints))
 				}
 			}
-		case *entDimension:
-			if b, ok := ge.(*entDimension); ok {
+		case *entity.EntDimension:
+			if b, ok := ge.(*entity.EntDimension); ok {
 				// 公共段口径：类型标志 + 文本中点 + 用户文字。类型专属点的
 				// gold 键映射在 JSON 侧尚不完整（ANG2LN 的 xline 系四点、
 				// ORDINATE 的 feature/leader 错位、ARC_DIMENSION 专属键），
 				// 专属点位流布局由 TestWriteForwardBatchE 合成闭环覆盖。
-				if a.dimFlag&0x7 == b.dimFlag&0x7 &&
-					nearTol(a.textMidpoint.x, b.textMidpoint.x, tol) &&
-					nearTol(a.textMidpoint.y, b.textMidpoint.y, tol) &&
-					a.userText == b.userText {
+				if a.DimFlag&0x7 == b.DimFlag&0x7 &&
+					nearTol(a.TextMidpoint.X, b.TextMidpoint.X, tol) &&
+					nearTol(a.TextMidpoint.Y, b.TextMidpoint.Y, tol) &&
+					a.UserText == b.UserText {
 					checked++
 				} else {
 					t.Errorf("h=%d DIMENSION 不一致: flag %#x/%#x mid(%v,%v)/(%v,%v) text %q/%q", h,
-						a.dimFlag&0x7, b.dimFlag&0x7, a.textMidpoint.x, a.textMidpoint.y,
-						b.textMidpoint.x, b.textMidpoint.y, a.userText, b.userText)
+						a.DimFlag&0x7, b.DimFlag&0x7, a.TextMidpoint.X, a.TextMidpoint.Y,
+						b.TextMidpoint.X, b.TextMidpoint.Y, a.UserText, b.UserText)
 				}
 			}
-		case *entHatch:
-			if b, ok := ge.(*entHatch); ok {
-				if a.name == b.name && len(a.paths) == len(b.paths) {
+		case *entity.EntHatch:
+			if b, ok := ge.(*entity.EntHatch); ok {
+				if a.Name == b.Name && len(a.Paths) == len(b.Paths) {
 					checked++
 				} else {
-					t.Errorf("h=%d HATCH 不一致: %q/%q paths %d/%d", h, a.name, b.name, len(a.paths), len(b.paths))
+					t.Errorf("h=%d HATCH 不一致: %q/%q paths %d/%d", h, a.Name, b.Name, len(a.Paths), len(b.Paths))
 				}
 			}
-		case *entRay:
-			if b, ok := ge.(*entRay); ok {
-				if nearTol(a.start.x, b.start.x, tol) && nearTol(a.unitVector.y, b.unitVector.y, tol) && a.xline == b.xline {
+		case *entity.EntRay:
+			if b, ok := ge.(*entity.EntRay); ok {
+				if nearTol(a.Start.X, b.Start.X, tol) && nearTol(a.UnitVector.Y, b.UnitVector.Y, tol) && a.Xline == b.Xline {
 					checked++
 				} else {
 					t.Errorf("h=%d RAY/XLINE 不一致", h)
 				}
 			}
-		case *entMLine:
-			if b, ok := ge.(*entMLine); ok {
-				if len(a.vertices) == len(b.vertices) && nearTol(a.scale, b.scale, tol) {
+		case *entity.EntMLine:
+			if b, ok := ge.(*entity.EntMLine); ok {
+				if len(a.Vertices) == len(b.Vertices) && nearTol(a.Scale, b.Scale, tol) {
 					checked++
 				} else {
-					t.Errorf("h=%d MLINE 不一致: scale %v/%v verts %d/%d", h, a.scale, b.scale, len(a.vertices), len(b.vertices))
+					t.Errorf("h=%d MLINE 不一致: scale %v/%v verts %d/%d", h, a.Scale, b.Scale, len(a.Vertices), len(b.Vertices))
 				}
 			}
-		case *entTolerance:
-			if b, ok := ge.(*entTolerance); ok {
-				if a.text == b.text && nearTol(a.insertion.x, b.insertion.x, tol) {
+		case *entity.EntTolerance:
+			if b, ok := ge.(*entity.EntTolerance); ok {
+				if a.Text == b.Text && nearTol(a.Insertion.X, b.Insertion.X, tol) {
 					checked++
 				} else {
-					t.Errorf("h=%d TOLERANCE 不一致: %q/%q", h, a.text, b.text)
+					t.Errorf("h=%d TOLERANCE 不一致: %q/%q", h, a.Text, b.Text)
 				}
 			}
-		case *entViewport:
-			if b, ok := ge.(*entViewport); ok {
-				if nearTol(a.width, b.width, tol) && nearTol(a.height, b.height, tol) {
+		case *entity.EntViewport:
+			if b, ok := ge.(*entity.EntViewport); ok {
+				if nearTol(a.Width, b.Width, tol) && nearTol(a.Height, b.Height, tol) {
 					checked++
 				} else {
-					t.Errorf("h=%d VIEWPORT 不一致: %v/%v x %v/%v", h, a.width, b.width, a.height, b.height)
+					t.Errorf("h=%d VIEWPORT 不一致: %v/%v x %v/%v", h, a.Width, b.Width, a.Height, b.Height)
 				}
 			}
-		case *entPolyline3d:
-			if b, ok := ge.(*entPolyline3d); ok {
-				if a.flags70 == b.flags70 && a.flags75 == b.flags75 {
+		case *entity.EntPolyline3d:
+			if b, ok := ge.(*entity.EntPolyline3d); ok {
+				if a.Flags70 == b.Flags70 && a.Flags75 == b.Flags75 {
 					checked++
 				}
 			}
-		case *entVertex3d:
-			if b, ok := ge.(*entVertex3d); ok {
-				if nearTol(a.position.x, b.position.x, tol) && nearTol(a.position.z, b.position.z, tol) {
+		case *entity.EntVertex3d:
+			if b, ok := ge.(*entity.EntVertex3d); ok {
+				if nearTol(a.Position.X, b.Position.X, tol) && nearTol(a.Position.Z, b.Position.Z, tol) {
 					checked++
 				}
 			}
-		case *entVertexPface:
-			if b, ok := ge.(*entVertexPface); ok {
-				if nearTol(a.position.x, b.position.x, tol) && nearTol(a.position.y, b.position.y, tol) {
+		case *entity.EntVertexPface:
+			if b, ok := ge.(*entity.EntVertexPface); ok {
+				if nearTol(a.Position.X, b.Position.X, tol) && nearTol(a.Position.Y, b.Position.Y, tol) {
 					checked++
 				}
 			}
-		case *entVertexPfaceFace:
-			if b, ok := ge.(*entVertexPfaceFace); ok {
-				if a.vertind == b.vertind {
+		case *entity.EntVertexPfaceFace:
+			if b, ok := ge.(*entity.EntVertexPfaceFace); ok {
+				if a.Vertind == b.Vertind {
 					checked++
 				}
 			}
-		case *entPolylinePface:
-			if b, ok := ge.(*entPolylinePface); ok {
-				if a.numVertices == b.numVertices && a.numFaces == b.numFaces {
+		case *entity.EntPolylinePface:
+			if b, ok := ge.(*entity.EntPolylinePface); ok {
+				if a.NumVertices == b.NumVertices && a.NumFaces == b.NumFaces {
 					checked++
 				}
 			}
@@ -629,120 +630,120 @@ func minInt(a, b int) int {
 // POLYLINE_MESH / VIEWPORT → WriteDwg → Parse 逐键对照。
 func TestWriteForwardBatchE(t *testing.T) {
 	// SPLINE 控制点模式（带权重）与拟合点模式
-	splineCtrl := &entSpline{
-		scenario: 1, degree: 3, rational: true,
-		knotTolerance: 1e-7, ctrlTolerance: 2e-7,
-		knots:         []float64{0, 0, 0, 1, 2, 3, 3, 3},
-		controlPoints: []point3{{0, 0, 0}, {10, 20, 1}, {30, 10, 2}, {40, 40, 0}},
-		weights:       []float64{1, 2, 2, 1},
+	splineCtrl := &entity.EntSpline{
+		Scenario: 1, Degree: 3, Rational: true,
+		KnotTolerance: 1e-7, CtrlTolerance: 2e-7,
+		Knots:         []float64{0, 0, 0, 1, 2, 3, 3, 3},
+		ControlPoints: []entity.Point3{{0, 0, 0}, {10, 20, 1}, {30, 10, 2}, {40, 40, 0}},
+		Weights:       []float64{1, 2, 2, 1},
 	}
-	splineFit := &entSpline{
-		scenario: 2, degree: 3,
-		fitTolerance: 1e-10,
-		fitPoints:    []point3{{1, 1, 0}, {5, 6, 0}, {9, 2, 0}, {12, 8, 0}},
+	splineFit := &entity.EntSpline{
+		Scenario: 2, Degree: 3,
+		FitTolerance: 1e-10,
+		FitPoints:    []entity.Point3{{1, 1, 0}, {5, 6, 0}, {9, 2, 0}, {12, 8, 0}},
 	}
 	// DIMENSION 七型（flag 低 3 位分派）
-	dimLinear := &entDimension{
-		dimFlags: 0x80, dimFlag: 0x80,
-		extrusion: point3{0, 0, 1}, textMidpoint: point3{5, 6, 0}, elevation: 0,
-		userText: "DL<>", textRotation: 0.1, horizontalDir: 0.2,
-		insertScale: point3{1, 1, 1}, insertRotation: 0.3,
-		attachmentPoint: 1, lineSpacingStyle: 1, lineSpacingFactor: 1.5,
-		actualMeasurement: 42.5, insertPoint: point3{1, 2, 0}, hasInsertPoint: true,
-		point13: point3{0, 0, 0}, point14: point3{40, 0, 0}, point10: point3{10, -5, 0},
-		extLineRotation: 0.05, dimRotation: 0.25,
+	dimLinear := &entity.EntDimension{
+		DimFlags: 0x80, DimFlag: 0x80,
+		Extrusion: entity.Point3{0, 0, 1}, TextMidpoint: entity.Point3{5, 6, 0}, Elevation: 0,
+		UserText: "DL<>", TextRotation: 0.1, HorizontalDir: 0.2,
+		InsertScale: entity.Point3{1, 1, 1}, InsertRotation: 0.3,
+		AttachmentPoint: 1, LineSpacingStyle: 1, LineSpacingFactor: 1.5,
+		ActualMeasurement: 42.5, InsertPoint: entity.Point3{1, 2, 0}, HasInsertPoint: true,
+		Point13: entity.Point3{0, 0, 0}, Point14: entity.Point3{40, 0, 0}, Point10: entity.Point3{10, -5, 0},
+		ExtLineRotation: 0.05, DimRotation: 0.25,
 	}
-	dimAligned := &entDimension{dimFlags: 0x81, dimFlag: 0x81, extrusion: point3{0, 0, 1},
-		textMidpoint: point3{9, 9, 0}, point13: point3{0, 0, 0}, point14: point3{30, 40, 0},
-		point10: point3{15, 20, 0}, extLineRotation: 0.02}
-	dimAng2Ln := &entDimension{dimFlags: 0x82, dimFlag: 0x82, extrusion: point3{0, 0, 1},
-		textMidpoint: point3{1, 1, 0}, point16x: 7, p16y: 8,
-		point13: point3{0, 0, 0}, point14: point3{10, 0, 0}, point15: point3{20, 10, 0},
-		point10: point3{5, 5, 0}}
-	dimDiameter := &entDimension{dimFlags: 0x83, dimFlag: 0x83, extrusion: point3{0, 0, 1},
-		textMidpoint: point3{2, 2, 0}, point15: point3{12, 12, 0}, point10: point3{-12, -12, 0},
-		leaderLen: 8.25, dimstyleHandle: 0x77}
-	dimRadius := &entDimension{dimFlags: 0x84, dimFlag: 0x84, extrusion: point3{0, 0, 1},
-		textMidpoint: point3{3, 3, 0}, point10: point3{0, 0, 0}, point15: point3{9, 0, 0},
-		leaderLen: 3.5}
-	dimAng3Pt := &entDimension{dimFlags: 0x85, dimFlag: 0x85, extrusion: point3{0, 0, 1},
-		textMidpoint: point3{4, 4, 0}, point10: point3{0, 0, 0}, point13: point3{10, 0, 0},
-		point14: point3{0, 10, 0}, point15: point3{5, 5, 0}}
-	dimOrdinate := &entDimension{dimFlags: 0x86, dimFlag: 0x86, extrusion: point3{0, 0, 1},
-		textMidpoint: point3{6, 6, 0}, point10: point3{1, 1, 0}, point13: point3{11, 1, 0},
-		point14: point3{1, 11, 0}, flag2: 0x80}
+	dimAligned := &entity.EntDimension{DimFlags: 0x81, DimFlag: 0x81, Extrusion: entity.Point3{0, 0, 1},
+		TextMidpoint: entity.Point3{9, 9, 0}, Point13: entity.Point3{0, 0, 0}, Point14: entity.Point3{30, 40, 0},
+		Point10: entity.Point3{15, 20, 0}, ExtLineRotation: 0.02}
+	dimAng2Ln := &entity.EntDimension{DimFlags: 0x82, DimFlag: 0x82, Extrusion: entity.Point3{0, 0, 1},
+		TextMidpoint: entity.Point3{1, 1, 0}, Point16x: 7, P16y: 8,
+		Point13: entity.Point3{0, 0, 0}, Point14: entity.Point3{10, 0, 0}, Point15: entity.Point3{20, 10, 0},
+		Point10: entity.Point3{5, 5, 0}}
+	dimDiameter := &entity.EntDimension{DimFlags: 0x83, DimFlag: 0x83, Extrusion: entity.Point3{0, 0, 1},
+		TextMidpoint: entity.Point3{2, 2, 0}, Point15: entity.Point3{12, 12, 0}, Point10: entity.Point3{-12, -12, 0},
+		LeaderLen: 8.25, DimstyleHandle: 0x77}
+	dimRadius := &entity.EntDimension{DimFlags: 0x84, DimFlag: 0x84, Extrusion: entity.Point3{0, 0, 1},
+		TextMidpoint: entity.Point3{3, 3, 0}, Point10: entity.Point3{0, 0, 0}, Point15: entity.Point3{9, 0, 0},
+		LeaderLen: 3.5}
+	dimAng3Pt := &entity.EntDimension{DimFlags: 0x85, DimFlag: 0x85, Extrusion: entity.Point3{0, 0, 1},
+		TextMidpoint: entity.Point3{4, 4, 0}, Point10: entity.Point3{0, 0, 0}, Point13: entity.Point3{10, 0, 0},
+		Point14: entity.Point3{0, 10, 0}, Point15: entity.Point3{5, 5, 0}}
+	dimOrdinate := &entity.EntDimension{DimFlags: 0x86, DimFlag: 0x86, Extrusion: entity.Point3{0, 0, 1},
+		TextMidpoint: entity.Point3{6, 6, 0}, Point10: entity.Point3{1, 1, 0}, Point13: entity.Point3{11, 1, 0},
+		Point14: entity.Point3{1, 11, 0}, Flag2: 0x80}
 	// HATCH：边集路径（直线+弧）与多段线路径（带凸度）
-	hatchEdges := &entHatch{
-		elevation: 1.25, extrusion: point3{0, 0, 1}, name: "ANGLE",
-		associative: true, style: 0, patternType: 1, angle: 0.5, scaleSpacing: 2,
-		deflines: []hatchDefLine{{
-			angle: 0.25, pt0: point2{1, 2}, offset: point2{3, 4},
-			dashes: []float64{10, -3},
+	hatchEdges := &entity.EntHatch{
+		Elevation: 1.25, Extrusion: entity.Point3{0, 0, 1}, Name: "ANGLE",
+		Associative: true, Style: 0, PatternType: 1, Angle: 0.5, ScaleSpacing: 2,
+		Deflines: []entity.HatchDefLine{{
+			Angle: 0.25, Pt0: entity.Point2{1, 2}, Offset: entity.Point2{3, 4},
+			Dashes: []float64{10, -3},
 		}},
-		paths: []hatchPath{{
-			flag: 1,
-			segs: []hatchSeg{
-				{curveType: 1, first: point2{0, 0}, second: point2{10, 0}},
-				{curveType: 2, center: point2{10, 5}, radius: 5, startAng: 0, endAng: 1.5, ccw: true},
+		Paths: []entity.HatchPath{{
+			Flag: 1,
+			Segs: []entity.HatchSeg{
+				{CurveType: 1, First: entity.Point2{0, 0}, Second: entity.Point2{10, 0}},
+				{CurveType: 2, Center: entity.Point2{10, 5}, Radius: 5, StartAng: 0, EndAng: 1.5, Ccw: true},
 			},
 		}},
-		seeds: []point2{{2, 3}, {4, 5}},
+		Seeds: []entity.Point2{{2, 3}, {4, 5}},
 	}
-	hatchPoly := &entHatch{
-		name: "SOLID", solidFill: true, style: 1, patternType: 1,
-		paths: []hatchPath{{
-			flag:          3,
-			isPolyline:    true,
-			bulgesPresent: true,
-			closed:        true,
-			polyVerts: []hatchPolyVert{
-				{p: point2{0, 0}, bulge: 0},
-				{p: point2{10, 0}, bulge: 0.5},
-				{p: point2{10, 10}, bulge: 0},
+	hatchPoly := &entity.EntHatch{
+		Name: "SOLID", SolidFill: true, Style: 1, PatternType: 1,
+		Paths: []entity.HatchPath{{
+			Flag:          3,
+			IsPolyline:    true,
+			BulgesPresent: true,
+			Closed:        true,
+			PolyVerts: []entity.HatchPolyVert{
+				{P: entity.Point2{0, 0}, Bulge: 0},
+				{P: entity.Point2{10, 0}, Bulge: 0.5},
+				{P: entity.Point2{10, 10}, Bulge: 0},
 			},
 		}},
 	}
-	ray := &entRay{start: point3{1, 2, 3}, unitVector: point3{1, 0, 0}}
-	xline := &entRay{start: point3{4, 5, 6}, unitVector: point3{0, 1, 0}, xline: true}
-	leader := &entLeader{
-		annotationType: 1, pathType: 0,
-		points:    []point3{{0, 0, 0}, {10, 10, 0}, {20, 10, 0}},
-		origin:    point3{0, 0, 0},
-		boxHeight: 3, boxWidth: 12, arrowheadOn: true, arrowheadType: 1,
+	ray := &entity.EntRay{Start: entity.Point3{1, 2, 3}, UnitVector: entity.Point3{1, 0, 0}}
+	xline := &entity.EntRay{Start: entity.Point3{4, 5, 6}, UnitVector: entity.Point3{0, 1, 0}, Xline: true}
+	leader := &entity.EntLeader{
+		AnnotationType: 1, PathType: 0,
+		Points:    []entity.Point3{{0, 0, 0}, {10, 10, 0}, {20, 10, 0}},
+		Origin:    entity.Point3{0, 0, 0},
+		BoxHeight: 3, BoxWidth: 12, ArrowheadOn: true, ArrowheadType: 1,
 	}
-	mline := &entMLine{
-		scale: 20, justification: 1, openClosed: 3, linesInStyle: 2,
-		vertices: []entMLineVertex{
-			{position: point3{0, 0, 0}, direction: point3{1, 0, 0}, miter: point3{0, 1, 0},
-				segParams: []float64{-10, 10, -10, 10}, areaParams: []float64{0, 0, 0, 0}},
-			{position: point3{50, 0, 0}, direction: point3{1, 0, 0}, miter: point3{0, 1, 0},
-				segParams: []float64{-10, 10, -10, 10}, areaParams: []float64{0, 0, 0, 0}},
+	mline := &entity.EntMLine{
+		Scale: 20, Justification: 1, OpenClosed: 3, LinesInStyle: 2,
+		Vertices: []entity.EntMLineVertex{
+			{Position: entity.Point3{0, 0, 0}, Direction: entity.Point3{1, 0, 0}, Miter: entity.Point3{0, 1, 0},
+				SegParams: []float64{-10, 10, -10, 10}, AreaParams: []float64{0, 0, 0, 0}},
+			{Position: entity.Point3{50, 0, 0}, Direction: entity.Point3{1, 0, 0}, Miter: entity.Point3{0, 1, 0},
+				SegParams: []float64{-10, 10, -10, 10}, AreaParams: []float64{0, 0, 0, 0}},
 		},
-		styleHandle: 0x99,
+		StyleHandle: 0x99,
 	}
-	tolerance := &entTolerance{
-		text: "{\\Fgdt;r}%%v1", insertion: point3{7, 8, 0},
-		xDirection: point3{1, 0, 0}, extrusion: point3{0, 0, 1}, dimstyle: 0x88,
+	tolerance := &entity.EntTolerance{
+		Text: "{\\Fgdt;r}%%v1", Insertion: entity.Point3{7, 8, 0},
+		XDirection: entity.Point3{1, 0, 0}, Extrusion: entity.Point3{0, 0, 1}, Dimstyle: 0x88,
 	}
-	shape := &entShape{
-		insertion: point3{1, 1, 0}, scale: 2, rotation: 0.5, widthFactor: 1,
-		oblique: 0.1, thickness: 0.2, styleId: 3, extrusion: point3{0, 0, 1},
+	shape := &entity.EntShape{
+		Insertion: entity.Point3{1, 1, 0}, Scale: 2, Rotation: 0.5, WidthFactor: 1,
+		Oblique: 0.1, Thickness: 0.2, StyleId: 3, Extrusion: entity.Point3{0, 0, 1},
 	}
-	viewport := &entViewport{
-		center: point3{100, 100, 0}, width: 210, height: 148,
-		viewTarget: point3{0, 0, 0}, viewDir: point3{0, 0, 1}, viewTwist: 0.1,
-		viewSize: 200, lensLength: 50, frontZ: 0, backZ: 0, snapAng: 0,
-		viewCtr: point2{50, 50}, snapBase: point2{0, 0}, snapUnit: point2{10, 10},
-		gridUnit: point2{10, 10}, circleZoom: 100, numFrozenLayers: 0,
-		statusFlag: 1, styleSheet: "", renderMode: 0, ucsVP: true,
-		ucsorg: point3{0, 0, 0}, ucsxdir: point3{1, 0, 0}, ucsydir: point3{0, 1, 0},
+	viewport := &entity.EntViewport{
+		Center: entity.Point3{100, 100, 0}, Width: 210, Height: 148,
+		ViewTarget: entity.Point3{0, 0, 0}, ViewDir: entity.Point3{0, 0, 1}, ViewTwist: 0.1,
+		ViewSize: 200, LensLength: 50, FrontZ: 0, BackZ: 0, SnapAng: 0,
+		ViewCtr: entity.Point2{50, 50}, SnapBase: entity.Point2{0, 0}, SnapUnit: entity.Point2{10, 10},
+		GridUnit: entity.Point2{10, 10}, CircleZoom: 100, NumFrozenLayers: 0,
+		StatusFlag: 1, StyleSheet: "", RenderMode: 0, UcsVP: true,
+		Ucsorg: entity.Point3{0, 0, 0}, Ucsxdir: entity.Point3{1, 0, 0}, Ucsydir: entity.Point3{0, 1, 0},
 	}
-	vtx3d := &entVertex3d{flags: 32, position: point3{1, 2, 3}}
-	pfaceVtx := &entVertexPface{flag: 192, position: point3{4, 5, 6}}
-	pfaceFace := &entVertexPfaceFace{flag: 128, vertind: [4]int32{1, 2, 3, 0}}
-	poly3d := &entPolyline3d{flags75: 0, flags70: 0}
-	polyPface := &entPolylinePface{numVertices: 3, numFaces: 1}
-	polyMesh := &entPolylineMesh{flags: 0, curveType: 0, mVertexCount: 2, nVertexCount: 2, mDensity: 1, nDensity: 1}
+	vtx3d := &entity.EntVertex3d{Flags: 32, Position: entity.Point3{1, 2, 3}}
+	pfaceVtx := &entity.EntVertexPface{Flag: 192, Position: entity.Point3{4, 5, 6}}
+	pfaceFace := &entity.EntVertexPfaceFace{Flag: 128, Vertind: [4]int32{1, 2, 3, 0}}
+	poly3d := &entity.EntPolyline3d{Flags75: 0, Flags70: 0}
+	polyPface := &entity.EntPolylinePface{NumVertices: 3, NumFaces: 1}
+	polyMesh := &entity.EntPolylineMesh{Flags: 0, CurveType: 0, MVertexCount: 2, NVertexCount: 2, MDensity: 1, NDensity: 1}
 
 	doc := fwdSynthDoc(t, splineCtrl, splineFit,
 		dimLinear, dimAligned, dimAng2Ln, dimDiameter, dimRadius, dimAng3Pt, dimOrdinate,
@@ -751,10 +752,10 @@ func TestWriteForwardBatchE(t *testing.T) {
 	got := fwdWriteParse(t, doc)
 	byHandle := map[uint64]any{}
 	for _, e := range got.modelSpace {
-		byHandle[entBase(e).handle] = e
+		byHandle[entity.EntityBase(e).Handle] = e
 	}
 	get := func(want any) any {
-		h := entBase(want).handle
+		h := entity.EntityBase(want).Handle
 		e, ok := byHandle[h]
 		if !ok {
 			t.Fatalf("回读缺少句柄 %d（%T）", h, want)
@@ -762,181 +763,181 @@ func TestWriteForwardBatchE(t *testing.T) {
 		return e
 	}
 	// SPLINE 双模式
-	gs := get(splineCtrl).(*entSpline)
-	if gs.scenario != 1 || gs.degree != 3 || !gs.rational {
-		t.Errorf("SPLINE 控制点模式: scenario=%d degree=%d rational=%v", gs.scenario, gs.degree, gs.rational)
+	gs := get(splineCtrl).(*entity.EntSpline)
+	if gs.Scenario != 1 || gs.Degree != 3 || !gs.Rational {
+		t.Errorf("SPLINE 控制点模式: scenario=%d degree=%d rational=%v", gs.Scenario, gs.Degree, gs.Rational)
 	}
-	if len(gs.knots) != 8 || len(gs.controlPoints) != 4 || len(gs.weights) != 4 {
-		t.Fatalf("SPLINE 控制点数组: knots=%d ctrl=%d w=%d", len(gs.knots), len(gs.controlPoints), len(gs.weights))
+	if len(gs.Knots) != 8 || len(gs.ControlPoints) != 4 || len(gs.Weights) != 4 {
+		t.Fatalf("SPLINE 控制点数组: knots=%d ctrl=%d w=%d", len(gs.Knots), len(gs.ControlPoints), len(gs.Weights))
 	}
-	if !nearGeo(gs.knots[3], 1) || !nearGeo(gs.controlPoints[2].x, 30) || !nearGeo(gs.weights[1], 2) {
-		t.Errorf("SPLINE 控制点数据: knots=%v ctrl2=%+v w=%v", gs.knots, gs.controlPoints[2], gs.weights)
+	if !nearGeo(gs.Knots[3], 1) || !nearGeo(gs.ControlPoints[2].X, 30) || !nearGeo(gs.Weights[1], 2) {
+		t.Errorf("SPLINE 控制点数据: knots=%v ctrl2=%+v w=%v", gs.Knots, gs.ControlPoints[2], gs.Weights)
 	}
-	gsf := get(splineFit).(*entSpline)
-	if gsf.scenario != 2 || len(gsf.fitPoints) != 4 || !nearGeo(gsf.fitTolerance, 1e-10) {
-		t.Errorf("SPLINE 拟合模式: scenario=%d fit=%v tol=%v", gsf.scenario, gsf.fitPoints, gsf.fitTolerance)
+	gsf := get(splineFit).(*entity.EntSpline)
+	if gsf.Scenario != 2 || len(gsf.FitPoints) != 4 || !nearGeo(gsf.FitTolerance, 1e-10) {
+		t.Errorf("SPLINE 拟合模式: scenario=%d fit=%v tol=%v", gsf.Scenario, gsf.FitPoints, gsf.FitTolerance)
 	}
 	// DIMENSION 七型：类型码 + 公共段 + 专属点
 	dimCases := []struct {
 		name     string
-		want     *entDimension
-		checkGeo func(*entDimension) error
+		want     *entity.EntDimension
+		checkGeo func(*entity.EntDimension) error
 	}{
-		{"DIM_LINEAR", dimLinear, func(g *entDimension) error {
-			if !nearGeo(g.point10.x, 10) || !nearGeo(g.point13.x, 0) || !nearGeo(g.point14.x, 40) ||
-				!nearGeo(g.extLineRotation, 0.05) || !nearGeo(g.dimRotation, 0.25) ||
-				g.userText != "DL<>" || !nearGeo(g.actualMeasurement, 42.5) {
-				return fmt.Errorf("几何 %+v %+v %+v", g.point10, g.point13, g.point14)
+		{"DIM_LINEAR", dimLinear, func(g *entity.EntDimension) error {
+			if !nearGeo(g.Point10.X, 10) || !nearGeo(g.Point13.X, 0) || !nearGeo(g.Point14.X, 40) ||
+				!nearGeo(g.ExtLineRotation, 0.05) || !nearGeo(g.DimRotation, 0.25) ||
+				g.UserText != "DL<>" || !nearGeo(g.ActualMeasurement, 42.5) {
+				return fmt.Errorf("几何 %+v %+v %+v", g.Point10, g.Point13, g.Point14)
 			}
 			return nil
 		}},
-		{"DIM_ALIGNED", dimAligned, func(g *entDimension) error {
-			if !nearGeo(g.point14.y, 40) || !nearGeo(g.extLineRotation, 0.02) {
-				return fmt.Errorf("几何 %+v", g.point14)
+		{"DIM_ALIGNED", dimAligned, func(g *entity.EntDimension) error {
+			if !nearGeo(g.Point14.Y, 40) || !nearGeo(g.ExtLineRotation, 0.02) {
+				return fmt.Errorf("几何 %+v", g.Point14)
 			}
 			return nil
 		}},
-		{"DIM_ANG2LN", dimAng2Ln, func(g *entDimension) error {
-			if !nearGeo(g.point16x, 7) || !nearGeo(g.p16y, 8) || !nearGeo(g.point15.x, 20) {
-				return fmt.Errorf("几何 16=(%v,%v) 15=%+v", g.point16x, g.p16y, g.point15)
+		{"DIM_ANG2LN", dimAng2Ln, func(g *entity.EntDimension) error {
+			if !nearGeo(g.Point16x, 7) || !nearGeo(g.P16y, 8) || !nearGeo(g.Point15.X, 20) {
+				return fmt.Errorf("几何 16=(%v,%v) 15=%+v", g.Point16x, g.P16y, g.Point15)
 			}
 			return nil
 		}},
-		{"DIM_DIAMETER", dimDiameter, func(g *entDimension) error {
-			if !nearGeo(g.point15.x, 12) || !nearGeo(g.point10.x, -12) || !nearGeo(g.leaderLen, 8.25) {
-				return fmt.Errorf("几何 15=%+v 10=%+v", g.point15, g.point10)
+		{"DIM_DIAMETER", dimDiameter, func(g *entity.EntDimension) error {
+			if !nearGeo(g.Point15.X, 12) || !nearGeo(g.Point10.X, -12) || !nearGeo(g.LeaderLen, 8.25) {
+				return fmt.Errorf("几何 15=%+v 10=%+v", g.Point15, g.Point10)
 			}
 			return nil
 		}},
-		{"DIM_RADIUS", dimRadius, func(g *entDimension) error {
-			if !nearGeo(g.point15.x, 9) || !nearGeo(g.leaderLen, 3.5) {
-				return fmt.Errorf("几何 15=%+v", g.point15)
+		{"DIM_RADIUS", dimRadius, func(g *entity.EntDimension) error {
+			if !nearGeo(g.Point15.X, 9) || !nearGeo(g.LeaderLen, 3.5) {
+				return fmt.Errorf("几何 15=%+v", g.Point15)
 			}
 			return nil
 		}},
-		{"DIM_ANG3PT", dimAng3Pt, func(g *entDimension) error {
-			if !nearGeo(g.point10.x, 0) || !nearGeo(g.point15.x, 5) {
-				return fmt.Errorf("几何 10=%+v 15=%+v", g.point10, g.point15)
+		{"DIM_ANG3PT", dimAng3Pt, func(g *entity.EntDimension) error {
+			if !nearGeo(g.Point10.X, 0) || !nearGeo(g.Point15.X, 5) {
+				return fmt.Errorf("几何 10=%+v 15=%+v", g.Point10, g.Point15)
 			}
 			return nil
 		}},
-		{"DIM_ORDINATE", dimOrdinate, func(g *entDimension) error {
-			if !nearGeo(g.point13.x, 11) || g.dimFlag&0x7 != 6 {
-				return fmt.Errorf("几何 13=%+v flag=%#x", g.point13, g.dimFlag)
+		{"DIM_ORDINATE", dimOrdinate, func(g *entity.EntDimension) error {
+			if !nearGeo(g.Point13.X, 11) || g.DimFlag&0x7 != 6 {
+				return fmt.Errorf("几何 13=%+v flag=%#x", g.Point13, g.DimFlag)
 			}
 			return nil
 		}},
 	}
 	for _, dc := range dimCases {
-		g, ok := get(dc.want).(*entDimension)
+		g, ok := get(dc.want).(*entity.EntDimension)
 		if !ok {
 			t.Fatalf("%s 回读类型不符", dc.name)
 		}
-		if g.dimFlag&0x7 != dc.want.dimFlag&0x7 {
-			t.Errorf("%s 类型标志: %#x != %#x", dc.name, g.dimFlag&0x7, dc.want.dimFlag&0x7)
+		if g.DimFlag&0x7 != dc.want.DimFlag&0x7 {
+			t.Errorf("%s 类型标志: %#x != %#x", dc.name, g.DimFlag&0x7, dc.want.DimFlag&0x7)
 		}
 		if err := dc.checkGeo(g); err != nil {
 			t.Errorf("%s: %v", dc.name, err)
 		}
 	}
-	if g := get(dimDiameter).(*entDimension); g.dimstyleHandle != 0x77 {
-		t.Errorf("DIMENSION dimstyle 句柄: %d != 0x77", g.dimstyleHandle)
+	if g := get(dimDiameter).(*entity.EntDimension); g.DimstyleHandle != 0x77 {
+		t.Errorf("DIMENSION dimstyle 句柄: %d != 0x77", g.DimstyleHandle)
 	}
 	// HATCH 边集路径
-	gh := get(hatchEdges).(*entHatch)
-	if gh.name != "ANGLE" || !gh.associative || len(gh.paths) != 1 {
-		t.Fatalf("HATCH 边集: name=%q assoc=%v paths=%d", gh.name, gh.associative, len(gh.paths))
+	gh := get(hatchEdges).(*entity.EntHatch)
+	if gh.Name != "ANGLE" || !gh.Associative || len(gh.Paths) != 1 {
+		t.Fatalf("HATCH 边集: name=%q assoc=%v paths=%d", gh.Name, gh.Associative, len(gh.Paths))
 	}
-	if len(gh.paths[0].segs) != 2 || gh.paths[0].segs[0].curveType != 1 {
-		t.Fatalf("HATCH 边段: %+v", gh.paths[0].segs)
+	if len(gh.Paths[0].Segs) != 2 || gh.Paths[0].Segs[0].CurveType != 1 {
+		t.Fatalf("HATCH 边段: %+v", gh.Paths[0].Segs)
 	}
-	s0 := gh.paths[0].segs[0]
-	if !nearGeo(s0.second.x, 10) || !nearGeo(s0.second.y, 0) {
+	s0 := gh.Paths[0].Segs[0]
+	if !nearGeo(s0.Second.X, 10) || !nearGeo(s0.Second.Y, 0) {
 		t.Errorf("HATCH 直线边: %+v", s0)
 	}
-	s1 := gh.paths[0].segs[1]
-	if s1.curveType != 2 || !nearGeo(s1.radius, 5) || !nearGeo(s1.endAng, 1.5) || !s1.ccw {
+	s1 := gh.Paths[0].Segs[1]
+	if s1.CurveType != 2 || !nearGeo(s1.Radius, 5) || !nearGeo(s1.EndAng, 1.5) || !s1.Ccw {
 		t.Errorf("HATCH 弧边: %+v", s1)
 	}
-	if len(gh.deflines) != 1 || !nearGeo(gh.deflines[0].offset.y, 4) || len(gh.deflines[0].dashes) != 2 {
-		t.Errorf("HATCH 定义线: %+v", gh.deflines)
+	if len(gh.Deflines) != 1 || !nearGeo(gh.Deflines[0].Offset.Y, 4) || len(gh.Deflines[0].Dashes) != 2 {
+		t.Errorf("HATCH 定义线: %+v", gh.Deflines)
 	}
 	// 种子点段为纯位流消费（读侧不回填 seeds，仅验证布局不错位——
 	// 能正确解出路径与定义线即证明种子段偏移正确）
 	// HATCH 多段线路径
-	ghp := get(hatchPoly).(*entHatch)
-	if !ghp.solidFill || len(ghp.paths) != 1 || !ghp.paths[0].isPolyline {
-		t.Fatalf("HATCH 多段线: solid=%v paths=%+v", ghp.solidFill, ghp.paths)
+	ghp := get(hatchPoly).(*entity.EntHatch)
+	if !ghp.SolidFill || len(ghp.Paths) != 1 || !ghp.Paths[0].IsPolyline {
+		t.Fatalf("HATCH 多段线: solid=%v paths=%+v", ghp.SolidFill, ghp.Paths)
 	}
-	if len(ghp.paths[0].polyVerts) != 3 || !nearGeo(ghp.paths[0].polyVerts[1].bulge, 0.5) || !ghp.paths[0].closed {
-		t.Errorf("HATCH 多段线顶点: %+v", ghp.paths[0].polyVerts)
+	if len(ghp.Paths[0].PolyVerts) != 3 || !nearGeo(ghp.Paths[0].PolyVerts[1].Bulge, 0.5) || !ghp.Paths[0].Closed {
+		t.Errorf("HATCH 多段线顶点: %+v", ghp.Paths[0].PolyVerts)
 	}
 	// RAY / XLINE
-	gr := get(ray).(*entRay)
-	if !nearGeo(gr.start.z, 3) || !nearGeo(gr.unitVector.x, 1) {
-		t.Errorf("RAY: %+v %+v", gr.start, gr.unitVector)
+	gr := get(ray).(*entity.EntRay)
+	if !nearGeo(gr.Start.Z, 3) || !nearGeo(gr.UnitVector.X, 1) {
+		t.Errorf("RAY: %+v %+v", gr.Start, gr.UnitVector)
 	}
-	gx := get(xline).(*entRay)
-	if !gx.xline || !nearGeo(gx.start.x, 4) {
-		t.Errorf("XLINE: xline=%v start=%+v", gx.xline, gx.start)
+	gx := get(xline).(*entity.EntRay)
+	if !gx.Xline || !nearGeo(gx.Start.X, 4) {
+		t.Errorf("XLINE: xline=%v start=%+v", gx.Xline, gx.Start)
 	}
 	// LEADER
-	gl := get(leader).(*entLeader)
-	if len(gl.points) != 3 || !nearGeo(gl.points[2].x, 20) || gl.annotationType != 1 || !gl.arrowheadOn {
-		t.Errorf("LEADER: pts=%v at=%d on=%v", gl.points, gl.annotationType, gl.arrowheadOn)
+	gl := get(leader).(*entity.EntLeader)
+	if len(gl.Points) != 3 || !nearGeo(gl.Points[2].X, 20) || gl.AnnotationType != 1 || !gl.ArrowheadOn {
+		t.Errorf("LEADER: pts=%v at=%d on=%v", gl.Points, gl.AnnotationType, gl.ArrowheadOn)
 	}
 	// MLINE
-	gm := get(mline).(*entMLine)
-	if gm.scale != 20 || len(gm.vertices) != 2 || gm.linesInStyle != 2 {
-		t.Fatalf("MLINE: scale=%v verts=%d lines=%d", gm.scale, len(gm.vertices), gm.linesInStyle)
+	gm := get(mline).(*entity.EntMLine)
+	if gm.Scale != 20 || len(gm.Vertices) != 2 || gm.LinesInStyle != 2 {
+		t.Fatalf("MLINE: scale=%v verts=%d lines=%d", gm.Scale, len(gm.Vertices), gm.LinesInStyle)
 	}
-	if !nearGeo(gm.vertices[1].position.x, 50) || len(gm.vertices[0].segParams) != 4 {
-		t.Errorf("MLINE 顶点: %+v segs=%v", gm.vertices[1], gm.vertices[0].segParams)
+	if !nearGeo(gm.Vertices[1].Position.X, 50) || len(gm.Vertices[0].SegParams) != 4 {
+		t.Errorf("MLINE 顶点: %+v segs=%v", gm.Vertices[1], gm.Vertices[0].SegParams)
 	}
 	// TOLERANCE
-	gt := get(tolerance).(*entTolerance)
-	if gt.text != tolerance.text || !nearGeo(gt.insertion.x, 7) || gt.dimstyle != 0x88 {
-		t.Errorf("TOLERANCE: %q ins=%+v style=%d", gt.text, gt.insertion, gt.dimstyle)
+	gt := get(tolerance).(*entity.EntTolerance)
+	if gt.Text != tolerance.Text || !nearGeo(gt.Insertion.X, 7) || gt.Dimstyle != 0x88 {
+		t.Errorf("TOLERANCE: %q ins=%+v style=%d", gt.Text, gt.Insertion, gt.Dimstyle)
 	}
 	// SHAPE
-	gsh := get(shape).(*entShape)
-	if gsh.scale != 2 || gsh.styleId != 3 || !nearGeo(gsh.thickness, 0.2) {
+	gsh := get(shape).(*entity.EntShape)
+	if gsh.Scale != 2 || gsh.StyleId != 3 || !nearGeo(gsh.Thickness, 0.2) {
 		t.Errorf("SHAPE: %+v", gsh)
 	}
 	// VIEWPORT
-	gv := get(viewport).(*entViewport)
-	if !nearGeo(gv.width, 210) || !nearGeo(gv.height, 148) || !nearGeo(gv.viewSize, 200) || gv.circleZoom != 100 {
-		t.Errorf("VIEWPORT: w=%v h=%v vs=%v cz=%d", gv.width, gv.height, gv.viewSize, gv.circleZoom)
+	gv := get(viewport).(*entity.EntViewport)
+	if !nearGeo(gv.Width, 210) || !nearGeo(gv.Height, 148) || !nearGeo(gv.ViewSize, 200) || gv.CircleZoom != 100 {
+		t.Errorf("VIEWPORT: w=%v h=%v vs=%v cz=%d", gv.Width, gv.Height, gv.ViewSize, gv.CircleZoom)
 	}
 	// VERTEX_3D / PFACE 系
-	gv3 := get(vtx3d).(*entVertex3d)
-	if gv3.flags != 32 || !nearGeo(gv3.position.z, 3) {
+	gv3 := get(vtx3d).(*entity.EntVertex3d)
+	if gv3.Flags != 32 || !nearGeo(gv3.Position.Z, 3) {
 		t.Errorf("VERTEX_3D: %+v", gv3)
 	}
-	gpv := get(pfaceVtx).(*entVertexPface)
-	if gpv.flag != 192 || !nearGeo(gpv.position.x, 4) {
+	gpv := get(pfaceVtx).(*entity.EntVertexPface)
+	if gpv.Flag != 192 || !nearGeo(gpv.Position.X, 4) {
 		t.Errorf("VERTEX_PFACE: %+v", gpv)
 	}
-	gpf := get(pfaceFace).(*entVertexPfaceFace)
-	if gpf.vertind != [4]int32{1, 2, 3, 0} {
-		t.Errorf("VERTEX_PFACE_FACE: %v", gpf.vertind)
+	gpf := get(pfaceFace).(*entity.EntVertexPfaceFace)
+	if gpf.Vertind != [4]int32{1, 2, 3, 0} {
+		t.Errorf("VERTEX_PFACE_FACE: %v", gpf.Vertind)
 	}
 	// POLYLINE_3D / PFACE / MESH
-	gp3 := get(poly3d).(*entPolyline3d)
-	if gp3.flags70 != 0 || gp3.flags75 != 0 {
+	gp3 := get(poly3d).(*entity.EntPolyline3d)
+	if gp3.Flags70 != 0 || gp3.Flags75 != 0 {
 		t.Errorf("POLYLINE_3D: %+v", gp3)
 	}
-	gpp := get(polyPface).(*entPolylinePface)
-	if gpp.numVertices != 3 || gpp.numFaces != 1 {
-		t.Errorf("POLYLINE_PFACE: %d/%d", gpp.numVertices, gpp.numFaces)
+	gpp := get(polyPface).(*entity.EntPolylinePface)
+	if gpp.NumVertices != 3 || gpp.NumFaces != 1 {
+		t.Errorf("POLYLINE_PFACE: %d/%d", gpp.NumVertices, gpp.NumFaces)
 	}
-	gpm := get(polyMesh).(*entPolylineMesh)
-	if gpm.mVertexCount != 2 || gpm.nVertexCount != 2 {
+	gpm := get(polyMesh).(*entity.EntPolylineMesh)
+	if gpm.MVertexCount != 2 || gpm.NVertexCount != 2 {
 		t.Errorf("POLYLINE_MESH: %+v", gpm)
 	}
 	// MLINE 样式句柄经 handle 流回读
-	if gm.styleHandle != 0x99 && gm.styleHandle != 0 {
-		t.Logf("MLINE 样式句柄回读: %d（owner 归属路径）", gm.styleHandle)
+	if gm.StyleHandle != 0x99 && gm.StyleHandle != 0 {
+		t.Logf("MLINE 样式句柄回读: %d（owner 归属路径）", gm.StyleHandle)
 	}
 }
 
@@ -945,110 +946,110 @@ func TestWriteForwardBatchE(t *testing.T) {
 // ≥500 类型码写出，回读按类段路由到对应解码器）。
 func TestWriteForwardDynamicClasses(t *testing.T) {
 	// IMAGE 与 WIPEOUT 同布局（entWipeout 承载，按 typeName 路由）
-	image := &entWipeout{
-		classVersion: 0,
-		pt0:          point3{100, 200, 0}, uvec: point3{50, 0, 0}, vvec: point3{0, 40, 0},
-		imageSize: point2{1, 1}, displayProps: 7, clipping: true,
-		brightness: 50, contrast: 50, fade: 0,
-		clipBoundaryType: 1,
-		clipVerts:        []point2{{0, 0}, {1, 1}},
+	image := &entity.EntWipeout{
+		ClassVersion: 0,
+		Pt0:          entity.Point3{100, 200, 0}, Uvec: entity.Point3{50, 0, 0}, Vvec: entity.Point3{0, 40, 0},
+		ImageSize: entity.Point2{1, 1}, DisplayProps: 7, Clipping: true,
+		Brightness: 50, Contrast: 50, Fade: 0,
+		ClipBoundaryType: 1,
+		ClipVerts:        []entity.Point2{{0, 0}, {1, 1}},
 	}
-	image.typeName = "IMAGE"
-	wipeout := &entWipeout{
-		classVersion: 0,
-		pt0:          point3{0, 0, 0}, uvec: point3{10, 0, 0}, vvec: point3{0, 10, 0},
-		imageSize: point2{1, 1}, displayProps: 7,
-		clipBoundaryType: 2,
-		clipVerts:        []point2{{0, 0}, {0.5, 0.2}, {1, 0.5}, {0.3, 1}},
+	image.TypeName = "IMAGE"
+	wipeout := &entity.EntWipeout{
+		ClassVersion: 0,
+		Pt0:          entity.Point3{0, 0, 0}, Uvec: entity.Point3{10, 0, 0}, Vvec: entity.Point3{0, 10, 0},
+		ImageSize: entity.Point2{1, 1}, DisplayProps: 7,
+		ClipBoundaryType: 2,
+		ClipVerts:        []entity.Point2{{0, 0}, {0.5, 0.2}, {1, 0.5}, {0.3, 1}},
 	}
-	wipeout.typeName = "WIPEOUT"
-	mleader := &entMLeader{
-		mleaderType: 1, flags: 0x44400, lineLinewt: -2,
-		hasLanding: true, hasDogleg: true, landingDist: 0.36, arrowSize: 4,
-		styleContent: 2, textLeft: 1, textRight: 6, textAngletype: 1,
-		styleAttachment: 1, justification: 3, scaleFactor: 1,
+	wipeout.TypeName = "WIPEOUT"
+	mleader := &entity.EntMLeader{
+		MleaderType: 1, Flags: 0x44400, LineLinewt: -2,
+		HasLanding: true, HasDogleg: true, LandingDist: 0.36, ArrowSize: 4,
+		StyleContent: 2, TextLeft: 1, TextRight: 6, TextAngletype: 1,
+		StyleAttachment: 1, Justification: 3, ScaleFactor: 1,
 	}
-	light := &entLight{
-		classVersion: 1, name: "ProbeLight", lightType: 3, status: true,
-		lightColorIndex: 5, intensity: 5.4,
-		position: point3{1, 2, 0}, target: point3{3, 4, 0},
-		attenuationEnd: 10, hotspotAngle: 0.785, falloffAngle: 0.87,
-		castShadows: true, shadowMapSize: 256, shadowMapSoftness: 1,
+	light := &entity.EntLight{
+		ClassVersion: 1, Name: "ProbeLight", LightType: 3, Status: true,
+		LightColorIndex: 5, Intensity: 5.4,
+		Position: entity.Point3{1, 2, 0}, Target: entity.Point3{3, 4, 0},
+		AttenuationEnd: 10, HotspotAngle: 0.785, FalloffAngle: 0.87,
+		CastShadows: true, ShadowMapSize: 256, ShadowMapSoftness: 1,
 	}
-	arcDim := &entDimension{
-		dimFlags: 0x25, dimFlag: 0x25,
-		extrusion: point3{0, 0, 1}, textMidpoint: point3{2, 2, 0},
-		userText: "ARC<>", insertScale: point3{1, 1, 1},
-		attachmentPoint: 5, lineSpacingStyle: 1, lineSpacingFactor: 1,
-		insertPoint: point3{6125, 2865, 0}, hasInsertPoint: true,
-		defPt: point3{6125, 2865, 0}, point13: point3{5486, 2529, 0},
-		point14: point3{6571, 2539, 0}, point15: point3{6100, 2700, 0},
-		isPartial:     true,
-		arcStartParam: 0.3, arcEndParam: 2.1,
-		hasLeader:      false,
-		dimstyleHandle: 0x77,
+	arcDim := &entity.EntDimension{
+		DimFlags: 0x25, DimFlag: 0x25,
+		Extrusion: entity.Point3{0, 0, 1}, TextMidpoint: entity.Point3{2, 2, 0},
+		UserText: "ARC<>", InsertScale: entity.Point3{1, 1, 1},
+		AttachmentPoint: 5, LineSpacingStyle: 1, LineSpacingFactor: 1,
+		InsertPoint: entity.Point3{6125, 2865, 0}, HasInsertPoint: true,
+		DefPt: entity.Point3{6125, 2865, 0}, Point13: entity.Point3{5486, 2529, 0},
+		Point14: entity.Point3{6571, 2539, 0}, Point15: entity.Point3{6100, 2700, 0},
+		IsPartial:     true,
+		ArcStartParam: 0.3, ArcEndParam: 2.1,
+		HasLeader:      false,
+		DimstyleHandle: 0x77,
 	}
-	arcDim.typeName = "ARC_DIMENSION"
+	arcDim.TypeName = "ARC_DIMENSION"
 	doc := fwdSynthDoc(t, image, wipeout, mleader, light, arcDim)
 	got := fwdWriteParse(t, doc)
 	byKind := map[string]any{}
 	for _, e := range got.modelSpace {
 		switch d := e.(type) {
-		case *entWipeout:
-			byKind[d.typeName] = d
-		case *entImage:
+		case *entity.EntWipeout:
+			byKind[d.TypeName] = d
+		case *entity.EntImage:
 			// 读侧 IMAGE 路由到独立 entImage 类型（写侧由 entWipeout 承载）
 			byKind["IMAGE"] = d
-		case *entMLeader:
+		case *entity.EntMLeader:
 			byKind["MULTILEADER"] = d
-		case *entLight:
+		case *entity.EntLight:
 			byKind["LIGHT"] = d
-		case *entDimension:
-			byKind[d.typeName] = d
+		case *entity.EntDimension:
+			byKind[d.TypeName] = d
 		}
 	}
-	gi, ok := byKind["IMAGE"].(*entImage)
+	gi, ok := byKind["IMAGE"].(*entity.EntImage)
 	if !ok {
 		t.Fatalf("回读缺少 IMAGE（kind=%v）", byKind)
 	}
-	if !nearGeo(gi.pt0.x, 100) || !nearGeo(gi.uvec.x, 50) || !nearGeo(gi.vvec.y, 40) ||
-		!nearGeo(gi.imageSize.x, 1) || gi.displayProps != 7 || !gi.clipping {
+	if !nearGeo(gi.Pt0.X, 100) || !nearGeo(gi.Uvec.X, 50) || !nearGeo(gi.Vvec.Y, 40) ||
+		!nearGeo(gi.ImageSize.X, 1) || gi.DisplayProps != 7 || !gi.Clipping {
 		t.Errorf("IMAGE 字段: %+v", gi)
 	}
-	gw, ok := byKind["WIPEOUT"].(*entWipeout)
+	gw, ok := byKind["WIPEOUT"].(*entity.EntWipeout)
 	if !ok {
 		t.Fatalf("回读缺少 WIPEOUT")
 	}
-	if len(gw.clipVerts) != 4 || !nearGeo(gw.clipVerts[2].x, 1) || gw.clipBoundaryType != 2 {
-		t.Errorf("WIPEOUT 裁剪边界: type=%d verts=%+v", gw.clipBoundaryType, gw.clipVerts)
+	if len(gw.ClipVerts) != 4 || !nearGeo(gw.ClipVerts[2].X, 1) || gw.ClipBoundaryType != 2 {
+		t.Errorf("WIPEOUT 裁剪边界: type=%d verts=%+v", gw.ClipBoundaryType, gw.ClipVerts)
 	}
-	gm, ok := byKind["MULTILEADER"].(*entMLeader)
+	gm, ok := byKind["MULTILEADER"].(*entity.EntMLeader)
 	if !ok {
 		t.Fatalf("回读缺少 MULTILEADER")
 	}
-	if gm.mleaderType != 1 || !gm.hasLanding || !nearGeo(gm.landingDist, 0.36) ||
-		!nearGeo(gm.arrowSize, 4) || gm.styleContent != 2 || gm.textLeft != 1 {
-		t.Errorf("MULTILEADER 标量: type=%d landing=%v dist=%v arrow=%v", gm.mleaderType, gm.hasLanding, gm.landingDist, gm.arrowSize)
+	if gm.MleaderType != 1 || !gm.HasLanding || !nearGeo(gm.LandingDist, 0.36) ||
+		!nearGeo(gm.ArrowSize, 4) || gm.StyleContent != 2 || gm.TextLeft != 1 {
+		t.Errorf("MULTILEADER 标量: type=%d landing=%v dist=%v arrow=%v", gm.MleaderType, gm.HasLanding, gm.LandingDist, gm.ArrowSize)
 	}
-	gl, ok := byKind["LIGHT"].(*entLight)
+	gl, ok := byKind["LIGHT"].(*entity.EntLight)
 	if !ok {
 		t.Fatalf("回读缺少 LIGHT")
 	}
-	if gl.name != "ProbeLight" || gl.lightType != 3 || !gl.status || gl.lightColorIndex != 5 ||
-		!nearGeo(gl.intensity, 5.4) || !nearGeo(gl.position.x, 1) || !nearGeo(gl.target.x, 3) ||
-		gl.shadowMapSize != 256 {
+	if gl.Name != "ProbeLight" || gl.LightType != 3 || !gl.Status || gl.LightColorIndex != 5 ||
+		!nearGeo(gl.Intensity, 5.4) || !nearGeo(gl.Position.X, 1) || !nearGeo(gl.Target.X, 3) ||
+		gl.ShadowMapSize != 256 {
 		t.Errorf("LIGHT 字段: %+v", gl)
 	}
-	ga, ok := byKind["ARC_DIMENSION"].(*entDimension)
+	ga, ok := byKind["ARC_DIMENSION"].(*entity.EntDimension)
 	if !ok {
 		t.Fatalf("回读缺少 ARC_DIMENSION（kind=%v）", byKind)
 	}
-	if ga.dimFlag&0x7 != 5 || !nearGeo(ga.defPt.x, 6125) || !nearGeo(ga.point14.x, 6571) ||
-		!ga.isPartial || !nearGeo(ga.arcEndParam, 2.1) {
-		t.Errorf("ARC_DIMENSION 弧长尾部: def=%+v partial=%v param=%v", ga.defPt, ga.isPartial, ga.arcEndParam)
+	if ga.DimFlag&0x7 != 5 || !nearGeo(ga.DefPt.X, 6125) || !nearGeo(ga.Point14.X, 6571) ||
+		!ga.IsPartial || !nearGeo(ga.ArcEndParam, 2.1) {
+		t.Errorf("ARC_DIMENSION 弧长尾部: def=%+v partial=%v param=%v", ga.DefPt, ga.IsPartial, ga.ArcEndParam)
 	}
-	if ga.dimstyleHandle != 0x77 {
-		t.Errorf("ARC_DIMENSION dimstyle 句柄: %d != 0x77", ga.dimstyleHandle)
+	if ga.DimstyleHandle != 0x77 {
+		t.Errorf("ARC_DIMENSION dimstyle 句柄: %d != 0x77", ga.DimstyleHandle)
 	}
 	// 动态码 ≥500 与类段注册一致性：回读实体类型名保持 IMAGE/WIPEOUT/
 	// MULTILEADER/LIGHT/ARC_DIMENSION（读侧按类段路由，无名即注册缺失）

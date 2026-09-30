@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
@@ -209,11 +210,11 @@ func roundTripAllEntities(t *testing.T, doc *Document, data []byte, sample strin
 		if e1 == nil {
 			continue
 		}
-		b1 := entBase(e1)
+		b1 := entity.EntityBase(e1)
 		if b1 == nil {
 			continue
 		}
-		typeName := b1.typeName
+		typeName := b1.TypeName
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -225,7 +226,7 @@ func roundTripAllEntities(t *testing.T, doc *Document, data []byte, sample strin
 			body2, _, err := encodeEntityR200x(e1, ver)
 			if err != nil {
 				t.Logf("%s h=%d 回放编码失败: %v (pre=%d head=%d raw=%d objSizeBit=%d recSize=%d r2010=%v)",
-					typeName, h, err, len(b1.preBits), len(b1.headRawBits), len(b1.RawHandleBits), b1.objSizeBit, b1.recSize, b1.r2010Plus)
+					typeName, h, err, len(b1.PreBits), len(b1.HeadRawBits), len(b1.RawHandleBits), b1.ObjSizeBit, b1.RecSize, b1.R2010Plus)
 				fails[typeName+"(编码)"]++
 				fail++
 				return
@@ -246,8 +247,8 @@ func roundTripAllEntities(t *testing.T, doc *Document, data []byte, sample strin
 				t.Logf("%s h=%d diff@%d body2=%dB snap=%dB", typeName, h, firstDiff, len(body2), len(snap))
 			}
 			// 重建记录并重解码（坐标系与源一致，走标准实体入口）
-			rec2 := &objrec.ObjectRecord{Body: body2, BodyBitOffset: b1.bodyBitOff, Size: b1.sizeBytes,
-				R2010Plus: b1.r2010Plus, HandleSizeFieldBits: b1.hSizeField, HandleStreamSizeBits: b1.hssBits}
+			rec2 := &objrec.ObjectRecord{Body: body2, BodyBitOffset: b1.BodyBitOff, Size: b1.SizeBytes,
+				R2010Plus: b1.R2010Plus, HandleSizeFieldBits: b1.HSizeField, HandleStreamSizeBits: b1.HssBits}
 			h2, err := objrec.ParseObjHeader(rec2)
 			if err != nil {
 				t.Logf("%s h=%d 重解码记录头失败: %v", typeName, h, err)
@@ -261,7 +262,7 @@ func roundTripAllEntities(t *testing.T, doc *Document, data []byte, sample strin
 			if isVersionedEntityKind(typeName) {
 				e2, err = decodeVersionedEntity(rr, h2, h, typeName, ver)
 			} else {
-				e2, err = decodeEntityFieldsVer(rr, h2, h, rec2.Size, typeName, b1.typeCode, ver, doc.codepage, dynamicTypes, doc.lightingUnits)
+				e2, err = entity.DecodeEntityFieldsVer(rr, h2, h, rec2.Size, typeName, b1.TypeCode, ver, doc.codepage, dynamicTypes, doc.lightingUnits)
 			}
 			if err != nil {
 				t.Logf("%s h=%d 重解码失败: %v", typeName, h, err)
@@ -271,12 +272,12 @@ func roundTripAllEntities(t *testing.T, doc *Document, data []byte, sample strin
 			}
 			// entityField 键级比对：键集来自 gold 展平键（got==nil 跳过）
 			for k, want := range goldFlats[h] {
-				v1 := entityField(e1, k)
+				v1 := entity.EntityField(e1, k)
 				if v1 == nil {
 					continue
 				}
-				v2 := entityField(e2, k)
-				if !entityValueEqual(v1, v2) {
+				v2 := entity.EntityField(e2, k)
+				if !entity.EntityValueEqual(v1, v2) {
 					t.Logf("%s h=%d 字段 %s: %v != %v (gold %v)", typeName, h, k, v2, v1, want)
 					fails[typeName+"(字段)"]++
 					fail++

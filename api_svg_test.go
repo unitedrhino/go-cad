@@ -9,6 +9,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"io"
 	"math"
 	"os"
@@ -23,9 +24,9 @@ import (
 func svgSynthDoc() *Document {
 	return &Document{
 		modelSpace: []any{
-			&entLine{baseEntity: baseEntity{}, start: point3{0, 0, 0}, end: point3{100, 50, 0}},
-			&entLwPolyline{baseEntity: baseEntity{}, vertices: []point2{{10, 10}, {60, 10}, {60, 40}}},
-			&entText{baseEntity: baseEntity{}, text: "HELLO", insertion: point3{10, 20, 0}, height: 2},
+			&entity.EntLine{BaseEntity: entity.BaseEntity{}, Start: entity.Point3{0, 0, 0}, End: entity.Point3{100, 50, 0}},
+			&entity.EntLwPolyline{BaseEntity: entity.BaseEntity{}, Vertices: []entity.Point2{{10, 10}, {60, 10}, {60, 40}}},
+			&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "HELLO", Insertion: entity.Point3{10, 20, 0}, Height: 2},
 		},
 	}
 }
@@ -96,7 +97,7 @@ func TestRenderSVGStructure(t *testing.T) {
 // （y' = maxY - y），首段 M 坐标符合手算值。
 func TestRenderSVGYFlip(t *testing.T) {
 	doc := &Document{modelSpace: []any{
-		&entLine{baseEntity: baseEntity{}, start: point3{0, 0, 0}, end: point3{100, 50, 0}},
+		&entity.EntLine{BaseEntity: entity.BaseEntity{}, Start: entity.Point3{0, 0, 0}, End: entity.Point3{100, 50, 0}},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 1000})
 	if err != nil {
@@ -118,8 +119,8 @@ func TestRenderSVGYFlip(t *testing.T) {
 // 中文字面原样（UTF-8 直出）。
 func TestRenderSVGTextElement(t *testing.T) {
 	doc := &Document{modelSpace: []any{
-		&entText{baseEntity: baseEntity{}, text: "HELLO", insertion: point3{10, 20, 0}, height: 2},
-		&entMText{baseEntity: baseEntity{}, text: "中文标注", insertion: point3{0, 0, 0}, textHeight: 3},
+		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "HELLO", Insertion: entity.Point3{10, 20, 0}, Height: 2},
+		&entity.EntMText{BaseEntity: entity.BaseEntity{}, Text: "中文标注", Insertion: entity.Point3{0, 0, 0}, TextHeight: 3},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
 	if err != nil {
@@ -141,7 +142,7 @@ func TestRenderSVGTextElement(t *testing.T) {
 // TestRenderSVGMTextStrip 校验 MTEXT 格式码剥离后输出（\P 换行、颜色码等）。
 func TestRenderSVGMTextStrip(t *testing.T) {
 	doc := &Document{modelSpace: []any{
-		&entMText{baseEntity: baseEntity{}, text: `\A1;6X5.0X2.5`, insertion: point3{0, 0, 0}, textHeight: 2},
+		&entity.EntMText{BaseEntity: entity.BaseEntity{}, Text: `\A1;6X5.0X2.5`, Insertion: entity.Point3{0, 0, 0}, TextHeight: 2},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
 	if err != nil {
@@ -158,7 +159,7 @@ func TestRenderSVGMTextStrip(t *testing.T) {
 // 首行随基线，后续行 dy 下移一行动距，无裸换行残留在文本内容中。
 func TestRenderSVGMTextMultiline(t *testing.T) {
 	doc := &Document{modelSpace: []any{
-		&entMText{baseEntity: baseEntity{}, text: `第一行\P第二行`, insertion: point3{0, 0, 0}, textHeight: 2},
+		&entity.EntMText{BaseEntity: entity.BaseEntity{}, Text: `第一行\P第二行`, Insertion: entity.Point3{0, 0, 0}, TextHeight: 2},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
 	if err != nil {
@@ -177,7 +178,7 @@ func TestRenderSVGMTextMultiline(t *testing.T) {
 // TestRenderSVGEscape 校验 XML 特殊字符转义与非法控制字符剔除。
 func TestRenderSVGEscape(t *testing.T) {
 	doc := &Document{modelSpace: []any{
-		&entText{baseEntity: baseEntity{}, text: "A<B&C>D\x01E", insertion: point3{0, 0, 0}, height: 2},
+		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "A<B&C>D\x01E", Insertion: entity.Point3{0, 0, 0}, Height: 2},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
 	if err != nil {
@@ -197,10 +198,10 @@ func TestRenderSVGEscape(t *testing.T) {
 // TEXT hAlign 1/4→middle、2→end、0→缺省；MTEXT attachment 右列→end。
 func TestRenderSVGTextAnchor(t *testing.T) {
 	doc := &Document{modelSpace: []any{
-		&entText{baseEntity: baseEntity{}, text: "C", insertion: point3{0, 0, 0}, height: 2, hAlign: 1},
-		&entText{baseEntity: baseEntity{}, text: "R", insertion: point3{0, 0, 0}, height: 2, hAlign: 2},
-		&entText{baseEntity: baseEntity{}, text: "L", insertion: point3{0, 0, 0}, height: 2},
-		&entMText{baseEntity: baseEntity{}, text: "TR", insertion: point3{0, 0, 0}, textHeight: 2, attachment: 3},
+		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "C", Insertion: entity.Point3{0, 0, 0}, Height: 2, HAlign: 1},
+		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "R", Insertion: entity.Point3{0, 0, 0}, Height: 2, HAlign: 2},
+		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "L", Insertion: entity.Point3{0, 0, 0}, Height: 2},
+		&entity.EntMText{BaseEntity: entity.BaseEntity{}, Text: "TR", Insertion: entity.Point3{0, 0, 0}, TextHeight: 2, Attachment: 3},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
 	if err != nil {
@@ -222,7 +223,7 @@ func TestRenderSVGTextAnchor(t *testing.T) {
 // TestRenderSVGTextRotate 校验旋转文本：Y 翻转后角度取负，绕基线起点旋转。
 func TestRenderSVGTextRotate(t *testing.T) {
 	doc := &Document{modelSpace: []any{
-		&entText{baseEntity: baseEntity{}, text: "R30", insertion: point3{0, 0, 0}, height: 2, rotation: math.Pi / 6},
+		&entity.EntText{BaseEntity: entity.BaseEntity{}, Text: "R30", Insertion: entity.Point3{0, 0, 0}, Height: 2, Rotation: math.Pi / 6},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
 	if err != nil {
@@ -240,8 +241,8 @@ func TestRenderSVGTextRotate(t *testing.T) {
 // 断言从 `<g stroke=` 前缀匹配改为对 stroke 属性计数。）
 func TestRenderSVGColorGroup(t *testing.T) {
 	doc := &Document{modelSpace: []any{
-		&entLine{baseEntity: baseEntity{}, start: point3{0, 0, 0}, end: point3{10, 0, 0}},
-		&entLine{baseEntity: baseEntity{}, start: point3{0, 5, 0}, end: point3{10, 5, 0}},
+		&entity.EntLine{BaseEntity: entity.BaseEntity{}, Start: entity.Point3{0, 0, 0}, End: entity.Point3{10, 0, 0}},
+		&entity.EntLine{BaseEntity: entity.BaseEntity{}, Start: entity.Point3{0, 5, 0}, End: entity.Point3{10, 5, 0}},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
 	if err != nil {
@@ -260,7 +261,7 @@ func TestRenderSVGColorGroup(t *testing.T) {
 // TestRenderSVGPathMerge 校验 LWPOLYLINE 连续顶点合并为相对段（无逐段 M）。
 func TestRenderSVGPathMerge(t *testing.T) {
 	doc := &Document{modelSpace: []any{
-		&entLwPolyline{baseEntity: baseEntity{}, vertices: []point2{{0, 0}, {10, 0}, {10, 10}, {0, 10}}},
+		&entity.EntLwPolyline{BaseEntity: entity.BaseEntity{}, Vertices: []entity.Point2{{0, 0}, {10, 0}, {10, 10}, {0, 10}}},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
 	if err != nil {
@@ -345,7 +346,7 @@ func nextNum(d string, k *int) float64 {
 func TestRenderSVGPathRoundTrip(t *testing.T) {
 	doc := &Document{modelSpace: []any{
 		// 折线含正/负/小数增量与斜向段，覆盖 l/h/v 与省字母续写
-		&entLwPolyline{baseEntity: baseEntity{}, vertices: []point2{
+		&entity.EntLwPolyline{BaseEntity: entity.BaseEntity{}, Vertices: []entity.Point2{
 			{0, 0}, {109.123, 4.15}, {218.223, 5.14}, {218.223, 105.14}, {118.223, 105.14},
 		}},
 	}}
@@ -520,9 +521,9 @@ func TestRenderSVGMetadata(t *testing.T) {
 func TestRenderSVGLayerGroups(t *testing.T) {
 	doc := &Document{
 		modelSpace: []any{
-			&entLine{baseEntity: baseEntity{layer: 0x10}, start: point3{0, 0, 0}, end: point3{10, 0, 0}},
-			&entLine{baseEntity: baseEntity{layer: 0x10}, start: point3{0, 5, 0}, end: point3{10, 5, 0}},
-			&entLine{baseEntity: baseEntity{layer: 0x20}, start: point3{0, -5, 0}, end: point3{10, -5, 0}},
+			&entity.EntLine{BaseEntity: entity.BaseEntity{Layer: 0x10}, Start: entity.Point3{0, 0, 0}, End: entity.Point3{10, 0, 0}},
+			&entity.EntLine{BaseEntity: entity.BaseEntity{Layer: 0x10}, Start: entity.Point3{0, 5, 0}, End: entity.Point3{10, 5, 0}},
+			&entity.EntLine{BaseEntity: entity.BaseEntity{Layer: 0x20}, Start: entity.Point3{0, -5, 0}, End: entity.Point3{10, -5, 0}},
 		},
 		layerColors: map[uint64]layerColor{
 			0x10: {name: "WALL"},
@@ -550,7 +551,7 @@ func TestRenderSVGLayerGroups(t *testing.T) {
 // 回退为 layer:handle-<hex>。
 func TestRenderSVGLayerHandleFallback(t *testing.T) {
 	doc := &Document{modelSpace: []any{
-		&entLine{baseEntity: baseEntity{layer: 0x1f}, start: point3{0, 0, 0}, end: point3{10, 0, 0}},
+		&entity.EntLine{BaseEntity: entity.BaseEntity{Layer: 0x1f}, Start: entity.Point3{0, 0, 0}, End: entity.Point3{10, 0, 0}},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
 	if err != nil {
@@ -572,9 +573,9 @@ func TestRenderSVGGroupCapDegraded(t *testing.T) {
 	for i := 0; i < nLayers; i++ {
 		h := uint64(0x100 + i)
 		lc[h] = layerColor{name: fmt.Sprintf("L%03d", i)}
-		ents = append(ents, &entLine{
-			baseEntity: baseEntity{layer: h},
-			start:      point3{float64(i), 0, 0}, end: point3{float64(i) + 5, 0, 0},
+		ents = append(ents, &entity.EntLine{
+			BaseEntity: entity.BaseEntity{Layer: h},
+			Start:      entity.Point3{float64(i), 0, 0}, End: entity.Point3{float64(i) + 5, 0, 0},
 		})
 	}
 	doc := &Document{modelSpace: ents, layerColors: lc}
@@ -599,9 +600,9 @@ func TestRenderSVGGroupCapDegraded(t *testing.T) {
 // MTEXT/ATTRIB）与 data-h（源实体句柄十六进制）。
 func TestRenderSVGTextMeta(t *testing.T) {
 	doc := &Document{modelSpace: []any{
-		&entText{baseEntity: baseEntity{handle: 0x2a}, text: "T1", insertion: point3{0, 0, 0}, height: 2},
-		&entMText{baseEntity: baseEntity{handle: 0x2b}, text: "M1", insertion: point3{20, 0, 0}, textHeight: 2},
-		&entAttrib{baseEntity: baseEntity{handle: 0x2c}, text: "A1", insertion: point3{40, 0, 0}, height: 2},
+		&entity.EntText{BaseEntity: entity.BaseEntity{Handle: 0x2a}, Text: "T1", Insertion: entity.Point3{0, 0, 0}, Height: 2},
+		&entity.EntMText{BaseEntity: entity.BaseEntity{Handle: 0x2b}, Text: "M1", Insertion: entity.Point3{20, 0, 0}, TextHeight: 2},
+		&entity.EntAttrib{BaseEntity: entity.BaseEntity{Handle: 0x2c}, Text: "A1", Insertion: entity.Point3{40, 0, 0}, Height: 2},
 	}}
 	svg, err := RenderSVG(doc, RenderOptions{Width: 800})
 	if err != nil {

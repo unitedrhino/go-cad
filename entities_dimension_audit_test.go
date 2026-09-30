@@ -6,6 +6,7 @@ package cad
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"sort"
@@ -97,7 +98,7 @@ func TestDimensionEntityAudit(t *testing.T) {
 					continue
 				}
 				total++
-				got := entityField(ent, k)
+				got := entity.EntityField(ent, k)
 				if got == nil {
 					miss++
 					missKeys[k]++
