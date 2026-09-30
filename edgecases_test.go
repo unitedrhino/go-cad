@@ -7,6 +7,7 @@ import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
 	"github.com/unitedrhino/go-cad/internal/entity"
+	"github.com/unitedrhino/go-cad/internal/writer"
 	"os"
 	"path/filepath"
 	"testing"
@@ -178,10 +179,10 @@ func TestReadCRCTruncated(t *testing.T) {
 // TestEncodeEntityReplayGuards 实体回放编码器边界：nil 实体与缺位串
 // 实体必须报错而非 panic；回放输出与版本参数无关（位串原样保留差异）。
 func TestEncodeEntityReplayGuards(t *testing.T) {
-	if _, _, err := encodeEntityR200x(nil, container.VerR2000); err == nil {
+	if _, _, err := writer.EncodeEntityR200x(nil, container.VerR2000); err == nil {
 		t.Error("nil 实体应报错")
 	}
-	if _, _, err := encodeEntityR200x(&entity.EntLine{}, container.VerR2000); err == nil {
+	if _, _, err := writer.EncodeEntityR200x(&entity.EntLine{}, container.VerR2000); err == nil {
 		t.Error("缺位串实体应报错")
 	}
 	// 真实样本实体：版本参数不影响回放输出
@@ -191,8 +192,8 @@ func TestEncodeEntityReplayGuards(t *testing.T) {
 		if b == nil || b.HeadRawBits == "" || b.RawHandleBits == "" {
 			continue
 		}
-		out1, _, err1 := encodeEntityR200x(e, container.VerR2000)
-		out2, _, err2 := encodeEntityR200x(e, container.DwgVersion(0xFF))
+		out1, _, err1 := writer.EncodeEntityR200x(e, container.VerR2000)
+		out2, _, err2 := writer.EncodeEntityR200x(e, container.DwgVersion(0xFF))
 		if err1 != nil || err2 != nil {
 			t.Fatalf("回放编码失败: %v %v", err1, err2)
 		}

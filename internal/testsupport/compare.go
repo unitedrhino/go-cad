@@ -88,3 +88,40 @@ func AnyRoundTripEqual(want, got any) bool {
 		return want == got
 	}
 }
+
+// anyEqual gold 值与字段值相等判定（REAL 按容差）
+func AnyEqual(want any, got any) bool {
+	switch w := want.(type) {
+	case string:
+		g, ok := got.(string)
+		return ok && w == g
+	case bool:
+		g, ok := got.(bool)
+		return ok && w == g
+	case int:
+		g, ok := got.(int64)
+		return ok && int64(w) == g
+	case float64:
+		switch g := got.(type) {
+		case float64:
+			return math.Abs(g-w) <= 5e-14*maxAbs(1, g)
+		case int64:
+			return float64(g) == w
+		}
+		return false
+	}
+	return false
+}
+
+func maxAbs(a, b float64) float64 {
+	if a < 0 {
+		a = -a
+	}
+	if b < 0 {
+		b = -b
+	}
+	if a > b {
+		return a
+	}
+	return b
+}

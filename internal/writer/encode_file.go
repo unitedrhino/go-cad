@@ -7,7 +7,7 @@
 // 重新分页压缩并重建页表/加密头校验和。R2007（AC1021，RS 去交织+R21 解压
 // 的第三代容器）见本文件尾部：captureR2007Raw 采集素材，WriteDwgR2007 按
 // compressR21 重压缩分页、RS 交织重建页表/段表/第二头部。
-package cad
+package writer
 
 import (
 	"bytes"
@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"hash/crc32"
 	"io"
@@ -27,7 +28,7 @@ import (
 // 从字节 0 起) + 16 字节哨兵）→ 各段原始字节（源目录顺序，对象图段除外）
 // → 对象区整块回放 → 重建的对象图。写出的文件可被本包 Parse 与 LibreDWG
 // 重新读取（见 encode_file_test.go 门禁）。
-func WriteDwgR2000(doc *Document, w io.Writer) error {
+func WriteDwgR2000(doc *drawing.Document, w io.Writer) error {
 	if doc == nil || doc.R2000Raw == nil {
 		return fmt.Errorf("cad: 非 R2000 家族文档或缺少回放素材，无法写出")
 	}
@@ -245,12 +246,12 @@ func r2004PageChecksum(seed uint32, skipZero int, parts ...[]byte) uint32 {
 	return sum2<<16 | sum1&0xFFFF
 }
 
-// WriteDwg 按 Document 版本自动分派容器写出器：R2007（AC1021）走
+// WriteDwg 按 drawing.Document 版本自动分派容器写出器：R2007（AC1021）走
 // WriteDwgR2007，R2004 家族（含 R2010/R2013/R2018，同一页式容器）走
 // WriteDwgR2004，其余走 WriteDwgR2000。三者均无回放素材时（JSON/DXF/
 // 合成来源）自动降级到结构化正向路径 writeDwgForwardR2000——按位流
 // 规范重建 R2000 容器，不再报「缺少回放素材」。
-func WriteDwg(doc *Document, w io.Writer) error {
+func WriteDwg(doc *drawing.Document, w io.Writer) error {
 	if doc != nil && doc.R2007Raw != nil {
 		return WriteDwgR2007(doc, w)
 	}
@@ -273,7 +274,7 @@ func WriteDwg(doc *Document, w io.Writer) error {
 // 的 r2004 头）→ 按源页表顺序铺放各数据页/段表页/页表页（数据页重压缩，
 // 段表内容原样回放）→ 尾部 secondheader 区（20 字节伪 system 段头 + 加密
 // 头副本）。对象记录字节随 AcDb:AcDbObjects 段原样回放，句柄偏移不变。
-func WriteDwgR2004(doc *Document, w io.Writer) error {
+func WriteDwgR2004(doc *drawing.Document, w io.Writer) error {
 	if doc == nil || doc.R2004Raw == nil {
 		return fmt.Errorf("cad: 非 R2004 家族文档或缺少回放素材，无法写出")
 	}
@@ -714,7 +715,7 @@ type r2007PlacedPage struct {
 // 的第二头部（34 字段回填后未压缩存储）→ 0x28 间隔区 → 页数据区（页表页、
 // 段表页与各数据页，数据页按 compressR21 重压缩 + RS 交织）。对象记录字节
 // 随 AcDb:AcDbObjects / AcDb:Handles 段回放，句柄偏移不变。
-func WriteDwgR2007(doc *Document, w io.Writer) error {
+func WriteDwgR2007(doc *drawing.Document, w io.Writer) error {
 	if doc == nil || doc.R2007Raw == nil {
 		return fmt.Errorf("cad: 非 R2007 文档或缺少回放素材，无法写出")
 	}

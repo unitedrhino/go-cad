@@ -7,7 +7,7 @@
 // 不同，实体回放不回填流内 RL objSize：preBits 从 body 局部 0 起收集，
 // 重编码 body 的坐标系与源记录逐位一致，重解码可直接走 parseObjHeader
 // 标准入口（R2000 系含 BS 类型码前导，R2010+ 含 UMC+OT 前导）。
-package cad
+package writer
 
 import (
 	"fmt"
@@ -21,7 +21,7 @@ import (
 // 字节与 handle 流起点位（datEnd，body 局部坐标，与源记录一致）。位串
 // 未收集（生产路径结构异常或解码失败兜底产物）时报错，由调用方按
 // 能力边界处理。
-func encodeEntityR200x(ent any, ver container.DwgVersion) ([]byte, uint64, error) {
+func EncodeEntityR200x(ent any, ver container.DwgVersion) ([]byte, uint64, error) {
 	_ = ver // 回放方案与版本无关：位串原样保留全部版本差异
 	b := entity.EntityBase(ent)
 	if b == nil || b.HeadRawBits == "" || b.RawHandleBits == "" {

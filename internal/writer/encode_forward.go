@@ -1,5 +1,5 @@
 // encode_forward.go 实现结构化正向写出层（dwgwrite 第三代编码方向）：
-// 无容器回放素材（r2000Raw/r2004Raw/r2007Raw 均为 nil）的 Document——
+// 无容器回放素材（r2000Raw/r2004Raw/r2007Raw 均为 nil）的 drawing.Document——
 // 即 ParseJSON / ParseDXF / 手工合成来源——按位流规范正向编码为 R2000
 // （AC1015）容器 DWG。与 encode_object.go 的「原始位串回放」方案互补：
 // 那是同版本位级往返，这里是跨来源结构重建（等价 LibreDWG dxf2dwg /
@@ -12,7 +12,7 @@
 //     layer 系 → handle 流）+ 16 类渲染同源主力实体的 body 字段位流
 //   - 对象侧最小集：LAYER（表记录）与 DICTIONARY 的正向编码
 //   - 位流辅助：BT/BE/3BD/DD 等读写原语的编码侧对称 + bitsize 两遍回填
-package cad
+package writer
 
 import (
 	"encoding/base64"
@@ -1884,11 +1884,11 @@ func encodeForwardDictionaryBody(d *object.ObjDictionary, ver container.DwgVersi
 
 // ---- 文件级组装 ----
 
-// writeDwgForwardR2000 将无回放素材的 Document 组装为 R2000 容器 DWG
+// writeDwgForwardR2000 将无回放素材的 drawing.Document 组装为 R2000 容器 DWG
 // 字节流。对象图按句柄升序铺放（差分编码要求单调），布局为：头部 0x15
 // → 段目录（3 条目 + CRC + 哨兵）→ HeaderVars 段（模板回放）→ Classes
 // 段（空类表：固定码实体无动态类）→ 对象区 → 对象图。
-func writeDwgForwardR2000(doc *Document) ([]byte, error) {
+func writeDwgForwardR2000(doc *drawing.Document) ([]byte, error) {
 	if doc == nil {
 		return nil, fmt.Errorf("cad: 文档为空，无法正向写出")
 	}
@@ -1985,7 +1985,7 @@ func writeDwgForwardR2000(doc *Document) ([]byte, error) {
 // allocateForwardDynamicClasses 扫描文档实体与通用对象，为出现的动态
 // 类按注册表顺序分配 ≥500 的类型码（实体类在前、对象类在后，同一计数
 // 器连续分配）。返回有序类名与 名称→码 映射。
-func allocateForwardDynamicClasses(doc *Document) ([]string, map[string]uint16) {
+func allocateForwardDynamicClasses(doc *drawing.Document) ([]string, map[string]uint16) {
 	present := map[string]bool{}
 	visit := func(list []any) {
 		for _, ent := range list {
@@ -2047,11 +2047,11 @@ func allocateForwardDynamicClasses(doc *Document) ([]string, map[string]uint16) 
 	return order, codes
 }
 
-// collectForwardObjects 从 Document 收集全部可写对象：实体（模型空间 +
+// collectForwardObjects 从 drawing.Document 收集全部可写对象：实体（模型空间 +
 // 块定义 + 属性）经正向实体编码器，LAYER 表记录与 DICTIONARY 经对象侧
 // 编码器。无正向编码器或无句柄的实体跳过（能力边界，见报告）。
 // dyn 为动态类名 → 类型码映射（无动态类实体时可为 nil）。
-func collectForwardObjects(doc *Document, dyn map[string]uint16) ([]fwdObject, error) {
+func collectForwardObjects(doc *drawing.Document, dyn map[string]uint16) ([]fwdObject, error) {
 	out := make([]fwdObject, 0, len(doc.ByHandle)+len(doc.LayerColors)+8)
 	seen := map[uint64]bool{}
 	add := func(handle uint64, body []byte) {
@@ -2154,7 +2154,7 @@ const (
 // DXF 的 BLOCK_CONTROL/*MODEL_SPACE 链）：表控制对象 ×9、*MODEL_SPACE 与
 // *PAPER_SPACE 块头、各块定义块头。句柄与文档实体冲突时从最大句柄之上
 // 顺序分配（模板句柄引用降级为悬空，dwgread 走 find_first_type 兜底）。
-func appendForwardSkeleton(doc *Document, out *[]fwdObject, seen map[uint64]bool) {
+func appendForwardSkeleton(doc *drawing.Document, out *[]fwdObject, seen map[uint64]bool) {
 	allocate := func(preferred uint64) uint64 {
 		if !seen[preferred] {
 			return preferred

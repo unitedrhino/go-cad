@@ -1,7 +1,7 @@
-// encode_forward_test.go 结构化正向写出的门禁测试：合成 Document →
+// encode_forward_test.go 结构化正向写出的门禁测试：合成 drawing.Document →
 // WriteDwg → Parse 回读，逐实体对照几何/文本一致；JSON 九样本与 DXF
 // 样本的跨来源对照见 TestWriteForwardR2000 系列门禁。
-package cad
+package writer
 
 import (
 	"bytes"
@@ -20,9 +20,9 @@ import (
 
 // fwdSynthDoc 合成文档骨架：R2000 版本 + 图层表 + 模型空间实体（mode 2、
 // 顺序句柄、统一图层 0x10）。
-func fwdSynthDoc(t *testing.T, ents ...any) *Document {
+func fwdSynthDoc(t *testing.T, ents ...any) *drawing.Document {
 	t.Helper()
-	doc := &Document{
+	doc := &drawing.Document{
 		Ver:         container.VerR2000,
 		Blocks:      map[uint64][]any{},
 		Attribs:     map[uint64]*entity.EntAttrib{},
@@ -42,13 +42,13 @@ func fwdSynthDoc(t *testing.T, ents ...any) *Document {
 }
 
 // fwdWriteParse 合成文档写出并回读（正向 → Parse 闭环）。
-func fwdWriteParse(t *testing.T, doc *Document) *Document {
+func fwdWriteParse(t *testing.T, doc *drawing.Document) *drawing.Document {
 	t.Helper()
 	var buf bytes.Buffer
 	if err := WriteDwg(doc, &buf); err != nil {
 		t.Fatalf("WriteDwg 失败: %v", err)
 	}
-	out, err := Parse(buf.Bytes())
+	out, err := drawing.Parse(buf.Bytes())
 	if err != nil {
 		t.Fatalf("回读 Parse 失败: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestWriteForwardInsertAttrib(t *testing.T) {
 }
 
 // TestWriteForwardJSONGoldRoundtrip JSON gold（dwgread 导出）→ WriteDwg →
-// Parse，与 Parse(同源 DWG) 的模型空间主力类实体键值对照。环境门控：
+// Parse，与 drawing.Parse(同源 DWG) 的模型空间主力类实体键值对照。环境门控：
 // gold JSON 与同源 DWG 样本缺失时跳过。
 func TestWriteForwardJSONGoldRoundtrip(t *testing.T) {
 	cases := []struct {
@@ -318,7 +318,7 @@ func TestWriteForwardJSONGoldRoundtrip(t *testing.T) {
 			if err != nil {
 				t.Skipf("gold JSON 不可用: %v", err)
 			}
-			doc, err := ParseJSON(gold)
+			doc, err := drawing.ParseJSON(gold)
 			if err != nil {
 				t.Fatalf("ParseJSON 失败: %v", err)
 			}
@@ -326,7 +326,7 @@ func TestWriteForwardJSONGoldRoundtrip(t *testing.T) {
 			if err := WriteDwg(doc, &buf); err != nil {
 				t.Fatalf("WriteDwg 失败: %v", err)
 			}
-			got, err := Parse(buf.Bytes())
+			got, err := drawing.Parse(buf.Bytes())
 			if err != nil {
 				t.Fatalf("回读 Parse 失败: %v", err)
 			}
@@ -334,7 +334,7 @@ func TestWriteForwardJSONGoldRoundtrip(t *testing.T) {
 			if err != nil {
 				t.Skipf("同源 DWG 不可用: %v", err)
 			}
-			base, err := Parse(src)
+			base, err := drawing.Parse(src)
 			if err != nil {
 				t.Fatalf("基线 Parse 失败: %v", err)
 			}
@@ -346,9 +346,9 @@ func TestWriteForwardJSONGoldRoundtrip(t *testing.T) {
 // compareForwardEntities 主力类键值对照：LINE/CIRCLE/ARC/POINT/ELLIPSE/
 // TEXT/MTEXT/LWPOLYLINE/INSERT 按句柄对齐基线与正向回读实体，几何/文本
 // 逐键一致（基线侧类型不在对照集或句柄缺失时跳过）。
-func compareForwardEntities(t *testing.T, base, got *Document) {
+func compareForwardEntities(t *testing.T, base, got *drawing.Document) {
 	t.Helper()
-	pick := func(doc *Document) map[uint64]any {
+	pick := func(doc *drawing.Document) map[uint64]any {
 		m := map[uint64]any{}
 		for _, e := range doc.ModelSpaceEntities() {
 			if b := entity.EntityBase(e); b != nil && b.Handle != 0 {
@@ -559,7 +559,7 @@ func compareForwardEntities(t *testing.T, base, got *Document) {
 // nearTol 带容差的浮点比较。
 func nearTol(a, b, tol float64) bool { return math.Abs(a-b) < tol }
 
-// TestWriteForwardDXFCross ParseDXF(testdata 样本) → WriteDwg → dwgread
+// TestWriteForwardDXFCross drawing.ParseDXF(testdata 样本) → WriteDwg → dwgread
 // 交叉验证。环境门控：dwgread 可执行与样本存在；通过判据为 dwgread
 // 退出码 0 且 DXF 输出含 ENTITIES 段。
 func TestWriteForwardDXFCross(t *testing.T) {
@@ -578,7 +578,7 @@ func TestWriteForwardDXFCross(t *testing.T) {
 	if err != nil {
 		t.Skipf("DXF 读取失败: %v", err)
 	}
-	doc, err := ParseDXF(data)
+	doc, err := drawing.ParseDXF(data)
 	if err != nil {
 		t.Fatalf("ParseDXF 失败: %v", err)
 	}
@@ -587,7 +587,7 @@ func TestWriteForwardDXFCross(t *testing.T) {
 		t.Fatalf("WriteDwg 失败: %v", err)
 	}
 	// 回读闭环：实体数不丢
-	got, err := Parse(buf.Bytes())
+	got, err := drawing.Parse(buf.Bytes())
 	if err != nil {
 		t.Fatalf("回读 Parse 失败: %v", err)
 	}
@@ -1245,7 +1245,7 @@ func TestWriteForwardGenericObjects(t *testing.T) {
 }
 
 // missingProbeHandles 列出回读侧缺失的门禁探针句柄（诊断用）。
-func missingProbeHandles(doc *Document, probes map[uint64]func(*object.ObjGeneric) error) []string {
+func missingProbeHandles(doc *drawing.Document, probes map[uint64]func(*object.ObjGeneric) error) []string {
 	var missing []string
 	for h := range probes {
 		if _, ok := doc.InternalObjs[h]; !ok {

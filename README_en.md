@@ -191,17 +191,21 @@ DWG write 785 ms, full sheet split (26 SVG) in seconds.
 
 | Path | Role |
 |---|---|
-| `cad.go` | Public facade (Parse/Document/render/write APIs) |
-| `bitreader.go` / `bitwriter.go` | DWG bit-stream primitives (symmetric read/write) |
-| `container*.go`, `lz77.go`, `r21.go`, `compress.go` | container layer (R2000 sections / R2004 paged / R2007 RS-interleaved) + compressors |
-| `entities*.go` | entity decoding (common-head scan framework + per-family files) |
-| `objects_*.go` | internal object decoding (spec-driven `gfRead` framework) |
-| `r11.go` | pre-R13 (R9/R10/R11) dedicated path |
-| `encode_*.go` | DWG writing (replay + structured forward) |
-| `dxf_read.go` / `dxf_write.go` / `injson.go` | DXF both ways + JSON input |
-| `render*.go` / `api_svg.go` | rendering (PNG glyphs / SVG vector / sheet splitting) |
-| `example/` / `cmd/dwg2png/` | one-command demo and CLI |
+| `cad.go` | Public facade: type aliases + API forwarding (Parse/Document/render/write); external usage unchanged |
+| `internal/bitstream/` | DWG bit-stream primitives (symmetric read/write; bottom layer, no internal deps) |
+| `internal/container/` | container layer (R2000 sections / R2004 paged / R2007 RS-interleaved) + LZ77/R21 compressors + raw-material capture for replay writing |
+| `internal/objrec/` | object record layer: object map / records / type-code naming (shared lowest-level record primitives) |
+| `internal/entity/` | entity decoding (common-head scan framework + per-family files) + shared entity-side helpers (tessellation, palette) |
+| `internal/object/` | internal object decoding (spec-driven `gfRead` framework) |
+| `internal/drawing/` | document model & decode orchestration (Document/Parse) + pre-R13 path + DXF both ways + JSON input + tessellation & bounding boxes |
+| `internal/render/` | rendering (PNG glyphs / SVG vector / sheet splitting) |
+| `internal/writer/` | DWG writing (bit-level replay + structured forward) |
+| `internal/testsupport/` | test support: test bit-writer / gold path helpers / comparators (no business deps, importable by all sub-package tests) |
+| `example/` / `cmd/dwg2png/` | one-command demo and CLI (facade-only) |
 | `testdata/` | official corpus samples (built in, CI runs the full suite) |
+
+One-way dependency flow: `bitstream → objrec → container → entity/object → drawing → render/writer`.
+All implementation lives under `internal/`; external consumers only use the `cad.go` facade.
 
 ## Known limitations
 

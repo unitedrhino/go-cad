@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
-	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -146,43 +145,6 @@ var internalGoldChecks = map[string]goldFieldChecker{
 	},
 }
 
-// anyEqual gold 值与字段值相等判定（REAL 按容差）
-func anyEqual(want any, got any) bool {
-	switch w := want.(type) {
-	case string:
-		g, ok := got.(string)
-		return ok && w == g
-	case bool:
-		g, ok := got.(bool)
-		return ok && w == g
-	case int:
-		g, ok := got.(int64)
-		return ok && int64(w) == g
-	case float64:
-		switch g := got.(type) {
-		case float64:
-			return math.Abs(g-w) <= 5e-14*maxAbs(1, g)
-		case int64:
-			return float64(g) == w
-		}
-		return false
-	}
-	return false
-}
-
-func maxAbs(a, b float64) float64 {
-	if a < 0 {
-		a = -a
-	}
-	if b < 0 {
-		b = -b
-	}
-	if a > b {
-		return a
-	}
-	return b
-}
-
 // TestInternalObjectsGold 对照通用内部对象与 dwgread JSON 字段
 func TestInternalObjectsGold(t *testing.T) {
 	dir := testsupport.LibredwgTestDataDir()
@@ -240,7 +202,7 @@ func TestInternalObjectsGold(t *testing.T) {
 					bad += fmt.Sprintf(" %s=%v(校验失败)", key, got)
 				}
 			default:
-				if got == nil || !anyEqual(want, got) {
+				if got == nil || !testsupport.AnyEqual(want, got) {
 					bad += fmt.Sprintf(" %s=%v(want %v)", key, got, want)
 				}
 			}

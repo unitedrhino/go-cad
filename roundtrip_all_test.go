@@ -13,6 +13,7 @@ import (
 	"github.com/unitedrhino/go-cad/internal/object"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
+	"github.com/unitedrhino/go-cad/internal/writer"
 	"os"
 	"sort"
 	"strings"
@@ -98,14 +99,14 @@ func roundTripAll(t *testing.T, sample string, ver container.DwgVersion) {
 			if tc64 > 0 && tc64 < 500 {
 				typeCode = uint16(tc64)
 			}
-			body2, _, err := encodeInternalObjectR2000(g, typeCode)
+			body2, _, err := writer.EncodeInternalObjectR2000(g, typeCode)
 			if err != nil {
 				if strings.Contains(err.Error(), "缺少 headRawBits") {
 					// 桥接路由：DICTIONARY 系对象走专用编码器
 					//（objDictionary 结构，TestDictionaryRoundTrip 同链路）
 					if strings.Contains(g.Name, "DICTIONARY") {
 						if d, ok := doc.Dictionaries[h]; ok && d != nil {
-							db2, derr := encodeDictionaryR2000(d, ver, false)
+							db2, derr := writer.EncodeDictionaryR2000(d, ver, false)
 							if derr == nil {
 								drec := &objrec.ObjectRecord{Body: db2, BodyBitOffset: 0, Size: uint32(len(db2))}
 								if _, derr = object.DecodeDictionaryObjectFull(drec.BodyBitStream(), drec, ver, false, false); derr == nil {
@@ -164,7 +165,7 @@ func roundTripAll(t *testing.T, sample string, ver container.DwgVersion) {
 					continue
 				}
 				v2 := g2.Field(f.Key)
-				if !testsupport.AnyRoundTripEqual(f.Val, v2) && !anyEqual(f.Val, v2) {
+				if !testsupport.AnyRoundTripEqual(f.Val, v2) && !testsupport.AnyEqual(f.Val, v2) {
 					t.Logf("%s h=%d 字段 %s: %v != %v", g.Name, h, f.Key, f.Val, v2)
 					fails[g.Name+"(字段)"]++
 					fail++
@@ -225,7 +226,7 @@ func roundTripAllEntities(t *testing.T, doc *Document, data []byte, sample strin
 					fail++
 				}
 			}()
-			body2, _, err := encodeEntityR200x(e1, ver)
+			body2, _, err := writer.EncodeEntityR200x(e1, ver)
 			if err != nil {
 				t.Logf("%s h=%d 回放编码失败: %v (pre=%d head=%d raw=%d objSizeBit=%d recSize=%d r2010=%v)",
 					typeName, h, err, len(b1.PreBits), len(b1.HeadRawBits), len(b1.RawHandleBits), b1.ObjSizeBit, b1.RecSize, b1.R2010Plus)

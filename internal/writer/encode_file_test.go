@@ -3,12 +3,14 @@
 // 图元句柄与几何关键值、图层集合不变；对象图条目句柄序列不变、偏移整体
 // 平移。LibreDWG 交叉验证（dwgread）由 CAD_LIBREDWG_BUILD 环境变量门控，
 // 默认环境 skip 不影响全绿。
-package cad
+package writer
 
 import (
 	"bytes"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/objrec"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,11 +26,11 @@ var r2000GateSamples = []string{"line_2000.dwg", "text_2000.dwg", "mtext_2000.dw
 func writeSampleR2000(t *testing.T, name string) (original, written []byte) {
 	t.Helper()
 	var err error
-	original, err = os.ReadFile(filepath.Join("testdata", name))
+	original, err = os.ReadFile(testsupport.TestdataPath(name))
 	if err != nil {
 		t.Fatalf("读取样本 %s 失败: %v", name, err)
 	}
-	doc, err := Parse(original)
+	doc, err := drawing.Parse(original)
 	if err != nil {
 		t.Fatalf("解析 %s 失败: %v", name, err)
 	}
@@ -48,11 +50,11 @@ func TestWriteReadR2000(t *testing.T) {
 			if string(written[:6]) != "AC1015" {
 				t.Fatalf("写出版本串错误: %q", string(written[:6]))
 			}
-			doc1, err := Parse(original)
+			doc1, err := drawing.Parse(original)
 			if err != nil {
 				t.Fatalf("源文件解析失败: %v", err)
 			}
-			doc2, err := Parse(written)
+			doc2, err := drawing.Parse(written)
 			if err != nil {
 				t.Fatalf("写出文件重新解析失败: %v", err)
 			}
@@ -71,11 +73,11 @@ func TestWriteReadR2000(t *testing.T) {
 			// ④ 模型空间图元逐字段一致：DumpEntities 覆盖句柄、类型、
 			// 几何关键值（LINE start/end、CIRCLE 圆心半径等）、图层与颜色，
 			// JSON 输出对 map 键排序、对实体序列敏感，整体比对即为不变量
-			d1, err := DumpEntities(original)
+			d1, err := drawing.DumpEntities(original)
 			if err != nil {
 				t.Fatalf("源文件实体导出失败: %v", err)
 			}
-			d2, err := DumpEntities(written)
+			d2, err := drawing.DumpEntities(written)
 			if err != nil {
 				t.Fatalf("写出文件实体导出失败: %v", err)
 			}

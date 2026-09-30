@@ -1,16 +1,16 @@
 // encode_roundtrip_test 对象级往返测试：解码 → 重编码 → 再解码，
 // 逐字段比对一致（dwgwrite 编码方向的门禁测试）。
-package cad
+package writer
 
 import (
 	"bytes"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/object"
 	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -25,7 +25,7 @@ func TestPlaceHolderRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Skipf("样本不可用: %v", err)
 	}
-	doc, err := Parse(data)
+	doc, err := drawing.Parse(data)
 	if err != nil {
 		t.Fatalf("解析失败: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestPlaceHolderRoundTrip(t *testing.T) {
 	if g1 == nil {
 		t.Fatalf("h=%d 首次解码缺失", h)
 	}
-	body2, _, err := encodeInternalObjectR2000(g1, 0x50)
+	body2, _, err := EncodeInternalObjectR2000(g1, 0x50)
 	if err != nil {
 		t.Fatalf("重编码失败: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestPlaceHolderRoundTrip(t *testing.T) {
 			f.Key == "object" || f.Key == "dxfname" {
 			continue // body 级与表示级差异，单独校验
 		}
-		if !testsupport.AnyRoundTripEqual(f.Val, v2) && !anyEqual(f.Val, v2) {
+		if !testsupport.AnyRoundTripEqual(f.Val, v2) && !testsupport.AnyEqual(f.Val, v2) {
 			t.Errorf("字段 %s: %v != %v", f.Key, f.Val, v2)
 			if os.Getenv("CAD_AUDIT_DIFF") != "" {
 				t.Logf("[dRD] %s: got %v want %v", f.Key, v2, f.Val)
@@ -200,7 +200,7 @@ func TestXrecordRoundTripSynthetic(t *testing.T) {
 // LibreDWG 样本目录的依赖）。结构化重编码仅覆盖 R2000 布局，其余
 // 版本命中时计数跳过（能力边界，不计失败）。
 func TestXrecordRoundTrip(t *testing.T) {
-	entries, err := os.ReadDir("testdata")
+	entries, err := os.ReadDir(testsupport.TestdataDir())
 	if err != nil {
 		t.Fatalf("读取 testdata 失败: %v", err)
 	}
@@ -210,11 +210,11 @@ func TestXrecordRoundTrip(t *testing.T) {
 		if !strings.HasSuffix(name, ".dwg") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join("testdata", name))
+		data, err := os.ReadFile(testsupport.TestdataPath(name))
 		if err != nil {
 			t.Fatalf("读取样本 %s 失败: %v", name, err)
 		}
-		doc, err := Parse(data)
+		doc, err := drawing.Parse(data)
 		if err != nil {
 			t.Errorf("解析 %s 失败: %v", name, err)
 			continue
@@ -293,7 +293,7 @@ func TestXrecordRoundTrip(t *testing.T) {
 // 样本目录的依赖与 map 随机序盲区，任何一颗失败即失败）。结构化重
 // 编码仅覆盖 R2000 布局，其余版本命中时计数跳过（能力边界，不计失败）。
 func TestDictionaryRoundTrip(t *testing.T) {
-	entries, err := os.ReadDir("testdata")
+	entries, err := os.ReadDir(testsupport.TestdataDir())
 	if err != nil {
 		t.Fatalf("读取 testdata 失败: %v", err)
 	}
@@ -303,11 +303,11 @@ func TestDictionaryRoundTrip(t *testing.T) {
 		if !strings.HasSuffix(name, ".dwg") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join("testdata", name))
+		data, err := os.ReadFile(testsupport.TestdataPath(name))
 		if err != nil {
 			t.Fatalf("读取样本 %s 失败: %v", name, err)
 		}
-		doc, err := Parse(data)
+		doc, err := drawing.Parse(data)
 		if err != nil {
 			t.Errorf("解析 %s 失败: %v", name, err)
 			continue
@@ -329,7 +329,7 @@ func TestDictionaryRoundTrip(t *testing.T) {
 						fail++
 					}
 				}()
-				body2, err := encodeDictionaryR2000(d1, doc.Ver, false)
+				body2, err := EncodeDictionaryR2000(d1, doc.Ver, false)
 				if err != nil {
 					t.Errorf("%s h=%d 重编码失败: %v", name, d1.Handle, err)
 					fail++

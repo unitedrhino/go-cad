@@ -2,7 +2,7 @@
 // R2000 LINE 记录位流（对齐 parseEntityHead R2000+LW 布局与
 // decodeLine 几何），解码 → encodeEntityR200x 回放 → 要求与构造位流
 // **逐字节一致**（坐标系不变方案的位级门禁），再重解码比对字段。
-package cad
+package writer
 
 import (
 	"bytes"
@@ -122,7 +122,7 @@ func TestEntityRoundTripSynthetic(t *testing.T) {
 		t.Errorf("r2010Plus 应为 false")
 	}
 	// 回放编码：要求与构造位流逐字节一致（位级门禁）
-	body2, datEnd2, err := encodeEntityR200x(e1, container.VerR2000)
+	body2, datEnd2, err := EncodeEntityR200x(e1, container.VerR2000)
 	if err != nil {
 		t.Fatalf("回放编码失败: %v", err)
 	}

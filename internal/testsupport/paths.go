@@ -103,3 +103,14 @@ func ResolveSamplePath(alias string) string {
 	}
 	return ""
 }
+
+// TestdataDir 返回仓库 testdata 目录绝对路径（模块根锚定，子包测试
+// 工作目录无关）。
+func TestdataDir() string {
+	return filepath.Join(moduleRoot(), "testdata")
+}
+
+// TestdataPath 返回 testdata 下相对文件的绝对路径。
+func TestdataPath(rel string) string {
+	return filepath.Join(TestdataDir(), rel)
+}

@@ -10,6 +10,7 @@ import (
 	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
 	"github.com/unitedrhino/go-cad/internal/object"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"image/png"
 	"math"
 	"os"
@@ -315,7 +316,7 @@ func TestDetectSheetsNilDoc(t *testing.T) {
 }
 
 func TestDetectSheetsAllTestdataNoPanic(t *testing.T) {
-	files, _ := filepath.Glob(filepath.Join("testdata", "*.dwg"))
+	files, _ := filepath.Glob(testsupport.TestdataPath("*.dwg"))
 	if len(files) == 0 {
 		t.Skip("无样本")
 	}

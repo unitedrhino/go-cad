@@ -5,12 +5,14 @@
 // AcDbObjects/Handles 段原样回放而逐条相等。R2010+ 特有段（如 AcDs 系）随
 // 段表原样回放。LibreDWG 交叉验证（dwgread）由 CAD_LIBREDWG_BUILD 环境变量
 // 门控，默认环境 skip 不影响全绿。
-package cad
+package writer
 
 import (
 	"bytes"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/objrec"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"path/filepath"
 	"testing"
@@ -40,11 +42,11 @@ var r2010FamilyGateSamples = map[string][]string{
 func writeSampleR2010Family(t *testing.T, name string) (original, written []byte) {
 	t.Helper()
 	var err error
-	original, err = os.ReadFile(filepath.Join("testdata", name))
+	original, err = os.ReadFile(testsupport.TestdataPath(name))
 	if err != nil {
 		t.Fatalf("读取样本 %s 失败: %v", name, err)
 	}
-	doc, err := Parse(original)
+	doc, err := drawing.Parse(original)
 	if err != nil {
 		t.Fatalf("解析 %s 失败: %v", name, err)
 	}
@@ -69,11 +71,11 @@ func TestWriteReadR2010Family(t *testing.T) {
 					if string(written[:6]) != ver {
 						t.Fatalf("写出版本串错误: %q，期望 %q", string(written[:6]), ver)
 					}
-					doc1, err := Parse(original)
+					doc1, err := drawing.Parse(original)
 					if err != nil {
 						t.Fatalf("源文件解析失败: %v", err)
 					}
-					doc2, err := Parse(written)
+					doc2, err := drawing.Parse(written)
 					if err != nil {
 						t.Fatalf("写出文件重新解析失败: %v", err)
 					}
@@ -90,11 +92,11 @@ func TestWriteReadR2010Family(t *testing.T) {
 						t.Errorf("实体数不一致: %d != %d", doc2.EntityCount(), doc1.EntityCount())
 					}
 					// ④ 模型空间图元逐字段一致（句柄/类型/几何/图层/颜色）
-					d1, err := DumpEntities(original)
+					d1, err := drawing.DumpEntities(original)
 					if err != nil {
 						t.Fatalf("源文件实体导出失败: %v", err)
 					}
-					d2, err := DumpEntities(written)
+					d2, err := drawing.DumpEntities(written)
 					if err != nil {
 						t.Fatalf("写出文件实体导出失败: %v", err)
 					}

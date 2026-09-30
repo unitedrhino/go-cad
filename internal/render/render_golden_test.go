@@ -61,6 +61,7 @@ package render
 import (
 	"bytes"
 	"github.com/unitedrhino/go-cad/internal/drawing"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"image/png"
 	"os"
 	"testing"
@@ -83,7 +84,7 @@ var goldenCases = []struct {
 func TestRenderGoldenMatch(t *testing.T) {
 	for _, tc := range goldenCases {
 		t.Run(tc.dwg, func(t *testing.T) {
-			refData, err := os.ReadFile("testdata/" + tc.ref)
+			refData, err := os.ReadFile(testsupport.TestdataPath(tc.ref))
 			if err != nil {
 				if os.IsNotExist(err) {
 					t.Skipf("参照图缺失，跳过金标对照: %s", tc.ref)
@@ -138,7 +139,7 @@ func channelDelta(a, b uint32) bool {
 // internal/render 测试工作目录，样本经 ../../testdata 取用）。
 func parseIntegration(t *testing.T, name string) *drawing.Document {
 	t.Helper()
-	data, err := os.ReadFile("../../testdata/" + name)
+	data, err := os.ReadFile(testsupport.TestdataPath(name))
 	if err != nil {
 		t.Skipf("样本缺失（%s）: %v", name, err)
 	}

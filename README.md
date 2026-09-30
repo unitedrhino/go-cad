@@ -160,19 +160,23 @@ go run ./example
 
 ## 包结构
 
-| 目录/文件 | 职责 |
+| 路径 | 职责 |
 |---|---|
-| `cad.go` | 公开门面（Parse/Document/渲染/写出 API）|
-| `bitreader.go` / `bitwriter.go` | DWG 位流原语（读写对称）|
-| `container*.go`、`lz77.go`、`r21.go`、`compress.go` | 容器层（三代）与压缩器 |
-| `entities*.go` | 实体解码（公共头扫描框架 + 按族拆分）|
-| `objects_*.go` | 内部对象解码（spec 驱动 gfRead 框架）|
-| `r11.go` | pre-R13（R9/R10/R11）独立解码路径 |
-| `encode_*.go` | DWG 写出（回放 + 结构化正向）|
-| `dxf_read.go` / `dxf_write.go` / `injson.go` | DXF 双向 + JSON 输入 |
-| `render*.go` / `api_svg.go` | 渲染（PNG 字形 / SVG 矢量 / 拆图）|
-| `example/` / `cmd/dwg2png/` | 一键演示与 CLI |
+| `cad.go` | 公开门面：类型别名 + API 转发（Parse/Document/渲染/写出），外部使用方式零变化 |
+| `internal/bitstream/` | DWG 位流原语（读写对称，最底层，无内部依赖）|
+| `internal/container/` | 容器层（R2000 段目录 / R2004 页式 / R2007 RS 交织）+ LZ77/R21 压缩器 + 原始素材捕获（回放写出用）|
+| `internal/objrec/` | 对象记录层：对象图/对象记录/类型码命名（实体与对象解码共用的最底层记录原语）|
+| `internal/entity/` | 实体解码（公共头扫描框架 + 按族拆分）+ 图元离散/调色板等实体侧共用件 |
+| `internal/object/` | 内部对象解码（spec 驱动 gfRead 框架）|
+| `internal/drawing/` | 文档模型与解码编排（Document/Parse）+ pre-R13 路径 + DXF 双向 + JSON 输入 + 图元离散（tessellate）与包围盒 |
+| `internal/render/` | 渲染（PNG 字形 / SVG 矢量 / 图纸拆分）|
+| `internal/writer/` | DWG 写出（位级回放 + 结构化正向）|
+| `internal/testsupport/` | 测试支撑包：测试位流构造器 / gold 路径定位 / 比较助手（无业务依赖，供各子包测试导入）|
+| `example/` / `cmd/dwg2png/` | 一键演示与 CLI（仅依赖门面）|
 | `testdata/` | 官方语料样本（测试内置，CI 完整运行）|
+
+依赖方向单向：`bitstream → objrec → container → entity/object → drawing → render/writer`，
+全部实现位于 `internal/`，外部仅经 `cad.go` 门面消费。
 
 ## 已知限制
 

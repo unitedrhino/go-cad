@@ -1,14 +1,16 @@
-// encode_file_r2007_test.go 是 WriteDwgR2007 文件级回放的门禁：对 R2007
-// 样本执行 Parse → WriteDwgR2007 → 再 Parse，断言版本、实体数/模型空间
+// encode_file_r2004_test.go 是 WriteDwgR2004 文件级回放的门禁：对 R2004
+// 样本执行 Parse → WriteDwgR2004 → 再 Parse，断言版本、实体数/模型空间
 // 图元逐字段、图层集合不变；对象图条目（句柄+段内偏移）随 AcDbObjects/
 // Handles 段原样回放而逐条相等。LibreDWG 交叉验证（dwgread）由
 // CAD_LIBREDWG_BUILD 环境变量门控，默认环境 skip 不影响全绿。
-package cad
+package writer
 
 import (
 	"bytes"
 	"github.com/unitedrhino/go-cad/internal/container"
+	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/objrec"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,50 +19,51 @@ import (
 	"testing"
 )
 
-// r2007GateSamples 门禁样本：覆盖 R2007 testdata 全部图元类型
-// （ARC/CIRCLE/ELLIPSE/LINE/LWPOLYLINE/POINT/POLYLINE2D）。
-var r2007GateSamples = []string{
-	"arc_2007.dwg", "circle_2007.dwg", "ellipse_2007.dwg",
-	"line_2007.dwg", "lw_example2007.dwg", "point2d_2007.dwg",
-	"point3d_2007.dwg", "polyline2d_line_2007.dwg",
+// r2004GateSamples 门禁样本：覆盖 R2004 testdata 全部图元类型
+// （LINE/CIRCLE/ARC/ELLIPSE/INSERT/POINT/LWPOLYLINE/TEXT/MTEXT）。
+var r2004GateSamples = []string{
+	"arc_2004.dwg", "circle_2004.dwg", "ellipse_2004.dwg", "insert_2004.dwg",
+	"line_2004.dwg", "lw_example2004.dwg", "mtext_2004.dwg",
+	"point2d_2004.dwg", "point3d_2004.dwg", "polyline2d_line_2004.dwg",
+	"polyline2d_old_2004.dwg", "text_2004.dwg",
 }
 
-// writeSampleR2007 对样本执行 Parse → WriteDwgR2007，返回源字节与写出字节。
-func writeSampleR2007(t *testing.T, name string) (original, written []byte) {
+// writeSampleR2004 对样本执行 Parse → WriteDwgR2004，返回源字节与写出字节。
+func writeSampleR2004(t *testing.T, name string) (original, written []byte) {
 	t.Helper()
 	var err error
-	original, err = os.ReadFile(filepath.Join("testdata", name))
+	original, err = os.ReadFile(testsupport.TestdataPath(name))
 	if err != nil {
 		t.Fatalf("读取样本 %s 失败: %v", name, err)
 	}
-	doc, err := Parse(original)
+	doc, err := drawing.Parse(original)
 	if err != nil {
 		t.Fatalf("解析 %s 失败: %v", name, err)
 	}
-	if doc.R2007Raw == nil {
-		t.Fatalf("%s 未保留 R2007 回放素材", name)
+	if doc.R2004Raw == nil {
+		t.Fatalf("%s 未保留 R2004 回放素材", name)
 	}
 	buf := &bytes.Buffer{}
-	if err := WriteDwgR2007(doc, buf); err != nil {
+	if err := WriteDwgR2004(doc, buf); err != nil {
 		t.Fatalf("写出 %s 失败: %v", name, err)
 	}
 	return original, buf.Bytes()
 }
 
-// TestWriteReadR2007 回放门禁主测试：写出文件须被本包完整重新解析且
+// TestWriteReadR2004 回放门禁主测试：写出文件须被本包完整重新解析且
 // 语义不变。
-func TestWriteReadR2007(t *testing.T) {
-	for _, name := range r2007GateSamples {
+func TestWriteReadR2004(t *testing.T) {
+	for _, name := range r2004GateSamples {
 		t.Run(name, func(t *testing.T) {
-			original, written := writeSampleR2007(t, name)
-			if string(written[:6]) != "AC1021" {
+			original, written := writeSampleR2004(t, name)
+			if string(written[:6]) != "AC1018" {
 				t.Fatalf("写出版本串错误: %q", string(written[:6]))
 			}
-			doc1, err := Parse(original)
+			doc1, err := drawing.Parse(original)
 			if err != nil {
 				t.Fatalf("源文件解析失败: %v", err)
 			}
-			doc2, err := Parse(written)
+			doc2, err := drawing.Parse(written)
 			if err != nil {
 				t.Fatalf("写出文件重新解析失败: %v", err)
 			}
@@ -76,13 +79,14 @@ func TestWriteReadR2007(t *testing.T) {
 			if doc2.EntityCount() != doc1.EntityCount() {
 				t.Errorf("实体数不一致: %d != %d", doc2.EntityCount(), doc1.EntityCount())
 			}
-			// ④ 模型空间图元逐字段一致：DumpEntities 覆盖句柄、类型、几何
-			// 关键值、图层与颜色，JSON 全等即为不变量
-			d1, err := DumpEntities(original)
+			// ④ 模型空间图元逐字段一致：DumpEntities 覆盖句柄、类型、
+			// 几何关键值（LINE start/end、CIRCLE 圆心半径等）、图层与颜色，
+			// JSON 输出对 map 键排序、对实体序列敏感，整体比对即为不变量
+			d1, err := drawing.DumpEntities(original)
 			if err != nil {
 				t.Fatalf("源文件实体导出失败: %v", err)
 			}
-			d2, err := DumpEntities(written)
+			d2, err := drawing.DumpEntities(written)
 			if err != nil {
 				t.Fatalf("写出文件实体导出失败: %v", err)
 			}
@@ -105,7 +109,7 @@ func TestWriteReadR2007(t *testing.T) {
 			}
 			// ⑥ 对象图条目逐条相等：AcDbObjects/Handles 段原样回放，
 			// 句柄与段内偏移都不随容器重建变化
-			refs1, refs2 := r2007GateMapRefs(t, original), r2007GateMapRefs(t, written)
+			refs1, refs2 := r2004GateMapRefs(t, original), r2004GateMapRefs(t, written)
 			if len(refs1) != len(refs2) {
 				t.Fatalf("对象图条目数不一致: %d != %d", len(refs2), len(refs1))
 			}
@@ -119,8 +123,8 @@ func TestWriteReadR2007(t *testing.T) {
 	}
 }
 
-// r2007GateMapRefs 解析样本的对象图条目（R2007 容器 AcDb:Handles 段）。
-func r2007GateMapRefs(t *testing.T, data []byte) []objrec.ObjectRef {
+// r2004GateMapRefs 解析样本的对象图条目（R2004 容器 AcDb:Handles 段）。
+func r2004GateMapRefs(t *testing.T, data []byte) []objrec.ObjectRef {
 	t.Helper()
 	handles, err := container.LoadNamedSectionData(data, "AcDb:Handles")
 	if err != nil {
@@ -133,26 +137,28 @@ func r2007GateMapRefs(t *testing.T, data []byte) []objrec.ObjectRef {
 	return refs
 }
 
-// TestWriteReadR2007LibreDWG LibreDWG 交叉验证（可选门控）：把写出的文件
-// 喂给 dwgread -v3，要求退出码为 0、ERROR 行数与原文件基线一致，且对象数
-// 与基线一致。设置 CAD_LIBREDWG_BUILD=<构建目录>（如 /tmp/libredwg-build）
-// 启用。
-func TestWriteReadR2007LibreDWG(t *testing.T) {
+// TestWriteReadR2004LibreDWG LibreDWG 交叉验证（可选门控）：把写出的文件
+// 喂给 dwgread -v3，要求退出码为 0、无 error 级输出，且对象数与原文件
+// 基线一致。设置 CAD_LIBREDWG_BUILD=<构建目录>（如 /tmp/libredwg-build）启用。
+//
+// 注：部分 R2004 样本的 dwgread 在 AppInfo 段即中止（基线行为，坏 spec
+// 解析），num_objects 不输出——两侧对称缺失视为一致，仅单侧缺失判失败。
+func TestWriteReadR2004LibreDWG(t *testing.T) {
 	buildDir := os.Getenv("CAD_LIBREDWG_BUILD")
 	if buildDir == "" {
 		t.Skip("未设置 CAD_LIBREDWG_BUILD，跳过 LibreDWG 交叉验证")
 	}
 	dwgread := filepath.Join(buildDir, "dwgread")
-	for _, name := range r2007GateSamples {
+	for _, name := range r2004GateSamples {
 		t.Run(name, func(t *testing.T) {
-			original, written := writeSampleR2007(t, name)
+			original, written := writeSampleR2004(t, name)
 			dir := t.TempDir()
 			outPath := filepath.Join(dir, "written_"+name)
 			if err := os.WriteFile(outPath, written, 0o644); err != nil {
 				t.Fatalf("写出临时文件失败: %v", err)
 			}
-			baseObjs, baseErrs := r2007GateDwgread(t, dwgread, mustTempFile(t, original))
-			newObjs, newErrs := r2007GateDwgread(t, dwgread, outPath)
+			baseObjs, baseErrs := r2004GateDwgread(t, dwgread, mustTempFile(t, original))
+			newObjs, newErrs := r2004GateDwgread(t, dwgread, outPath)
 			if newErrs != baseErrs {
 				t.Errorf("dwgread error 行数不一致: 写出 %d != 基线 %d", newErrs, baseErrs)
 			}
@@ -163,9 +169,10 @@ func TestWriteReadR2007LibreDWG(t *testing.T) {
 	}
 }
 
-// r2007GateDwgread 执行 dwgread -v3，返回 (num_objects, ERROR 级日志行数)。
-// num_objects 缺失时返回 -1（与基线对称缺失比较）。
-func r2007GateDwgread(t *testing.T, dwgread, path string) (int, int) {
+// r2004GateDwgread 执行 dwgread -v3，返回 (num_objects, error 级日志行数)。
+// 与 R2000 门禁的 runDwgreadGate 相比放宽：num_objects 缺失时返回 -1
+// （与基线对称缺失比较），不直接失败。
+func r2004GateDwgread(t *testing.T, dwgread, path string) (int, int) {
 	t.Helper()
 	cmd := exec.Command(dwgread, "-v3", path)
 	out, err := cmd.CombinedOutput()

@@ -2,7 +2,7 @@
 // 以 R2000-R2007 家族为例，从解码结果 objGeneric 重写对象 body
 // （OT 类型码 + RL bitsize + 句柄链 + 公共尾），供 round-trip 往返
 // 测试（解码→编码→重解码逐字段一致）使用。
-package cad
+package writer
 
 import (
 	"fmt"
@@ -19,7 +19,7 @@ import (
 // RL bitsize 占位 + headRawBits（H/EED/公共头/专有字段原样）+
 // RawHandleBits（handle 流原样），对一切有专门解码器的类型位级往返。
 // 返回 body 字节与 dat/handle 分界位（即 LibreDWG 语义的 bitsize）。
-func encodeInternalObjectR2000(g *object.ObjGeneric, typeCode uint16) ([]byte, uint64, error) {
+func EncodeInternalObjectR2000(g *object.ObjGeneric, typeCode uint16) ([]byte, uint64, error) {
 	w := bitstream.NewEncWriter()
 	_ = typeCode
 	if g.HeadRawBits == "" {
@@ -163,7 +163,7 @@ func encodeXrecordR2000(x *object.ObjXrecord, ver container.DwgVersion) ([]byte,
 
 // encodeDictionaryR2000 重编码 R2000-R2007 家族的 DICTIONARY/
 // DICTIONARYWDFLT 对象 body。
-func encodeDictionaryR2000(d *object.ObjDictionary, ver container.DwgVersion, withDefault bool) ([]byte, error) {
+func EncodeDictionaryR2000(d *object.ObjDictionary, ver container.DwgVersion, withDefault bool) ([]byte, error) {
 	w := bitstream.NewEncWriter()
 	w.WriteRL(0) // bitsize 占位
 	dbg := os.Getenv("CAD_DECODE_DBG") != ""

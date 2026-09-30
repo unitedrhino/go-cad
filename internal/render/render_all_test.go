@@ -4,13 +4,14 @@ package render
 
 import (
 	"github.com/unitedrhino/go-cad/internal/drawing"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestRenderAllSamples(t *testing.T) {
-	files, _ := filepath.Glob(filepath.Join("testdata", "*.dwg"))
+	files, _ := filepath.Glob(testsupport.TestdataPath("*.dwg"))
 	if len(files) == 0 {
 		t.Skip("无样本")
 	}

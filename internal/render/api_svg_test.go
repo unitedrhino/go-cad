@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/drawing"
 	"github.com/unitedrhino/go-cad/internal/entity"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"io"
 	"math"
 	"os"
@@ -434,7 +435,7 @@ func TestRenderSVGPathRoundTrip(t *testing.T) {
 // TestRenderSVGAllSamples testdata 全版本样本（R14~R2018）RenderSVG 回归：
 // 均需可解析并输出含文本组骨架的 SVG。
 func TestRenderSVGAllSamples(t *testing.T) {
-	files, _ := filepath.Glob(filepath.Join("testdata", "*.dwg"))
+	files, _ := filepath.Glob(testsupport.TestdataPath("*.dwg"))
 	if len(files) == 0 {
 		t.Skip("无样本")
 	}
