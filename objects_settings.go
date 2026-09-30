@@ -8,6 +8,7 @@ package cad
 import (
 	"encoding/hex"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"strings"
 )
 
@@ -33,16 +34,16 @@ func hexUpper(b []byte) string {
 // data_type 不在 LibreDWG switch 全集（multileaders FIELD childval[1]
 // 实证读出 1342603270）时对齐其 default 分支：format_flags/data_type
 // 重置为 0 并按 kUnknown 输出 data_long=0，位流照旧推进到 unit_type。
-func decodeTableValueFields(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric, prefix string) (int64, error) {
+func decodeTableValueFields(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric, prefix string) (int64, error) {
 	var formatFlags int64
 	if ver >= verR2007 {
-		ff, err := r.readBL()
+		ff, err := r.ReadBL()
 		if err != nil {
 			return 0, err
 		}
 		formatFlags = int64(ff)
 	}
-	dt, err := r.readBL()
+	dt, err := r.ReadBL()
 	if err != nil {
 		return 0, err
 	}
@@ -74,13 +75,13 @@ func decodeTableValueFields(r *bitStream, ver dwgVersion, fr *gfRead, g *objGene
 	if !skipValue {
 		switch dataType {
 		case 0, 1: // kUnknown/kLong
-			v, e := r.readBL()
+			v, e := r.ReadBL()
 			if e != nil {
 				return 0, e
 			}
 			g.Fields = append(g.Fields, objField{prefix + "data_long", int64(v)})
 		case 2: // kDouble
-			v, e := r.readBD()
+			v, e := r.ReadBD()
 			if e != nil {
 				return 0, e
 			}
@@ -90,7 +91,7 @@ func decodeTableValueFields(r *bitStream, ver dwgVersion, fr *gfRead, g *objGene
 				return 0, err
 			}
 		case 8: // kDate：BL size + 二进制（gold 以大写 hex 串导出）
-			sz, e := r.readBL()
+			sz, e := r.ReadBL()
 			if e != nil {
 				return 0, e
 			}
@@ -99,7 +100,7 @@ func decodeTableValueFields(r *bitStream, ver dwgVersion, fr *gfRead, g *objGene
 			}
 			raw := make([]byte, 0, sz)
 			for i := uint32(0); i < sz; i++ {
-				b, e := r.readRC()
+				b, e := r.ReadRC()
 				if e != nil {
 					return 0, e
 				}
@@ -108,25 +109,25 @@ func decodeTableValueFields(r *bitStream, ver dwgVersion, fr *gfRead, g *objGene
 			g.Fields = append(g.Fields, objField{prefix + "data_size", int64(sz)})
 			g.Fields = append(g.Fields, objField{prefix + "data_date", hexUpper(raw)})
 		case 16: // kPoint：BL size + 2RD
-			if _, e := r.readBL(); e != nil {
+			if _, e := r.ReadBL(); e != nil {
 				return 0, e
 			}
-			x, e := r.readRD()
+			x, e := r.ReadRD()
 			if e != nil {
 				return 0, e
 			}
-			y, e := r.readRD()
+			y, e := r.ReadRD()
 			if e != nil {
 				return 0, e
 			}
 			g.Fields = append(g.Fields, objField{prefix + "data_point", []float64{x, y}})
 		case 32: // k3dPoint：BL size + 3RD
-			if _, e := r.readBL(); e != nil {
+			if _, e := r.ReadBL(); e != nil {
 				return 0, e
 			}
 			var p3 [3]float64
 			for i := range p3 {
-				if p3[i], err = r.readRD(); err != nil {
+				if p3[i], err = r.ReadRD(); err != nil {
 					return 0, err
 				}
 			}
@@ -135,7 +136,7 @@ func decodeTableValueFields(r *bitStream, ver dwgVersion, fr *gfRead, g *objGene
 			g.Fields = append(g.Fields, objField{prefix + "data_handle", nil})
 		case 512: // kGeneral since r2007：BL size + 原始字节
 			if ver >= verR2007 {
-				sz, e := r.readBL()
+				sz, e := r.ReadBL()
 				if e != nil {
 					return 0, e
 				}
@@ -143,7 +144,7 @@ func decodeTableValueFields(r *bitStream, ver dwgVersion, fr *gfRead, g *objGene
 					return 0, fmt.Errorf("cad: TABLE value size 异常 %d", sz)
 				}
 				for i := uint32(0); i < sz; i++ {
-					if _, e = r.readRC(); e != nil {
+					if _, e = r.ReadRC(); e != nil {
 						return 0, e
 					}
 				}
@@ -173,7 +174,7 @@ func decodeTableValueFields(r *bitStream, ver dwgVersion, fr *gfRead, g *objGene
 // evaluation_error_msg T + TABLE_value_fields(value) + value_string T +
 // value_string_length BL + num_childval BL + childval×N（key T + value）。
 // childs/objects 句柄在 handle 流。
-func decodeGenericFIELD(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericFIELD(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.T("id", g); err != nil {
 		return err
 	}
@@ -237,7 +238,7 @@ func decodeGenericFIELD(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric)
 }
 
 // decodeGenericFIELD_HDL handle 流：childs×num_childs + objects×num_objects。
-func decodeGenericFIELD_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericFIELD_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < g.hdlCount; i++ {
 		h, e := readHandleReference(r, g.Handle)
 		if e != nil {
@@ -256,7 +257,7 @@ func decodeGenericFIELD_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGene
 // coord_proj_radius BD + coord_system_def/geo_rss_tag T + 3 个
 // observation tag T + geomesh 点/面网格 + sea_level…（host_block 句柄
 // 在 handle 流）。
-func decodeGenericGEODATA(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericGEODATA(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BL("class_version", g); err != nil {
 		return err
 	}
@@ -349,7 +350,7 @@ func decodeGenericGEODATA(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneri
 }
 
 // decodeGenericGEODATA_HDL handle 流：host_block（1 个）。
-func decodeGenericGEODATA_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericGEODATA_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	h, e := readHandleReference(r, g.Handle)
 	if e != nil {
 		return e
@@ -360,11 +361,11 @@ func decodeGenericGEODATA_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGe
 
 // decodeGenericSECTION_MANAGER 解析 SECTION_MANAGER：is_live B +
 // num_sections BS；sections 句柄在 handle 流。
-func decodeGenericSECTION_MANAGER(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericSECTION_MANAGER(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.B("is_live", g); err != nil {
 		return err
 	}
-	ns, err := fr.r.readBS()
+	ns, err := fr.r.ReadBS()
 	if err != nil {
 		return err
 	}
@@ -374,7 +375,7 @@ func decodeGenericSECTION_MANAGER(r *bitStream, ver dwgVersion, fr *gfRead, g *o
 }
 
 // decodeGenericSECTION_MANAGER_HDL handle 流：sections×num_sections。
-func decodeGenericSECTION_MANAGER_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericSECTION_MANAGER_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < g.hdlCount; i++ {
 		h, e := readHandleReference(r, g.Handle)
 		if e != nil {
@@ -389,7 +390,7 @@ func decodeGenericSECTION_MANAGER_HDL(r *bitStream, ver dwgVersion, fr *gfRead, 
 // num_types BL + types×N（type/generation/num_sources BL +
 // sources 句柄 + destblock 句柄 + destfile T + num_geom BL + geom×M
 // 几何设置组）。
-func decodeGenericSECTION_SETTINGS(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericSECTION_SETTINGS(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BL("curr_type", g); err != nil {
 		return err
 	}
@@ -489,7 +490,7 @@ func decodeGenericSECTION_SETTINGS(r *bitStream, ver dwgVersion, fr *gfRead, g *
 
 // decodeGenericSECTION_SETTINGS_HDL handle 流：各 type 的 sources 与
 // destblock（按 hdlCount 累计数）。
-func decodeGenericSECTION_SETTINGS_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericSECTION_SETTINGS_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < g.hdlCount; i++ {
 		h, e := readHandleReference(r, g.Handle)
 		if e != nil {
@@ -503,7 +504,7 @@ func decodeGenericSECTION_SETTINGS_HDL(r *bitStream, ver dwgVersion, fr *gfRead,
 // decodeGenericPLOTSETTINGS 解析 PLOTSETTINGS（dwg.spec）：设备/纸张名
 // 与边距 + plot 视窗/单位 + stylesheet + std_scale + shadeplot。
 // plotview（R2002+）/shadeplot（R2007a+）句柄在 handle 流。
-func decodeGenericPLOTSETTINGS(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericPLOTSETTINGS(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.T("printer_cfg_file", g); err != nil {
 		return err
 	}
@@ -575,7 +576,7 @@ func decodeGenericPLOTSETTINGS(r *bitStream, ver dwgVersion, fr *gfRead, g *objG
 
 // decodeGenericPLOTSETTINGS_HDL handle 流：plotview（R2002+）+
 // shadeplot（R2007a+）。R13/R14 走 plotview_name T（无句柄）。
-func decodeGenericPLOTSETTINGS_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericPLOTSETTINGS_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < g.hdlCount; i++ {
 		h, e := readHandleReference(r, g.Handle)
 		if e != nil {
@@ -591,7 +592,7 @@ func decodeGenericPLOTSETTINGS_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *
 // class_version BS + is_default B + num_points BL + points 3BD 向量 +
 // x_direction 3BD + b290 B + inspt_offset/endptproj 3BD。scale 句柄在
 // handle 流。
-func decodeGenericLEADEROBJECTCONTEXTDATA(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericLEADEROBJECTCONTEXTDATA(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BS("class_version", g); err != nil {
 		return err
 	}
@@ -607,7 +608,7 @@ func decodeGenericLEADEROBJECTCONTEXTDATA(r *bitStream, ver dwgVersion, fr *gfRe
 	}
 	pts := make([][]float64, 0, np)
 	for i := 0; i < int(np); i++ {
-		x, y, z, e := r.read3BD()
+		x, y, z, e := r.Read3BD()
 		if e != nil {
 			return e
 		}
@@ -627,7 +628,7 @@ func decodeGenericLEADEROBJECTCONTEXTDATA(r *bitStream, ver dwgVersion, fr *gfRe
 }
 
 // decodeGenericLEADEROBJECTCONTEXTDATA_HDL handle 流：scale（1 个）。
-func decodeGenericLEADEROBJECTCONTEXTDATA_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericLEADEROBJECTCONTEXTDATA_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	h, e := readHandleReference(r, g.Handle)
 	if e != nil {
 		return e
@@ -641,7 +642,7 @@ func init() {
 	// 类表 DXF 名与 gold object 名不同，经 jsonName 映射
 	internalClassDecoders["LEADEROBJECTCONTEXTDATA"] = internalObjectSpec{decode: decodeGenericLEADEROBJECTCONTEXTDATA, hdl: decodeGenericLEADEROBJECTCONTEXTDATA_HDL, jsonName: "LEADEROBJECTCONTEXTDATA"}
 	internalClassDecoders["ACDB_LEADEROBJECTCONTEXTDATA_CLASS"] = internalObjectSpec{decode: decodeGenericLEADEROBJECTCONTEXTDATA, hdl: decodeGenericLEADEROBJECTCONTEXTDATA_HDL, jsonName: "LEADEROBJECTCONTEXTDATA"}
-	for name, d := range map[string]func(*bitStream, dwgVersion, *gfRead, *objGeneric) error{
+	for name, d := range map[string]func(*bitstream.BitStream, dwgVersion, *gfRead, *objGeneric) error{
 		"FIELD":            decodeGenericFIELD,
 		"GEODATA":          decodeGenericGEODATA,
 		"SECTION_MANAGER":  decodeGenericSECTION_MANAGER,

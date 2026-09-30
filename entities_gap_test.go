@@ -3,6 +3,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"testing"
@@ -12,9 +13,9 @@ import (
 // 同时覆盖类型码 → 类型名 → 解码器分发的完整链路。
 func decodeEntityByName(t *testing.T, w *testsupport.BitWriter, typeCode uint16, dynamic map[uint16]string) any {
 	t.Helper()
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatalf("公共头解析失败: %v", err)
@@ -107,9 +108,9 @@ func TestDecodeLargeRadialDimR2000(t *testing.T) {
 	w.BD(0.5)           // jog_angle
 	w.B3BD(1, 1, 0)     // ovr_center
 	w.B3BD(55, 66, 0)   // jog_pt
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)

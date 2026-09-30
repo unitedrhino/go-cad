@@ -10,13 +10,14 @@ package cad
 
 import (
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 )
 
 // readTableValueFields 读取 TABLE_value_fields 宏（Dwg_TABLE_value，
 // dwg_spec_shared.h）：R2007+ 先 BL format_flags；BL data_type 按
 // kXxx 类型分支读值；R2007+ 尾部 unit_type/format_string/value_string。
 // data_type=64（kObjectId）的句柄在 handle 流，nHdl 计数。
-func readTableValueFields(r *bitStream, fr *gfRead, g *objGeneric, prefix string, nHdl *int) error {
+func readTableValueFields(r *bitstream.BitStream, fr *gfRead, g *objGeneric, prefix string, nHdl *int) error {
 	if verUntilR2004(fr.ver) {
 		// PRE R_2007a：data_type &= ~0x200 为解码后值修饰，不占位
 	} else {
@@ -64,7 +65,7 @@ func readTableValueFields(r *bitStream, fr *gfRead, g *objGeneric, prefix string
 			if sz < 0 || sz > 1<<20 {
 				return fmt.Errorf("cad: TABLE value 日期长度异常 %d", sz)
 			}
-			b, e := r.readBitsBytes(int(sz))
+			b, e := r.ReadBitsBytes(int(sz))
 			if e != nil {
 				return e
 			}
@@ -114,7 +115,7 @@ func readTableValueFields(r *bitStream, fr *gfRead, g *objGeneric, prefix string
 
 // readTableCustomDataItems 读取 Dwg_TABLE_CustomDataItem 向量
 // （name T + TABLE_value_fields），cell 与 row 复用。
-func readTableCustomDataItems(r *bitStream, fr *gfRead, g *objGeneric, prefix string, nHdl *int) error {
+func readTableCustomDataItems(r *bitstream.BitStream, fr *gfRead, g *objGeneric, prefix string, nHdl *int) error {
 	n, err := fr.BLv(prefix+"num_customdata_items", g)
 	if err != nil {
 		return err
@@ -136,7 +137,7 @@ func readTableCustomDataItems(r *bitStream, fr *gfRead, g *objGeneric, prefix st
 
 // readTableCellStyle 读取 cellstyle 前缀的 CellStyle_fields（句柄计数
 // 由 readCellStyleFields 内部的 nHdl 自增完成：text_style 与 ltype）。
-func readTableCellStyle(r *bitStream, fr *gfRead, g *objGeneric, prefix string, nHdl *int) error {
+func readTableCellStyle(r *bitstream.BitStream, fr *gfRead, g *objGeneric, prefix string, nHdl *int) error {
 	return readCellStyleFields(r, fr, g, prefix, nHdl)
 }
 
@@ -144,7 +145,7 @@ func readTableCellStyle(r *bitStream, fr *gfRead, g *objGeneric, prefix string, 
 // pg.237 20.4.97）：ldata.name/description + tdata.cols/rows/cells/
 // cell_contents 嵌套 + field_refs 数量 + fdata.merged_cells。
 // tablestyle 及全部内嵌句柄在 handle 流。
-func decodeGenericTABLECONTENT(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericTABLECONTENT(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	nHdl := 0
 	// AcDbLinkedData
 	if err := fr.T("ldata.name", g); err != nil {
@@ -366,7 +367,7 @@ func decodeGenericTABLECONTENT(r *bitStream, ver dwgVersion, fr *gfRead, g *objG
 // 阶段记录的 num_content_handles 顺序读取（cellstyle text_style/ltype、
 // customdata value 句柄、data_link、field/block 句柄、attdef、
 // tablegeometry、field_refs、tablestyle）。
-func decodeGenericTABLECONTENT_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericTABLECONTENT_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	n := 0
 	if v, ok := g.Field("num_content_handles").(int64); ok {
 		n = int(v)
@@ -385,7 +386,7 @@ func decodeGenericTABLECONTENT_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *
 // DEBUG_CLASSES 调试类）：flags BS + num_cols/num_rows BL + table_name T
 // + 列（type BL + text T + 行值向量）。行值按 spec 无条件读
 // data_long BL + data_double BD + data_string T 三键（与 LibreDWG 一致）。
-func decodeGenericDATATABLE(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericDATATABLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BS("flags", g); err != nil {
 		return err
 	}

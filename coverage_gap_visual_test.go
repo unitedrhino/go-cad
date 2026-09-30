@@ -5,6 +5,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"os"
 	"strings"
 	"testing"
@@ -126,13 +127,13 @@ func TestCadTraceField(t *testing.T) {
 
 // TestReadMTextBackground 背景填充数据合成位流。
 func TestReadMTextBackground(t *testing.T) {
-	w := newEncWriter()
-	w.writeBD(1.0)  // scale factor
-	w.writeBS(0)    // bg color index
-	w.writeBL(0xFF) // rgb
-	w.writeRC(0)    // flags（无附加串）
-	w.writeBL(0)    // transparency
-	if err := readMTextBackground(newBitStream(w.bytes())); err != nil {
+	w := bitstream.NewEncWriter()
+	w.WriteBD(1.0)  // scale factor
+	w.WriteBS(0)    // bg color index
+	w.WriteBL(0xFF) // rgb
+	w.WriteRC(0)    // flags（无附加串）
+	w.WriteBL(0)    // transparency
+	if err := readMTextBackground(bitstream.NewBitStream(w.Bytes())); err != nil {
 		t.Fatalf("readMTextBackground 失败: %v", err)
 	}
 }
@@ -142,10 +143,10 @@ func TestReadMTextBackground(t *testing.T) {
 // TestDecodeAcisWireframe 线框结构全分支（含 transform 与轮廓省略）。
 func TestDecodeAcisWireframe(t *testing.T) {
 	// wireframe_data_present=false 短路
-	w := newEncWriter()
-	w.writeB(false)
+	w := bitstream.NewEncWriter()
+	w.WriteB(false)
 	a1 := &entAcis{}
-	if err := decodeAcisWireframe(newBitStream(w.bytes()), a1); err != nil {
+	if err := decodeAcisWireframe(bitstream.NewBitStream(w.Bytes()), a1); err != nil {
 		t.Fatalf("短路分支失败: %v", err)
 	}
 	if a1.wireframeDataPresent {
@@ -153,31 +154,31 @@ func TestDecodeAcisWireframe(t *testing.T) {
 	}
 
 	// 完整结构：1 条 wire（含 transform）+ 0 轮廓
-	w2 := newEncWriter()
-	w2.writeB(true)   // wireframe_data_present
-	w2.writeB(true)   // point_present
+	w2 := bitstream.NewEncWriter()
+	w2.WriteB(true)   // wireframe_data_present
+	w2.WriteB(true)   // point_present
 	w3bd(w2, 1, 2, 3) // point
-	w2.writeBL(4)     // isolines
-	w2.writeB(true)   // isoline_present
-	w2.writeBL(1)     // num_wires
+	w2.WriteBL(4)     // isolines
+	w2.WriteB(true)   // isoline_present
+	w2.WriteBL(1)     // num_wires
 	// wire：RC typ + BL marker + BS color + BL acis_index + BL numPoints
 	//       + 3BD point + B transform_present(1) + 5×3BD + 3×B
-	w2.writeRC(1)
-	w2.writeBL(0)
-	w2.writeBS(256)
-	w2.writeBL(0)
-	w2.writeBL(1)
+	w2.WriteRC(1)
+	w2.WriteBL(0)
+	w2.WriteBS(256)
+	w2.WriteBL(0)
+	w2.WriteBL(1)
 	w3bd(w2, 0, 0, 0)
-	w2.writeB(true)
+	w2.WriteB(true)
 	for i := 0; i < 5; i++ {
 		w3bd(w2, 0, 0, 0)
 	}
-	w2.writeB(false)
-	w2.writeB(false)
-	w2.writeB(false)
-	w2.writeBL(0) // num_silhouettes
+	w2.WriteB(false)
+	w2.WriteB(false)
+	w2.WriteB(false)
+	w2.WriteBL(0) // num_silhouettes
 	a2 := &entAcis{}
-	if err := decodeAcisWireframe(newBitStream(w2.bytes()), a2); err != nil {
+	if err := decodeAcisWireframe(bitstream.NewBitStream(w2.Bytes()), a2); err != nil {
 		t.Fatalf("完整线框解析失败: %v", err)
 	}
 	if !a2.wireframeDataPresent || !a2.pointPresent || a2.isolines != 4 || a2.numWires != 1 {
@@ -187,18 +188,18 @@ func TestDecodeAcisWireframe(t *testing.T) {
 
 // TestDecodePolylineMesh POLYLINE_MESH 合成位流（含顶点句柄计数）。
 func TestDecodePolylineMesh(t *testing.T) {
-	w := newEncWriter()
-	w.writeBS(1) // flags
-	w.writeBS(0) // curveType
-	w.writeBS(2) // mVertexCount
-	w.writeBS(2) // nVertexCount
-	w.writeBS(0) // mDensity
-	w.writeBS(0) // nDensity
-	w.writeBL(1) // owned count（R2004+）
-	w.writeRC(0) // handle 流兜底
-	w.writeRC(0)
-	head := commonEntityHead{handle: 0x30, objSizeBit: uint64(w.tellBits()) - 16}
-	ent, err := decodePolylineMesh(newBitStream(w.bytes()), &head, true)
+	w := bitstream.NewEncWriter()
+	w.WriteBS(1) // flags
+	w.WriteBS(0) // curveType
+	w.WriteBS(2) // mVertexCount
+	w.WriteBS(2) // nVertexCount
+	w.WriteBS(0) // mDensity
+	w.WriteBS(0) // nDensity
+	w.WriteBL(1) // owned count（R2004+）
+	w.WriteRC(0) // handle 流兜底
+	w.WriteRC(0)
+	head := commonEntityHead{handle: 0x30, objSizeBit: uint64(w.TellBits()) - 16}
+	ent, err := decodePolylineMesh(bitstream.NewBitStream(w.Bytes()), &head, true)
 	if err != nil {
 		t.Fatalf("decodePolylineMesh 失败: %v", err)
 	}
@@ -212,20 +213,20 @@ func TestDecodePolylineMesh(t *testing.T) {
 
 // TestDecodeGenericSUN SUN 对象合成位流（R2000 pre-CMC：BS index）。
 func TestDecodeGenericSUN(t *testing.T) {
-	w := newEncWriter()
-	w.writeBL(1)    // class_version
-	w.writeB(true)  // is_on
-	w.writeBS(7)    // CMC color index（pre-R2004）
-	w.writeBD(0.8)  // intensity
-	w.writeB(true)  // has_shadow
-	w.writeBL(100)  // julian_day
-	w.writeBL(200)  // msecs
-	w.writeB(false) // is_dst
-	w.writeBL(1)    // shadow_type
-	w.writeBS(512)  // shadow_mapsize
-	w.writeRC(3)    // shadow_softness
+	w := bitstream.NewEncWriter()
+	w.WriteBL(1)    // class_version
+	w.WriteB(true)  // is_on
+	w.WriteBS(7)    // CMC color index（pre-R2004）
+	w.WriteBD(0.8)  // intensity
+	w.WriteB(true)  // has_shadow
+	w.WriteBL(100)  // julian_day
+	w.WriteBL(200)  // msecs
+	w.WriteB(false) // is_dst
+	w.WriteBL(1)    // shadow_type
+	w.WriteBS(512)  // shadow_mapsize
+	w.WriteRC(3)    // shadow_softness
 	g := &objGeneric{}
-	fr := &gfRead{r: newBitStream(w.bytes()), ver: verR2000}
+	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: verR2000}
 	if err := decodeGenericSUN(fr.r, fr.ver, fr, g); err != nil {
 		t.Fatalf("decodeGenericSUN 失败: %v", err)
 	}
@@ -236,14 +237,14 @@ func TestDecodeGenericSUN(t *testing.T) {
 
 // TestDecodeGenericACSHHistory ACSH_HISTORY_CLASS 合成位流。
 func TestDecodeGenericACSHHistory(t *testing.T) {
-	w := newEncWriter()
-	w.writeBL(1) // major
-	w.writeBL(2) // minor
-	w.writeBL(3) // h_nodeid
-	w.writeB(true)
-	w.writeB(false)
+	w := bitstream.NewEncWriter()
+	w.WriteBL(1) // major
+	w.WriteBL(2) // minor
+	w.WriteBL(3) // h_nodeid
+	w.WriteB(true)
+	w.WriteB(false)
 	g := &objGeneric{}
-	fr := &gfRead{r: newBitStream(w.bytes()), ver: verR2000}
+	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: verR2000}
 	if err := decodeGenericACSH_HISTORY_CLASS(fr.r, fr.ver, fr, g); err != nil {
 		t.Fatalf("decodeGenericACSH_HISTORY_CLASS 失败: %v", err)
 	}
@@ -256,55 +257,55 @@ func TestDecodeGenericACSHHistory(t *testing.T) {
 // 完整结构两条路径）。
 func TestReadCellStyleFields(t *testing.T) {
 	// data_flags=0：type + data_flags 后直接返回
-	w := newEncWriter()
-	w.writeBL(1) // type
-	w.writeBS(0) // data_flags
+	w := bitstream.NewEncWriter()
+	w.WriteBL(1) // type
+	w.WriteBS(0) // data_flags
 	g := &objGeneric{}
-	fr := &gfRead{r: newBitStream(w.bytes()), ver: verR2000}
+	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: verR2000}
 	nHdl := 0
 	if err := readCellStyleFields(fr.r, fr, g, "", &nHdl); err != nil {
 		t.Fatalf("短路径失败: %v", err)
 	}
 
 	// 完整结构：CMTC（R2004+ 结构）、content_format、边框数组
-	w2 := newEncWriter()
-	w2.writeBL(1) // type
-	w2.writeBS(1) // data_flags ≠ 0
-	w2.writeBL(0) // property_override_flags
-	w2.writeBL(0) // merge_flags
-	w2.writeBS(7) // CMTC bg_color index
-	w2.writeBL(0) // CMTC rgb
-	w2.writeRC(0) // CMTC flag
-	w2.writeBL(0) // content_layout
+	w2 := bitstream.NewEncWriter()
+	w2.WriteBL(1) // type
+	w2.WriteBS(1) // data_flags ≠ 0
+	w2.WriteBL(0) // property_override_flags
+	w2.WriteBL(0) // merge_flags
+	w2.WriteBS(7) // CMTC bg_color index
+	w2.WriteBL(0) // CMTC rgb
+	w2.WriteRC(0) // CMTC flag
+	w2.WriteBL(0) // content_layout
 	// content_format
-	w2.writeBL(0)   // property_override_flags
-	w2.writeBL(0)   // property_flags
-	w2.writeBL(0)   // value_data_type
-	w2.writeBL(0)   // value_unit_type
-	w2.writeTV("")  // value_format_string
-	w2.writeBD(0)   // rotation
-	w2.writeBD(1)   // block_scale
-	w2.writeBL(0)   // cell_alignment
-	w2.writeBS(7)   // CMTC content_color index
-	w2.writeBL(0)   // CMTC rgb
-	w2.writeRC(0)   // CMTC flag
-	w2.writeBD(2.5) // text_height
+	w2.WriteBL(0)   // property_override_flags
+	w2.WriteBL(0)   // property_flags
+	w2.WriteBL(0)   // value_data_type
+	w2.WriteBL(0)   // value_unit_type
+	w2.WriteTV("")  // value_format_string
+	w2.WriteBD(0)   // rotation
+	w2.WriteBD(1)   // block_scale
+	w2.WriteBL(0)   // cell_alignment
+	w2.WriteBS(7)   // CMTC content_color index
+	w2.WriteBL(0)   // CMTC rgb
+	w2.WriteRC(0)   // CMTC flag
+	w2.WriteBD(2.5) // text_height
 	// margins
-	w2.writeBS(1) // margin_override_flags ≠ 0
+	w2.WriteBS(1) // margin_override_flags ≠ 0
 	for i := 0; i < 6; i++ {
-		w2.writeBD(0.1)
+		w2.WriteBD(0.1)
 	}
-	w2.writeBL(1)  // num_borders
-	w2.writeBL(1)  // borders[0].index_mask ≠ 0
-	w2.writeBL(0)  // border_overrides
-	w2.writeBL(0)  // border_type
-	w2.writeBS(7)  // CMTC color index
-	w2.writeBL(0)  // CMTC rgb
-	w2.writeRC(0)  // CMTC flag
-	w2.writeBL(25) // linewt（读 BLd 有符号）
+	w2.WriteBL(1)  // num_borders
+	w2.WriteBL(1)  // borders[0].index_mask ≠ 0
+	w2.WriteBL(0)  // border_overrides
+	w2.WriteBL(0)  // border_type
+	w2.WriteBS(7)  // CMTC color index
+	w2.WriteBL(0)  // CMTC rgb
+	w2.WriteRC(0)  // CMTC flag
+	w2.WriteBL(25) // linewt（读 BLd 有符号）
 	// 尾部可能还有字段，失败时仅记录（当前只要求不 panic）
 	g2 := &objGeneric{}
-	fr2 := &gfRead{r: newBitStream(w2.bytes()), ver: verR2000}
+	fr2 := &gfRead{r: bitstream.NewBitStream(w2.Bytes()), ver: verR2000}
 	if err := readCellStyleFields(fr2.r, fr2, g2, "", &nHdl); err != nil {
 		t.Logf("完整结构尾部截断（可接受）: %v", err)
 	}
@@ -315,17 +316,17 @@ func TestReadCellStyleFields(t *testing.T) {
 // TestDecodeMLeaderLeadersAndContext MLEADER 领导线计数与上下文标量组
 // 合成位流（R2000：文本 TV、CMC 仅索引）。
 func TestDecodeMLeaderLeadersAndContext(t *testing.T) {
-	w := newEncWriter()
+	w := bitstream.NewEncWriter()
 	// 1 条 leader：hasLast/hasDogleg 均无 + 0 断裂 + dogleg 长 + 0 线
-	w.writeBL(1) // num_leaders
-	w.writeB(false)
-	w.writeB(false)
-	w.writeBL(0) // numBreaks
-	w.writeBL(0) // branchIndex
-	w.writeBD(2) // doglegLength
-	w.writeBL(0) // numLines
+	w.WriteBL(1) // num_leaders
+	w.WriteB(false)
+	w.WriteB(false)
+	w.WriteBL(0) // numBreaks
+	w.WriteBL(0) // branchIndex
+	w.WriteBD(2) // doglegLength
+	w.WriteBL(0) // numLines
 	m := &entMLeader{}
-	if err := decodeMLeaderLeaders(newBitStream(w.bytes()), m, verR2000, false); err != nil {
+	if err := decodeMLeaderLeaders(bitstream.NewBitStream(w.Bytes()), m, verR2000, false); err != nil {
 		t.Fatalf("decodeMLeaderLeaders 失败: %v", err)
 	}
 	if m.ctx.numLeaders != 1 || len(m.ctx.leaders) != 1 {
@@ -335,50 +336,50 @@ func TestDecodeMLeaderLeadersAndContext(t *testing.T) {
 		t.Errorf("doglegLength = %v", m.ctx.leaders[0].doglegLength)
 	}
 
-	w2 := newEncWriter()
-	w2.writeBD(1.0)   // scaleFactor
+	w2 := bitstream.NewEncWriter()
+	w2.WriteBD(1.0)   // scaleFactor
 	w3bd(w2, 0, 0, 0) // contentBase
-	w2.writeBD(2.0)   // textHeight
-	w2.writeBD(0.5)   // arrowSize
-	w2.writeBD(0.1)   // landingGap
-	w2.writeBS(0)     // textLeft
-	w2.writeBS(0)     // textRight
-	w2.writeBS(1)     // textAngletype
-	w2.writeBS(0)     // textAlignment
-	w2.writeB(true)   // hasContentTxt
+	w2.WriteBD(2.0)   // textHeight
+	w2.WriteBD(0.5)   // arrowSize
+	w2.WriteBD(0.1)   // landingGap
+	w2.WriteBS(0)     // textLeft
+	w2.WriteBS(0)     // textRight
+	w2.WriteBS(1)     // textAngletype
+	w2.WriteBS(0)     // textAlignment
+	w2.WriteB(true)   // hasContentTxt
 	// txt 内容分支
-	w2.writeTV("NOTE") // defaultText（<R2007 内联）
+	w2.WriteTV("NOTE") // defaultText（<R2007 内联）
 	w3bd(w2, 0, 0, 1)  // normal
 	w3bd(w2, 1, 1, 0)  // location
 	w3bd(w2, 1, 0, 0)  // direction
-	w2.writeBD(0)      // rotation
-	w2.writeBD(20)     // width
-	w2.writeBD(3)      // height
-	w2.writeBD(1)      // lineSpacingFactor
-	w2.writeBS(1)      // lineSpacingStyle
-	w2.writeBS(7)      // color CMC index
-	w2.writeBS(0)      // alignment
-	w2.writeBS(0)      // flow
-	w2.writeBS(0)      // bgColor CMC index
-	w2.writeBD(1)      // bgScale
-	w2.writeBL(0)      // bgTransparency
-	w2.writeB(false)   // isBgFill
-	w2.writeB(false)   // isBgMaskFill
-	w2.writeBS(0)      // colType
-	w2.writeB(true)    // isHeightAuto
-	w2.writeBD(10)     // colWidth
-	w2.writeBD(0.5)    // colGutter
-	w2.writeB(false)   // isColFlowReversed
-	w2.writeBL(0)      // numColSizes
-	w2.writeB(false)   // wordBreak
-	w2.writeB(false)   // unknown
+	w2.WriteBD(0)      // rotation
+	w2.WriteBD(20)     // width
+	w2.WriteBD(3)      // height
+	w2.WriteBD(1)      // lineSpacingFactor
+	w2.WriteBS(1)      // lineSpacingStyle
+	w2.WriteBS(7)      // color CMC index
+	w2.WriteBS(0)      // alignment
+	w2.WriteBS(0)      // flow
+	w2.WriteBS(0)      // bgColor CMC index
+	w2.WriteBD(1)      // bgScale
+	w2.WriteBL(0)      // bgTransparency
+	w2.WriteB(false)   // isBgFill
+	w2.WriteB(false)   // isBgMaskFill
+	w2.WriteBS(0)      // colType
+	w2.WriteB(true)    // isHeightAuto
+	w2.WriteBD(10)     // colWidth
+	w2.WriteBD(0.5)    // colGutter
+	w2.WriteB(false)   // isColFlowReversed
+	w2.WriteBL(0)      // numColSizes
+	w2.WriteB(false)   // wordBreak
+	w2.WriteB(false)   // unknown
 	// base 三点 + is_normal_reversed
 	w3bd(w2, 0, 0, 0)
 	w3bd(w2, 0, 1, 0)
 	w3bd(w2, 1, 0, 0)
-	w2.writeB(false)
+	w2.WriteB(false)
 	m2 := &entMLeader{}
-	if err := decodeMLeaderContext(newBitStream(w2.bytes()), m2, verR2000, 0, nil); err != nil {
+	if err := decodeMLeaderContext(bitstream.NewBitStream(w2.Bytes()), m2, verR2000, 0, nil); err != nil {
 		t.Fatalf("decodeMLeaderContext 失败: %v", err)
 	}
 	if m2.ctx.textHeight != 2.0 || !m2.ctx.hasContentTxt {
@@ -392,24 +393,24 @@ func TestDecodeMLeaderLeadersAndContext(t *testing.T) {
 // TestHatchHelpers skipColorCMCR2004/readHatchString/decodeHatchSplineEdge。
 func TestHatchHelpers(t *testing.T) {
 	// CMC 跳过：flag=0 无名称
-	w := newEncWriter()
-	w.writeBS(7)
-	w.writeBL(0)
-	w.writeRC(0)
-	if err := skipColorCMCR2004(newBitStream(w.bytes())); err != nil {
+	w := bitstream.NewEncWriter()
+	w.WriteBS(7)
+	w.WriteBL(0)
+	w.WriteRC(0)
+	if err := skipColorCMCR2004(bitstream.NewBitStream(w.Bytes())); err != nil {
 		t.Fatalf("skipColorCMCR2004 失败: %v", err)
 	}
 
 	// 字符串三模式
-	w2 := newEncWriter()
-	w2.writeTV("SOLID")
-	s1, err := readHatchString(newBitStream(w2.bytes()), hatchStrInlineTv, 30)
+	w2 := bitstream.NewEncWriter()
+	w2.WriteTV("SOLID")
+	s1, err := readHatchString(bitstream.NewBitStream(w2.Bytes()), hatchStrInlineTv, 30)
 	if err != nil || s1 != "SOLID" {
 		t.Errorf("inline TV = %q err=%v", s1, err)
 	}
-	w3 := newEncWriter()
-	w3.writeTU("ANSI31")
-	s2, err := readHatchString(newBitStream(w3.bytes()), hatchStrInlineTu, 30)
+	w3 := bitstream.NewEncWriter()
+	w3.WriteTU("ANSI31")
+	s2, err := readHatchString(bitstream.NewBitStream(w3.Bytes()), hatchStrInlineTu, 30)
 	if err != nil || strings.TrimSuffix(s2, "\x00") != "ANSI31" {
 		t.Errorf("inline TU = %q err=%v", s2, err)
 	}
@@ -418,21 +419,21 @@ func TestHatchHelpers(t *testing.T) {
 	}
 
 	// 样条边：degree 2、rational（带权重）、2 控制点、无拟合点
-	w4 := newEncWriter()
-	w4.writeBL(2)    // degree
-	w4.writeB(true)  // rational
-	w4.writeB(false) // periodic
-	w4.writeBL(2)    // numKnots
-	w4.writeBL(2)    // numControl
-	w4.writeBD(0)
-	w4.writeBD(1)
-	w4.writeRD(0)
-	w4.writeRD(0)
-	w4.writeBD(1.5)
-	w4.writeRD(2)
-	w4.writeRD(3)
-	w4.writeBD(1.0)
-	seg, _, err := decodeHatchSplineEdge(newBitStream(w4.bytes()), false)
+	w4 := bitstream.NewEncWriter()
+	w4.WriteBL(2)    // degree
+	w4.WriteB(true)  // rational
+	w4.WriteB(false) // periodic
+	w4.WriteBL(2)    // numKnots
+	w4.WriteBL(2)    // numControl
+	w4.WriteBD(0)
+	w4.WriteBD(1)
+	w4.WriteRD(0)
+	w4.WriteRD(0)
+	w4.WriteBD(1.5)
+	w4.WriteRD(2)
+	w4.WriteRD(3)
+	w4.WriteBD(1.0)
+	seg, _, err := decodeHatchSplineEdge(bitstream.NewBitStream(w4.Bytes()), false)
 	if err != nil {
 		t.Fatalf("decodeHatchSplineEdge 失败: %v", err)
 	}
@@ -441,20 +442,20 @@ func TestHatchHelpers(t *testing.T) {
 	}
 
 	// 拟合点分支（含起末切线）
-	w5 := newEncWriter()
-	w5.writeBL(3)
-	w5.writeB(false)
-	w5.writeB(false)
-	w5.writeBL(0)
-	w5.writeBL(0)
-	w5.writeBL(1) // numFit
-	w5.writeRD(1)
-	w5.writeRD(2)
-	w5.writeRD(0) // startTan.x
-	w5.writeRD(1) // startTan.y
-	w5.writeRD(0) // endTan.x
-	w5.writeRD(1) // endTan.y
-	seg2, _, err := decodeHatchSplineEdge(newBitStream(w5.bytes()), true)
+	w5 := bitstream.NewEncWriter()
+	w5.WriteBL(3)
+	w5.WriteB(false)
+	w5.WriteB(false)
+	w5.WriteBL(0)
+	w5.WriteBL(0)
+	w5.WriteBL(1) // numFit
+	w5.WriteRD(1)
+	w5.WriteRD(2)
+	w5.WriteRD(0) // startTan.x
+	w5.WriteRD(1) // startTan.y
+	w5.WriteRD(0) // endTan.x
+	w5.WriteRD(1) // endTan.y
+	seg2, _, err := decodeHatchSplineEdge(bitstream.NewBitStream(w5.Bytes()), true)
 	if err != nil {
 		t.Fatalf("拟合点分支失败: %v", err)
 	}
@@ -467,42 +468,42 @@ func TestHatchHelpers(t *testing.T) {
 // 文本 TV、cellstyle 走 data_flags=0 短路径、cell 含 Value 内容与
 // merged_cells）。
 func TestDecodeGenericTABLECONTENT(t *testing.T) {
-	w := newEncWriter()
-	w.writeTV("")  // ldata.name
-	w.writeTV("")  // ldata.description
-	w.writeBL(1)   // num_cols
-	w.writeTV("A") // cols[0].name
-	w.writeBL(0)   // cols[0].custom_data
-	w.writeBL(1)   // cols[0].cellstyle.type
-	w.writeBS(0)   // cols[0].cellstyle.data_flags=0（短路径）
-	w.writeBL(1)   // num_rows
-	w.writeBL(1)   // rows[0].num_cells
-	w.writeBL(0)   // cells[0].flag
-	w.writeTV("")  // cells[0].tooltip
-	w.writeBL(0)   // cells[0].customdata
-	w.writeBL(0)   // cells[0].num_customdata_items
-	w.writeBL(0)   // cells[0].has_linked_data
-	w.writeBL(1)   // cells[0].num_cell_contents
-	w.writeBL(1)   // cell_contents[0].type = Value
-	w.writeBL(0)   // value.data_type = kLong
-	w.writeBL(42)  // value.data_long
-	w.writeBL(0)   // num_attrs
-	w.writeBS(0)   // has_content_format_overrides
-	w.writeBL(0)   // cells[0].style_id
-	w.writeBL(0)   // cells[0].has_geom_data
-	w.writeBL(0)   // rows[0].custom_data
-	w.writeBL(0)   // rows[0].num_customdata_items
-	w.writeBL(1)   // rows[0].cellstyle.type
-	w.writeBS(0)   // rows[0].cellstyle.data_flags
-	w.writeBL(0)   // rows[0].style_id
-	w.writeBD(5.0) // rows[0].height
-	w.writeBL(0)   // num_field_refs
-	w.writeBL(1)   // num_merged_cells
+	w := bitstream.NewEncWriter()
+	w.WriteTV("")  // ldata.name
+	w.WriteTV("")  // ldata.description
+	w.WriteBL(1)   // num_cols
+	w.WriteTV("A") // cols[0].name
+	w.WriteBL(0)   // cols[0].custom_data
+	w.WriteBL(1)   // cols[0].cellstyle.type
+	w.WriteBS(0)   // cols[0].cellstyle.data_flags=0（短路径）
+	w.WriteBL(1)   // num_rows
+	w.WriteBL(1)   // rows[0].num_cells
+	w.WriteBL(0)   // cells[0].flag
+	w.WriteTV("")  // cells[0].tooltip
+	w.WriteBL(0)   // cells[0].customdata
+	w.WriteBL(0)   // cells[0].num_customdata_items
+	w.WriteBL(0)   // cells[0].has_linked_data
+	w.WriteBL(1)   // cells[0].num_cell_contents
+	w.WriteBL(1)   // cell_contents[0].type = Value
+	w.WriteBL(0)   // value.data_type = kLong
+	w.WriteBL(42)  // value.data_long
+	w.WriteBL(0)   // num_attrs
+	w.WriteBS(0)   // has_content_format_overrides
+	w.WriteBL(0)   // cells[0].style_id
+	w.WriteBL(0)   // cells[0].has_geom_data
+	w.WriteBL(0)   // rows[0].custom_data
+	w.WriteBL(0)   // rows[0].num_customdata_items
+	w.WriteBL(1)   // rows[0].cellstyle.type
+	w.WriteBS(0)   // rows[0].cellstyle.data_flags
+	w.WriteBL(0)   // rows[0].style_id
+	w.WriteBD(5.0) // rows[0].height
+	w.WriteBL(0)   // num_field_refs
+	w.WriteBL(1)   // num_merged_cells
 	for i := 0; i < 4; i++ {
-		w.writeBL(0) // top_row/left_col/bottom_row/right_col
+		w.WriteBL(0) // top_row/left_col/bottom_row/right_col
 	}
 	g := &objGeneric{}
-	fr := &gfRead{r: newBitStream(w.bytes()), ver: verR2004}
+	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: verR2004}
 	if err := decodeGenericTABLECONTENT(fr.r, fr.ver, fr, g); err != nil {
 		t.Fatalf("decodeGenericTABLECONTENT 失败: %v", err)
 	}
@@ -558,31 +559,31 @@ func TestTessSpline(t *testing.T) {
 
 // TestParseCommonEntityHeadR2013Preview picFlag=1 的预览图像读取。
 func TestParseCommonEntityHeadR2013Preview(t *testing.T) {
-	w := newEncWriter()
-	w.writeH(5, 1, 0x2A)
-	w.writeBS(0)   // EED 终止
-	w.writeB(true) // 有预览
-	w.writeBLLc(8) // graphic size = 8 字节
+	w := bitstream.NewEncWriter()
+	w.WriteH(5, 1, 0x2A)
+	w.WriteBS(0)   // EED 终止
+	w.WriteB(true) // 有预览
+	w.WriteBLLc(8) // graphic size = 8 字节
 	for i := 0; i < 8; i++ {
-		w.writeRC(byte(0xA0 + i))
+		w.WriteRC(byte(0xA0 + i))
 	}
-	w.writeBB(0)    // entityMode
-	w.writeBL(0)    // numReactors
-	w.writeB(false) // xdicMissing
-	w.writeB(false) // hasDsBinary
-	w.writeB(true)  // color noLinks
-	w.writeB(true)  // color second → ByLayer
-	w.writeBD(1.0)  // ltypeScale
-	w.writeBB(0)
-	w.writeBB(0)
-	w.writeBB(0)
-	w.writeRC(0) // shadow flags
-	w.writeB(false)
-	w.writeB(false)
-	w.writeB(false)
-	w.writeBS(0)
-	w.writeRC(0)
-	head, err := parseCommonEntityHeadR2013(newBitStream(w.bytes()), uint64(w.tellBits()))
+	w.WriteBB(0)    // entityMode
+	w.WriteBL(0)    // numReactors
+	w.WriteB(false) // xdicMissing
+	w.WriteB(false) // hasDsBinary
+	w.WriteB(true)  // color noLinks
+	w.WriteB(true)  // color second → ByLayer
+	w.WriteBD(1.0)  // ltypeScale
+	w.WriteBB(0)
+	w.WriteBB(0)
+	w.WriteBB(0)
+	w.WriteRC(0) // shadow flags
+	w.WriteB(false)
+	w.WriteB(false)
+	w.WriteB(false)
+	w.WriteBS(0)
+	w.WriteRC(0)
+	head, err := parseCommonEntityHeadR2013(bitstream.NewBitStream(w.Bytes()), uint64(w.TellBits()))
 	if err != nil {
 		t.Fatalf("预览分支解析失败: %v", err)
 	}

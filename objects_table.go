@@ -7,16 +7,17 @@ package cad
 
 import (
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 )
 
 // readCommonTableFlags 读取 COMMON_TABLE_FLAGS 并存储字段：
 // pre-R2004 为 B is_xref_ref + BS is_xref_resolved + B is_xref_dep；
 // R2004+ 仅 BS is_xref_resolved。
-func readCommonTableFlags(r *bitStream, fr *gfRead, g *objGeneric, ver dwgVersion) error {
+func readCommonTableFlags(r *bitstream.BitStream, fr *gfRead, g *objGeneric, ver dwgVersion) error {
 	if !verUntilR2004(ver) {
 		return fr.BS("is_xref_resolved", g)
 	}
-	xr, err := r.readB()
+	xr, err := r.ReadB()
 	if err != nil {
 		return err
 	}
@@ -24,7 +25,7 @@ func readCommonTableFlags(r *bitStream, fr *gfRead, g *objGeneric, ver dwgVersio
 	if err := fr.BS("is_xref_resolved", g); err != nil {
 		return err
 	}
-	xd, err := r.readB()
+	xd, err := r.ReadB()
 	if err != nil {
 		return err
 	}
@@ -38,13 +39,13 @@ func readCommonTableFlags(r *bitStream, fr *gfRead, g *objGeneric, ver dwgVersio
 // COMMON_TABLE_FLAGS（name + is_xref_resolved）+ 块标志位 + num_owned +
 // base_pt + xref_pname + num_inserts/description/preview +
 // insert_units/explodable/block_scaling（R2007a+）。
-func decodeGenericBLOCKHEADER(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKHEADER(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.T("name", g); err != nil {
 		return err
 	}
 	if verUntilR2004(ver) {
 		// COMMON_TABLE_FLAGS R2004 前：B is_xref_ref + BS is_xref_resolved + B is_xref_dep
-		if xr, err := r.readB(); err != nil {
+		if xr, err := r.ReadB(); err != nil {
 			return err
 		} else {
 			g.Fields = append(g.Fields, objField{"is_xref_ref", xr != 0})
@@ -52,7 +53,7 @@ func decodeGenericBLOCKHEADER(r *bitStream, ver dwgVersion, fr *gfRead, g *objGe
 		if err := fr.BS("is_xref_resolved", g); err != nil {
 			return err
 		}
-		if xd, err := r.readB(); err != nil {
+		if xd, err := r.ReadB(); err != nil {
 			return err
 		} else {
 			g.Fields = append(g.Fields, objField{"is_xref_dep", xd != 0})
@@ -62,23 +63,23 @@ func decodeGenericBLOCKHEADER(r *bitStream, ver dwgVersion, fr *gfRead, g *objGe
 			return err
 		}
 	}
-	anon, err := r.readB()
+	anon, err := r.ReadB()
 	if err != nil {
 		return err
 	}
 	g.Fields = append(g.Fields, objField{"anonymous", anon != 0})
-	ha, err := r.readB()
+	ha, err := r.ReadB()
 	if err != nil {
 		return err
 	}
 	g.Fields = append(g.Fields, objField{"hasattrs", ha != 0})
-	bx0, err := r.readB()
+	bx0, err := r.ReadB()
 	if err != nil {
 		return err
 	}
 	bx := bx0 != 0
 	g.Fields = append(g.Fields, objField{"blkisxref", bx})
-	xo0, err := r.readB()
+	xo0, err := r.ReadB()
 	if err != nil {
 		return err
 	}
@@ -86,7 +87,7 @@ func decodeGenericBLOCKHEADER(r *bitStream, ver dwgVersion, fr *gfRead, g *objGe
 	g.Fields = append(g.Fields, objField{"xrefoverlaid", xo})
 	if ver >= verR2000 && ver != verR13 && ver != verR14 {
 		// R2000b+：xref_loaded（R2000 及之后；R14 无）
-		xl, err := r.readB()
+		xl, err := r.ReadB()
 		if err != nil {
 			return err
 		}
@@ -119,13 +120,13 @@ func decodeGenericBLOCKHEADER(r *bitStream, ver dwgVersion, fr *gfRead, g *objGe
 		return readBlockHeaderR2000bBlock(r, fr, g, ver, true)
 	}
 	savedLen := len(g.Fields)
-	savedBits := r.tellBits()
+	savedBits := r.TellBits()
 	if probeBlockHeaderR2000b(r, fr) {
-		r.setBitPos(savedBits)
+		r.SetBitPos(savedBits)
 		return readBlockHeaderR2000bBlock(r, fr, g, ver, false)
 	}
 	// pre-R2000b：回退位置与字段，跳过整块（直接是后续 handle 流）
-	r.setBitPos(savedBits)
+	r.SetBitPos(savedBits)
 	g.Fields = g.Fields[:savedLen]
 	return nil
 }
@@ -134,10 +135,10 @@ func decodeGenericBLOCKHEADER(r *bitStream, ver dwgVersion, fr *gfRead, g *objGe
 // 循环（遇 0 结束，计非零个数）+ description T + preview_size BL +
 // preview 二进制；withTail 为 true 时（R2007a+）继续读 insert_units/
 // explodable/block_scaling 尾块。
-func readBlockHeaderR2000bBlock(r *bitStream, fr *gfRead, g *objGeneric, ver dwgVersion, withTail bool) error {
+func readBlockHeaderR2000bBlock(r *bitstream.BitStream, fr *gfRead, g *objGeneric, ver dwgVersion, withTail bool) error {
 	ni := int64(0)
 	for {
-		b, e := r.readRC()
+		b, e := r.ReadRC()
 		if e != nil {
 			break
 		}
@@ -154,7 +155,7 @@ func readBlockHeaderR2000bBlock(r *bitStream, fr *gfRead, g *objGeneric, ver dwg
 	if e2 != nil {
 		return e2
 	}
-	b, e := r.readRCS(int(ps))
+	b, e := r.ReadRCS(int(ps))
 	if e != nil {
 		return e
 	}
@@ -174,7 +175,7 @@ func readBlockHeaderR2000bBlock(r *bitStream, fr *gfRead, g *objGeneric, ver dwg
 // decodeGenericBLOCKHEADER_HDL BLOCK_HEADER 的 handle 流
 // （owner/reactors/xdic 之后）：xref + block_entity + entities×num_owned +
 // endblk_entity + inserts×num_inserts + layout。
-func decodeGenericBLOCKHEADER_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericBLOCKHEADER_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	inserts := 0
 	if v, ok := g.Field("num_inserts").(int64); ok && v >= 0 && v < 0xf00000 {
 		inserts = int(v)
@@ -208,7 +209,7 @@ func decodeGenericBLOCKHEADER_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *o
 
 // BLv 读 BL 字段并返回数值（用于后续引用数量判定）。
 func (f *gfRead) BLv(key string, g *objGeneric) (int64, error) {
-	v, err := f.r.readBL()
+	v, err := f.r.ReadBL()
 	if err != nil {
 		return 0, err
 	}
@@ -218,7 +219,7 @@ func (f *gfRead) BLv(key string, g *objGeneric) (int64, error) {
 
 // RL 读 RL 字段。
 func (f *gfRead) RL(key string, g *objGeneric) error {
-	v, err := f.r.readRL()
+	v, err := f.r.ReadRL()
 	if err != nil {
 		return err
 	}
@@ -233,7 +234,7 @@ func (f *gfRead) RL(key string, g *objGeneric) error {
 // + RCu numdashes + dashes×N（BD length + BS shapecode + ...，当前语料
 // numdashes 恒 0，dash 的 shape 细节后续按需扩展）；
 // handle 流 = owner + reactors + xdic + xref + dashes×N style。
-func decodeGenericLTYPE(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericLTYPE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	// COMMON_TABLE_FLAGS：name + is_xref_resolved（R2004+）/三字段（pre-R2004）
 	if err := fr.T("name", g); err != nil {
 		return err
@@ -262,7 +263,7 @@ func decodeGenericLTYPE(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric)
 	// UNTIL(R_2004)（含 R_2004）：strings_area 固定 256 字节 BINARY
 	// （复杂线型的文字区）
 	if ver <= verR2004 {
-		b, err := r.readRCS(256)
+		b, err := r.ReadRCS(256)
 		if err != nil {
 			return err
 		}
@@ -273,7 +274,7 @@ func decodeGenericLTYPE(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric)
 
 // RCv 读 RC 字段并返回数值。
 func (f *gfRead) RCv(key string, g *objGeneric) (int64, error) {
-	v, err := f.r.readRC()
+	v, err := f.r.ReadRC()
 	if err != nil {
 		return 0, err
 	}
@@ -306,7 +307,7 @@ var controlSpecs = map[uint16]controlSpec{
 
 // decodeGenericCONTROL 解析 CONTROL 对象的 dat 流：
 // num_entries（BL/BS 视类型）+ [DIMSTYLE: RCu num_morehandles]。
-func decodeGenericCONTROL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericCONTROL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	cs, ok := controlSpecs[g.controlType]
 	if !ok {
 		return fmt.Errorf("cad: 无 CONTROL 规格 0x%X", g.controlType)
@@ -322,7 +323,7 @@ func decodeGenericCONTROL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneri
 	}
 	// DIMSTYLE_CONTROL：R2000b+ 的 num_morehandles RCu（dat 流字段）
 	if cs.moreHandles && ver >= verR2000 && ver != verR13 && ver != verR14 {
-		nm, e := r.readRC()
+		nm, e := r.ReadRC()
 		if e != nil {
 			return e
 		}
@@ -334,7 +335,7 @@ func decodeGenericCONTROL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneri
 // decodeGenericCONTROL_HDL CONTROL 对象的 handle 流
 // （owner/reactors/xdic 之后）：entries×num_entries + 特定 handle
 // + [DIMSTYLE: morehandles×N]。
-func decodeGenericCONTROL_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericCONTROL_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	cs := controlSpecs[g.controlType]
 	n := 0
 	if v, ok := g.Field("num_entries").(int64); ok {
@@ -363,7 +364,7 @@ func decodeGenericCONTROL_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGe
 // B is_shape + B is_vertical + BD text_size + BD width_factor +
 // BD oblique_angle + RC generation + BD last_height +
 // T font_file + T bigfont_file（R2007+ 字符串流）。
-func decodeGenericSTYLE(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericSTYLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.T("name", g); err != nil {
 		return err
 	}
@@ -408,7 +409,7 @@ func decodeGenericSTYLE(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric)
 // FRONTZ/BACKZ BD + VIEWMODE 4BITS。xref、[R2007+ background/visualstyle/
 // sun]、[R2000b+ named_ucs/base_ucs] 句柄在 handle 流
 // （见 decodeGenericVPORT_HDL）。
-func decodeGenericVPORT(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericVPORT(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.T("name", g); err != nil {
 		return err
 	}
@@ -563,7 +564,7 @@ func decodeGenericVPORT(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric)
 // xref（COMMON_TABLE_FLAGS，全版本）+ [R2007+ background/visualstyle/sun]
 // + [R2000b+ named_ucs/base_ucs]。R14 为 1 个，R2000-R2004 为 3 个，
 // R2007+ 为 6 个。
-func decodeGenericVPORT_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericVPORT_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	n := 1
 	switch ver {
 	case verR2000, verR2004:
@@ -583,7 +584,7 @@ func decodeGenericVPORT_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGene
 
 // BB 读 2 位字段（如 UCSICON）。
 func (f *gfRead) BB(key string, g *objGeneric) error {
-	v, err := f.r.readBB()
+	v, err := f.r.ReadBB()
 	if err != nil {
 		return err
 	}
@@ -593,7 +594,7 @@ func (f *gfRead) BB(key string, g *objGeneric) error {
 
 // BDv 读 BD 字段并返回数值（需要参与计算的 BD 字段用）。
 func (f *gfRead) BDv(key string, g *objGeneric) (float64, error) {
-	v, err := f.r.readBD()
+	v, err := f.r.ReadBD()
 	if err != nil {
 		return 0, err
 	}
@@ -603,7 +604,7 @@ func (f *gfRead) BDv(key string, g *objGeneric) (float64, error) {
 
 // FourBits 读 4 位字段（如 VPORT 的 VIEWMODE）。
 func (f *gfRead) FourBits(key string, g *objGeneric) error {
-	v, err := f.r.readBitsMsb(4)
+	v, err := f.r.ReadBitsMsb(4)
 	if err != nil {
 		return err
 	}
@@ -618,7 +619,7 @@ func (f *gfRead) FourBits(key string, g *objGeneric) error {
 // BD end_angle + BL num_lines + lines×N（BD offset + CMC color +
 // BS lt_type + BS lt_count + lt handles 计数暂存）。
 // lines 的线型句柄在 handle 流尾。
-func decodeGenericMLINESTYLE(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericMLINESTYLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.T("name", g); err != nil {
 		return err
 	}
@@ -663,7 +664,7 @@ func decodeGenericMLINESTYLE(r *bitStream, ver dwgVersion, fr *gfRead, g *objGen
 
 // BSv 读 BS 字段并返回数值。
 func (f *gfRead) BSv(key string, g *objGeneric) (int64, error) {
-	v, err := f.r.readBS()
+	v, err := f.r.ReadBS()
 	if err != nil {
 		return 0, err
 	}
@@ -680,7 +681,7 @@ func (f *gfRead) BSv(key string, g *objGeneric) (int64, error) {
 // BS is_xref_resolved + B is_xref_dep，R2004+ 仅 BS）。DIMTXSTY、
 // xref 与 DIMLDRBLK/DIMBLK/DIMBLK1/DIMBLK2/[R2007+ DIMLTYPE/
 // DIMLTEX1/DIMLTEX2] 句柄在 handle 流（见 decodeGenericDIMSTYLE_HDL）。
-func decodeGenericDIMSTYLE(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericDIMSTYLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.T("name", g); err != nil {
 		return err
 	}
@@ -989,7 +990,7 @@ func decodeDIMSTYLE_r2007(fr *gfRead, g *objGeneric) error {
 // （owner/reactors/xdic 之后）：xref + DIMTXSTY + DIMLDRBLK + DIMBLK +
 // DIMBLK1 + DIMBLK2 + [R2007+ DIMLTYPE/DIMLTEX1/DIMLTEX2]。
 // R14 为 2 个（xref + DIMTXSTY），R2000-R2004 为 6 个，R2007+ 为 9 个。
-func decodeGenericDIMSTYLE_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericDIMSTYLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	n := 6
 	switch ver {
 	case verR13, verR14:
@@ -1011,7 +1012,7 @@ func decodeGenericDIMSTYLE_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objG
 
 // decodeGenericCELLSTYLEMAP 解析 CELLSTYLEMAP（类 527）：
 // BL num_cells + cells×N（BL id + BL type + T name）。
-func decodeGenericCELLSTYLEMAP(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericCELLSTYLEMAP(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	numCells, err := fr.BLv("num_cells", g)
 	if err != nil {
 		return err
@@ -1045,7 +1046,7 @@ func decodeGenericCELLSTYLEMAP(r *bitStream, ver dwgVersion, fr *gfRead, g *objG
 // COMMON_TABLE_FLAGS（pre-R2004 三字段）+ RS vport_entity_address +
 // RSd r11_viewport_index + RSd r11_prev_entry_index + B is_on；
 // handle 流含 viewport + prev_entry（2 个）。
-func decodeGenericVX_TABLE_RECORD(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericVX_TABLE_RECORD(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.T("name", g); err != nil {
 		return err
 	}
@@ -1054,7 +1055,7 @@ func decodeGenericVX_TABLE_RECORD(r *bitStream, ver dwgVersion, fr *gfRead, g *o
 	}
 	// PRE(R_13b1) 才有 vport_entity_address 等 3×RS；R13b1+ 读 is_on B
 	// （本库支持的最老版本 AC1012 已属 LATER_VERSIONS）
-	isOn, err := r.readB()
+	isOn, err := r.ReadB()
 	if err != nil {
 		return err
 	}
@@ -1064,7 +1065,7 @@ func decodeGenericVX_TABLE_RECORD(r *bitStream, ver dwgVersion, fr *gfRead, g *o
 
 // decodeGenericVX_TABLE_RECORD_HDL VX_TABLE_RECORD 的 handle 流：
 // viewport + prev_entry（2 个）。
-func decodeGenericVX_TABLE_RECORD_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericVX_TABLE_RECORD_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < 2; i++ {
 		h, e := readHandleReference(r, g.Handle)
 		if e != nil {
@@ -1077,7 +1078,7 @@ func decodeGenericVX_TABLE_RECORD_HDL(r *bitStream, ver dwgVersion, fr *gfRead, 
 
 // decodeGenericCELLSTYLEMAP_HDL CELLSTYLEMAP 的 handle 流：各 cell 的
 // content_format.text_style 与 borders ltype（顺序由 num_style_handles 决定）。
-func decodeGenericCELLSTYLEMAP_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericCELLSTYLEMAP_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	n := 0
 	if v, ok := g.Field("num_style_handles").(int64); ok {
 		n = int(v)

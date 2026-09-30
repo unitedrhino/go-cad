@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -25,35 +26,35 @@ func pseudoBytes(n int) []byte {
 
 func TestCRC16KnownVectors(t *testing.T) {
 	// CRC-16/ARC 标准校验值："123456789" seed=0 → 0xBB3D
-	if got := crc16DWG(0, []byte("123456789")); got != 0xBB3D {
+	if got := bitstream.Crc16DWG(0, []byte("123456789")); got != 0xBB3D {
 		t.Fatalf("crc16DWG 标准向量期望 0xBB3D 得到 %#04x", got)
 	}
 	// 空数据返回 seed 本身
-	if got := crc16DWG(0xC0C1, nil); got != 0xC0C1 {
+	if got := bitstream.Crc16DWG(0xC0C1, nil); got != 0xC0C1 {
 		t.Fatalf("空数据 CRC 期望等于 seed 0xC0C1 得到 %#04x", got)
 	}
 	// 分段累积与一次性计算一致
 	data := pseudoBytes(300)
-	chained := crc16DWG(crc16DWG(0xC0C1, data[:100]), data[100:])
-	if chained != crc16DWG(0xC0C1, data) {
-		t.Fatalf("分段累积 %#04x != 一次性 %#04x", chained, crc16DWG(0xC0C1, data))
+	chained := bitstream.Crc16DWG(bitstream.Crc16DWG(0xC0C1, data[:100]), data[100:])
+	if chained != bitstream.Crc16DWG(0xC0C1, data) {
+		t.Fatalf("分段累积 %#04x != 一次性 %#04x", chained, bitstream.Crc16DWG(0xC0C1, data))
 	}
 }
 
 func TestEncWriterWriteCRC(t *testing.T) {
 	// 全区间：writeCRC(0) 覆盖从头到当前的全部字节，读侧 readCRC 校验通过
-	w := newEncWriter()
+	w := bitstream.NewEncWriter()
 	payload := []byte("123456789")
-	w.writeTF(payload)
-	written := w.writeCRC(0)
-	if written != crc16DWG(0xC0C1, payload) {
-		t.Fatalf("writeCRC 返回 %#04x 与重算 %#04x 不一致", written, crc16DWG(0xC0C1, payload))
+	w.WriteTF(payload)
+	written := w.WriteCRC(0)
+	if written != bitstream.Crc16DWG(0xC0C1, payload) {
+		t.Fatalf("writeCRC 返回 %#04x 与重算 %#04x 不一致", written, bitstream.Crc16DWG(0xC0C1, payload))
 	}
-	r := newBitStream(w.bytes())
-	if _, err := r.readRCS(len(payload)); err != nil {
+	r := bitstream.NewBitStream(w.Bytes())
+	if _, err := r.ReadRCS(len(payload)); err != nil {
 		t.Fatal(err)
 	}
-	got, err := r.readCRC()
+	got, err := r.ReadCRC()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,34 +63,34 @@ func TestEncWriterWriteCRC(t *testing.T) {
 	}
 
 	// 区间起点：前 4 字节不计入 CRC
-	w2 := newEncWriter()
-	w2.writeTF(payload[:4])
-	start := w2.tellBits()
-	w2.writeTF(payload[4:])
-	w2.writeCRC(start)
-	r2 := newBitStream(w2.bytes())
+	w2 := bitstream.NewEncWriter()
+	w2.WriteTF(payload[:4])
+	start := w2.TellBits()
+	w2.WriteTF(payload[4:])
+	w2.WriteCRC(start)
+	r2 := bitstream.NewBitStream(w2.Bytes())
 	for i := 0; i < len(payload); i++ { // 消费全部 payload，使读位置落在 CRC 上
-		if _, err := r2.readRC(); err != nil {
+		if _, err := r2.ReadRC(); err != nil {
 			t.Fatal(err)
 		}
 	}
-	got2, _ := r2.readCRC()
-	if got2 != crc16DWG(0xC0C1, payload[4:]) {
-		t.Fatalf("区间起点 CRC %#04x 期望 %#04x", got2, crc16DWG(0xC0C1, payload[4:]))
+	got2, _ := r2.ReadCRC()
+	if got2 != bitstream.Crc16DWG(0xC0C1, payload[4:]) {
+		t.Fatalf("区间起点 CRC %#04x 期望 %#04x", got2, bitstream.Crc16DWG(0xC0C1, payload[4:]))
 	}
 
 	// 位未对齐写出：writeCRC 补零对齐后计算，读侧 alignByte + readCRC 对称
-	w3 := newEncWriter()
-	w3.writeTF(payload)
-	w3.writeB(true) // 落入部分字节
-	want3 := w3.writeCRC(0)
-	r3 := newBitStream(w3.bytes())
+	w3 := bitstream.NewEncWriter()
+	w3.WriteTF(payload)
+	w3.WriteB(true) // 落入部分字节
+	want3 := w3.WriteCRC(0)
+	r3 := bitstream.NewBitStream(w3.Bytes())
 	// 写出端 writeCRC 补零对齐后把填充字节一并纳入 CRC 区间，
 	// 读侧对称：消费 payload + 填充字节再读 CRC
-	if _, err := r3.readRCS(10); err != nil {
+	if _, err := r3.ReadRCS(10); err != nil {
 		t.Fatal(err)
 	}
-	got3, _ := r3.readCRC()
+	got3, _ := r3.ReadCRC()
 	if got3 != want3 {
 		t.Fatalf("位未对齐场景读侧 CRC %#04x != 写入 %#04x", got3, want3)
 	}

@@ -6,6 +6,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"testing"
 )
@@ -85,9 +86,9 @@ func TestDecodeMpolygonFromBits(t *testing.T) {
 	w.H(5, 30)
 	w.H(5, 31)
 	const objSizeBit = uint64(0) // 由解码断言单独核对路径，不依赖 objSizeBit
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)
@@ -179,9 +180,9 @@ func TestDecodeMpolygonPatternFromBits(t *testing.T) {
 	w2.BL(0)       // 总边界句柄数
 	w2.H(5, 30)    // xdic
 	w2.H(5, 31)    // layer
-	r := newBitStream(w2.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w2.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)

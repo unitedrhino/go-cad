@@ -5,6 +5,7 @@ package cad
 import (
 	"bytes"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"math"
 	"os"
 	"sort"
@@ -21,12 +22,12 @@ type entRay struct {
 }
 
 // decodeRay RAY/XLINE：3BD 起点 + 3BD 方向。
-func decodeRay(r *bitStream, head *commonEntityHead, xline bool) (any, error) {
-	sx, sy, sz, err := r.read3BD()
+func decodeRay(r *bitstream.BitStream, head *commonEntityHead, xline bool) (any, error) {
+	sx, sy, sz, err := r.Read3BD()
 	if err != nil {
 		return nil, err
 	}
-	dx, dy, dz, err := r.read3BD()
+	dx, dy, dz, err := r.Read3BD()
 	if err != nil {
 		return nil, err
 	}
@@ -52,21 +53,21 @@ type entSolid struct {
 }
 
 // decodeSolid SOLID/TRACE：BT 厚度 + BD 高程 + 4×2RD 角点 + BE 挤出。
-func decodeSolid(r *bitStream, head *commonEntityHead, trace bool) (any, error) {
+func decodeSolid(r *bitstream.BitStream, head *commonEntityHead, trace bool) (any, error) {
 	s := &entSolid{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}, trace: trace}
 	var err error
-	if s.thickness, err = r.readBT(); err != nil {
+	if s.thickness, err = r.ReadBT(); err != nil {
 		return nil, err
 	}
-	if s.elevation, err = r.readBD(); err != nil {
+	if s.elevation, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
 	read2 := func() (point2, error) {
-		x, e := r.readRD()
+		x, e := r.ReadRD()
 		if e != nil {
 			return point2{}, e
 		}
-		y, e := r.readRD()
+		y, e := r.ReadRD()
 		if e != nil {
 			return point2{}, e
 		}
@@ -84,7 +85,7 @@ func decodeSolid(r *bitStream, head *commonEntityHead, trace bool) (any, error) 
 	if s.p4, err = read2(); err != nil {
 		return nil, err
 	}
-	x, y, z, err := r.readBE()
+	x, y, z, err := r.ReadBE()
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +108,7 @@ type entFace3d struct {
 
 // decodeFace3dVer 3DFACE 按版本分发：R13/R14 为 4×3BD 直读 + BS 不可见标志；
 // R2000+ 为标志位 + 差分 3DD 形式。
-func decodeFace3dVer(r *bitStream, head *commonEntityHead, r13r14 bool) (any, error) {
+func decodeFace3dVer(r *bitstream.BitStream, head *commonEntityHead, r13r14 bool) (any, error) {
 	if !r13r14 {
 		return decodeFace3d(r, head)
 	}
@@ -125,7 +126,7 @@ func decodeFace3dVer(r *bitStream, head *commonEntityHead, r13r14 bool) (any, er
 	if f.p4, err = read3pt(r); err != nil {
 		return nil, err
 	}
-	inv, err := r.readBS()
+	inv, err := r.ReadBS()
 	if err != nil {
 		return nil, err
 	}
@@ -136,28 +137,28 @@ func decodeFace3dVer(r *bitStream, head *commonEntityHead, r13r14 bool) (any, er
 }
 
 // decodeFace3d 3DFACE：B 无标志位 + B z 全零 + 4 点（首点 RD×3，其余 3DD 差分）。
-func decodeFace3d(r *bitStream, head *commonEntityHead) (any, error) {
-	noFlagInd, err := r.readB()
+func decodeFace3d(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
+	noFlagInd, err := r.ReadB()
 	if err != nil {
 		return nil, err
 	}
-	zIsZero, err := r.readB()
+	zIsZero, err := r.ReadB()
 	if err != nil {
 		return nil, err
 	}
 	hasNoFlags := noFlagInd != 0
 	zZero := zIsZero != 0
-	x1, e := r.readRD()
+	x1, e := r.ReadRD()
 	if e != nil {
 		return nil, e
 	}
-	y1, e := r.readRD()
+	y1, e := r.ReadRD()
 	if e != nil {
 		return nil, e
 	}
 	var z1 float64
 	if zIsZero == 0 {
-		if z1, e = r.readRD(); e != nil {
+		if z1, e = r.ReadRD(); e != nil {
 			return nil, e
 		}
 	}
@@ -176,7 +177,7 @@ func decodeFace3d(r *bitStream, head *commonEntityHead) (any, error) {
 	}
 	var inv uint16
 	if noFlagInd == 0 {
-		if inv, err = r.readBS(); err != nil {
+		if inv, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
 	}
@@ -191,16 +192,16 @@ func decodeFace3d(r *bitStream, head *commonEntityHead) (any, error) {
 }
 
 // read3DD 三个 DD 差分（以 default 为基准）。
-func read3DD(r *bitStream, def point3) (point3, error) {
-	x, err := r.readDD(def.x)
+func read3DD(r *bitstream.BitStream, def point3) (point3, error) {
+	x, err := r.ReadDD(def.x)
 	if err != nil {
 		return point3{}, err
 	}
-	y, err := r.readDD(def.y)
+	y, err := r.ReadDD(def.y)
 	if err != nil {
 		return point3{}, err
 	}
-	z, err := r.readDD(def.z)
+	z, err := r.ReadDD(def.z)
 	if err != nil {
 		return point3{}, err
 	}
@@ -263,22 +264,22 @@ func atan2f(y, x float64) float64 { return math.Atan2(y, x) }
 // decodeLeader LEADER：按 dwg.spec 二进制序完整解析（头部标志/注释与
 // 路径类型/折点/方向向量/文本框/钩线与箭头标志/R14 专属尺寸），尾部
 // R2000b+ 未知位；associated_annotation/dimstyle 句柄在 handle 流。
-func decodeLeader(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
+func decodeLeader(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
 	var err error
 	var v uint8
 	l := &entLeader{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	r14 := ver == verR13 || ver == verR14
-	if v, err = r.readB(); err != nil { // unknown_bit_1
+	if v, err = r.ReadB(); err != nil { // unknown_bit_1
 		return nil, err
 	}
 	l.unknownBit1 = v != 0
-	if l.annotationType, err = r.readBS(); err != nil {
+	if l.annotationType, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if l.pathType, err = r.readBS(); err != nil {
+	if l.pathType, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	numPoints, err := r.readBL()
+	numPoints, err := r.ReadBL()
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +287,7 @@ func decodeLeader(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, er
 		return nil, fmt.Errorf("cad: LEADER 点数异常 %d", numPoints)
 	}
 	for i := uint32(0); i < numPoints; i++ {
-		x, y, z, e := r.read3BD()
+		x, y, z, e := r.Read3BD()
 		if e != nil {
 			return nil, e
 		}
@@ -310,62 +311,62 @@ func decodeLeader(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, er
 		}
 	}
 	if r14 { // VERSIONS (R_13b1, R_14)
-		if l.dimgap, err = r.readBD(); err != nil {
+		if l.dimgap, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
 	}
-	if l.boxHeight, err = r.readBD(); err != nil {
+	if l.boxHeight, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if l.boxWidth, err = r.readBD(); err != nil {
+	if l.boxWidth, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if v, err = r.readB(); err != nil { // hookline_dir
+	if v, err = r.ReadB(); err != nil { // hookline_dir
 		return nil, err
 	}
 	l.hooklineDir = v != 0
-	if v, err = r.readB(); err != nil { // arrowhead_on
+	if v, err = r.ReadB(); err != nil { // arrowhead_on
 		return nil, err
 	}
 	l.arrowheadOn = v != 0
-	at, err := r.readBS() // arrowhead_type（BSx 无符号）
+	at, err := r.ReadBS() // arrowhead_type（BSx 无符号）
 	if err != nil {
 		return nil, err
 	}
 	l.arrowheadType = at
 	l.calcHooklineOn() // DECODER：hookline_on 计算值
 	if r14 {           // VERSIONS (R_13b1, R_14)
-		if l.dimasz, err = r.readBD(); err != nil {
+		if l.dimasz, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
-		if v, err = r.readB(); err != nil { // unknown_bit_2
+		if v, err = r.ReadB(); err != nil { // unknown_bit_2
 			return nil, err
 		}
 		l.unknownBit2 = v != 0
-		if v, err = r.readB(); err != nil { // unknown_bit_3
+		if v, err = r.ReadB(); err != nil { // unknown_bit_3
 			return nil, err
 		}
 		l.unknownBit3 = v != 0
-		if l.unknownShort1, err = r.readBS(); err != nil {
+		if l.unknownShort1, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
-		if l.byblockColor, err = r.readBS(); err != nil {
+		if l.byblockColor, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
-		if v, err = r.readB(); err != nil { // unknown_bit_4
+		if v, err = r.ReadB(); err != nil { // unknown_bit_4
 			return nil, err
 		}
 		l.unknownBit4 = v != 0
-		if v, err = r.readB(); err != nil { // unknown_bit_5
+		if v, err = r.ReadB(); err != nil { // unknown_bit_5
 			return nil, err
 		}
 		l.unknownBit5 = v != 0
 	} else { // SINCE (R_2000b)
-		if v, err = r.readB(); err != nil {
+		if v, err = r.ReadB(); err != nil {
 			return nil, err
 		}
 		l.unknownBit4 = v != 0
-		if v, err = r.readB(); err != nil {
+		if v, err = r.ReadB(); err != nil {
 			return nil, err
 		}
 		l.unknownBit5 = v != 0
@@ -405,32 +406,32 @@ type entMLine struct {
 
 // decodeMline MLINE：BD 比例 + RC 对齐 + 3BD 基点 + 3BD 挤出 + BS 开闭 +
 // RC 线数 + 顶点数组（3×3BD + 段参数/区域参数数组）。
-func decodeMline(r *bitStream, head *commonEntityHead) (any, error) {
+func decodeMline(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
 	m := &entMLine{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
-	if m.scale, err = r.readBD(); err != nil {
+	if m.scale, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if m.justification, err = r.readRC(); err != nil {
+	if m.justification, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
 	var bpx, bpy, bpz float64
-	if bpx, bpy, bpz, err = r.read3BD(); err != nil { // base point
+	if bpx, bpy, bpz, err = r.Read3BD(); err != nil { // base point
 		return nil, err
 	}
 	m.basePoint = point3{bpx, bpy, bpz}
 	var ex, ey, ez float64
-	if ex, ey, ez, err = r.read3BD(); err != nil { // extrusion
+	if ex, ey, ez, err = r.Read3BD(); err != nil { // extrusion
 		return nil, err
 	}
 	m.extrusion = point3{ex, ey, ez}
-	if m.openClosed, err = r.readBS(); err != nil {
+	if m.openClosed, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if m.linesInStyle, err = r.readRC(); err != nil {
+	if m.linesInStyle, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
-	numVerts, err := r.readBS()
+	numVerts, err := r.ReadBS()
 	if err != nil {
 		return nil, err
 	}
@@ -450,7 +451,7 @@ func decodeMline(r *bitStream, head *commonEntityHead) (any, error) {
 		}
 		// 每条样式线的段参数与区域参数均无条件读取（dwg.spec MLINE 同序）
 		for line := 0; line < int(m.linesInStyle); line++ {
-			numSeg, e := r.readBS()
+			numSeg, e := r.ReadBS()
 			if e != nil {
 				return nil, e
 			}
@@ -458,14 +459,14 @@ func decodeMline(r *bitStream, head *commonEntityHead) (any, error) {
 				return nil, fmt.Errorf("cad: MLINE 段参数数异常 %d", numSeg)
 			}
 			for j := uint32(0); j < uint32(numSeg); j++ {
-				p, e := r.readBD()
+				p, e := r.ReadBD()
 				if e != nil {
 					return nil, e
 				}
 				v.segParams = append(v.segParams, p)
 			}
 			v.segCounts = append(v.segCounts, int(numSeg))
-			numArea, e := r.readBS()
+			numArea, e := r.ReadBS()
 			if e != nil {
 				return nil, e
 			}
@@ -473,7 +474,7 @@ func decodeMline(r *bitStream, head *commonEntityHead) (any, error) {
 				return nil, fmt.Errorf("cad: MLINE 区域参数数异常 %d", numArea)
 			}
 			for j := uint32(0); j < uint32(numArea); j++ {
-				p, e := r.readBD()
+				p, e := r.ReadBD()
 				if e != nil {
 					return nil, e
 				}
@@ -487,7 +488,7 @@ func decodeMline(r *bitStream, head *commonEntityHead) (any, error) {
 	m.owner, m.layer = owner, layer
 	// handle 流：公共序（reactors/xdic/layer/ltype/prev/next）之后为
 	// MLINESTYLE 句柄（批次 B 修正：原直读首个句柄会命中公共序前置项）
-	r.setBitPos(head.objSizeBit)
+	r.SetBitPos(head.objSizeBit)
 	if owner2, layer2, e := parseCommonEntityHandles(r, head); e == nil {
 		m.owner, m.layer = owner2, layer2
 		if h, e2 := readHandleReference(r, head.handle); e2 == nil {
@@ -514,8 +515,8 @@ type entVertex2d struct {
 
 // decodeVertex2d VERTEX_2D：RC 标志 + 3BD 位置 + 起末宽（负起始宽取绝对值并
 // 复用）+ BD 凸度 + [R2010+ BL0 顶点 id] + BD 切向。
-func decodeVertex2d(r *bitStream, head *commonEntityHead, r2010Plus bool) (any, error) {
-	flags, err := r.readRC()
+func decodeVertex2d(r *bitstream.BitStream, head *commonEntityHead, r2010Plus bool) (any, error) {
+	flags, err := r.ReadRC()
 	if err != nil {
 		return nil, err
 	}
@@ -523,27 +524,27 @@ func decodeVertex2d(r *bitStream, head *commonEntityHead, r2010Plus bool) (any, 
 	if v.position, err = read3pt(r); err != nil {
 		return nil, err
 	}
-	if v.startWidth, err = r.readBD(); err != nil {
+	if v.startWidth, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
 	if v.startWidth < 0 {
 		v.startWidth = -v.startWidth
 		v.endWidth = v.startWidth
-	} else if v.endWidth, err = r.readBD(); err != nil {
+	} else if v.endWidth, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if v.bulge, err = r.readBD(); err != nil {
+	if v.bulge, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
 	if r2010Plus {
 		// FIELD_BL0(id, 91)：R2010+ 顶点标识符（uhengshenhua 实证 714 顶点）
 		var vid uint32
-		if vid, err = r.readBL(); err != nil {
+		if vid, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
 		v.id = int64(vid)
 	}
-	if v.tangentDir, err = r.readBD(); err != nil {
+	if v.tangentDir, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
 	owner, layer := decodeOwnerLayer(r, head)
@@ -559,8 +560,8 @@ type entVertex3d struct {
 }
 
 // decodeVertex3d VERTEX_3D：RC 标志 + 3BD 位置。
-func decodeVertex3d(r *bitStream, head *commonEntityHead) (any, error) {
-	flags, err := r.readRC()
+func decodeVertex3d(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
+	flags, err := r.ReadRC()
 	if err != nil {
 		return nil, err
 	}
@@ -584,8 +585,8 @@ type entVertexPface struct {
 // decodeVertexPface VERTEX_PFACE/VERTEX_MESH：RC 标志 + 3BD 位置
 // （dwg.spec VERTEX_PFACE LATER_VERSIONS 分支；exr13 trace flag 0xc0
 // = MESH|PFACE_MESH 位，point 为世界坐标）。
-func decodeVertexPface(r *bitStream, head *commonEntityHead) (any, error) {
-	flag, err := r.readRC()
+func decodeVertexPface(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
+	flag, err := r.ReadRC()
 	if err != nil {
 		return nil, err
 	}
@@ -607,10 +608,10 @@ type entVertexPfaceFace struct {
 
 // decodeVertexPfaceFace VERTEX_PFACE_FACE：4×BSd 顶点索引；flag 不从流读，
 // LibreDWG 恒写 128（dwg.spec LATER_VERSIONS 分支 FIELD_VALUE (flag) = 128）。
-func decodeVertexPfaceFace(r *bitStream, head *commonEntityHead) (any, error) {
+func decodeVertexPfaceFace(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
 	f := &entVertexPfaceFace{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}, flag: 128}
 	for i := 0; i < 4; i++ {
-		v, err := r.readBS()
+		v, err := r.ReadBS()
 		if err != nil {
 			return nil, err
 		}
@@ -640,7 +641,7 @@ var unknownEntFallbackNames = map[string]bool{
 // decodeUnknownEnt UNKNOWN_ENT 兜底解码：不读主体字段，仅解析 handle 流
 // 的 owner/layer；原始类名（如 ACAD_TABLE）存 extra.dxfname，对齐
 // LibreDWG「实体键输出 UNKNOWN_ENT、DXF 名保留原类」的兜底语义。
-func decodeUnknownEnt(r *bitStream, head *commonEntityHead, dxfname string) (any, error) {
+func decodeUnknownEnt(r *bitstream.BitStream, head *commonEntityHead, dxfname string) (any, error) {
 	e := &entUnknownEnt{baseEntity: baseEntity{
 		handle: head.handle, color: head.color, mode: head.entityMode,
 		extra: map[string]any{"dxfname": dxfname},
@@ -687,17 +688,17 @@ type entHelix struct {
 // degree BL + scenario 分支字段 + AcDbHelix 专有（major/maint version +
 // axis_base_pt/start_pt/axis_vector 3BD + radius/turns/turn_height BD +
 // handedness B + constraint_type RC）。
-func decodeHelixVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
+func decodeHelixVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
 	hx := &entHelix{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
-	if hx.scenario, err = r.readBL(); err != nil {
+	if hx.scenario, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
 	if ver >= verR2013 {
-		if hx.splineFlags, err = r.readBL(); err != nil {
+		if hx.splineFlags, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
-		if hx.knotParam, err = r.readBL(); err != nil {
+		if hx.knotParam, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
 	} else {
@@ -711,34 +712,34 @@ func decodeHelixVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, 
 			hx.splineFlags = 9
 		}
 	}
-	if hx.degree, err = r.readBL(); err != nil {
+	if hx.degree, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
 	if hx.scenario&1 != 0 { // 控制点样条
 		var v uint8
-		if v, err = r.readB(); err != nil {
+		if v, err = r.ReadB(); err != nil {
 			return nil, err
 		}
 		hx.rational = v != 0
-		if v, err = r.readB(); err != nil {
+		if v, err = r.ReadB(); err != nil {
 			return nil, err
 		}
 		hx.closed = v != 0
-		if v, err = r.readB(); err != nil {
+		if v, err = r.ReadB(); err != nil {
 			return nil, err
 		}
 		hx.periodic = v != 0
-		if hx.knotTol, err = r.readBD(); err != nil {
+		if hx.knotTol, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
-		if hx.ctrlTol, err = r.readBD(); err != nil {
+		if hx.ctrlTol, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
 		var numKnots, numCtrl uint32
-		if numKnots, err = r.readBL(); err != nil {
+		if numKnots, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
-		if numCtrl, err = r.readBL(); err != nil {
+		if numCtrl, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
 		if numKnots > 1_000_000 || numCtrl > 1_000_000 {
@@ -747,12 +748,12 @@ func decodeHelixVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, 
 		// spec 顺序：num_knots/num_ctrl_pts 之后先读 weighted 位，再是
 		// knots 向量与控制点向量
 		var weighted uint8
-		if weighted, err = r.readB(); err != nil {
+		if weighted, err = r.ReadB(); err != nil {
 			return nil, err
 		}
 		for i := uint32(0); i < numKnots; i++ {
 			var k float64
-			if k, err = r.readBD(); err != nil {
+			if k, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
 			hx.knots = append(hx.knots, k)
@@ -765,14 +766,14 @@ func decodeHelixVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, 
 			hx.ctrlPts = append(hx.ctrlPts, p)
 			if weighted != 0 {
 				var w float64
-				if w, err = r.readBD(); err != nil {
+				if w, err = r.ReadBD(); err != nil {
 					return nil, err
 				}
 				hx.weights = append(hx.weights, w)
 			}
 		}
 	} else { // 拟合点样条（scenario 2）
-		if hx.fitTol, err = r.readBD(); err != nil {
+		if hx.fitTol, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
 		if hx.begTanVec, err = read3pt(r); err != nil {
@@ -782,7 +783,7 @@ func decodeHelixVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, 
 			return nil, err
 		}
 		var numFit uint32
-		if numFit, err = r.readBL(); err != nil {
+		if numFit, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
 		if numFit > 1_000_000 {
@@ -797,10 +798,10 @@ func decodeHelixVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, 
 		}
 	}
 	// AcDbHelix 专有
-	if hx.majorVersion, err = r.readBL(); err != nil {
+	if hx.majorVersion, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
-	if hx.maintVersion, err = r.readBL(); err != nil {
+	if hx.maintVersion, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
 	if hx.axisBasePt, err = read3pt(r); err != nil {
@@ -812,21 +813,21 @@ func decodeHelixVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, 
 	if hx.axisVector, err = read3pt(r); err != nil {
 		return nil, err
 	}
-	if hx.radius, err = r.readBD(); err != nil {
+	if hx.radius, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if hx.turns, err = r.readBD(); err != nil {
+	if hx.turns, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if hx.turnHeight, err = r.readBD(); err != nil {
+	if hx.turnHeight, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
 	var hb uint8
-	if hb, err = r.readB(); err != nil {
+	if hb, err = r.ReadB(); err != nil {
 		return nil, err
 	}
 	hx.handedness = hb != 0
-	if hx.constraintType, err = r.readRC(); err != nil {
+	if hx.constraintType, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
 	owner, layer := decodeOwnerLayer(r, head)
@@ -835,10 +836,10 @@ func decodeHelixVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, 
 }
 
 // readBDSlice 连续读取 n 个 BD。
-func readBDSlice(r *bitStream, n int) ([]float64, error) {
+func readBDSlice(r *bitstream.BitStream, n int) ([]float64, error) {
 	out := make([]float64, 0, n)
 	for i := 0; i < n; i++ {
-		v, err := r.readBD()
+		v, err := r.ReadBD()
 		if err != nil {
 			return nil, err
 		}
@@ -867,31 +868,31 @@ type entPolyline2d struct {
 
 // decodePolyline2d POLYLINE_2D：BS 标志 + BS 曲线类型 + 起末宽 + BT 厚 +
 // BD 高程 + BE 挤出 + [R2004+ BL 顶点数] + handle 流顶点句柄。
-func decodePolyline2d(r *bitStream, head *commonEntityHead, hasOwnedCount bool) (any, error) {
+func decodePolyline2d(r *bitstream.BitStream, head *commonEntityHead, hasOwnedCount bool) (any, error) {
 	p := &entPolyline2d{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
-	if p.flags, err = r.readBS(); err != nil {
+	if p.flags, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if p.curveType, err = r.readBS(); err != nil {
+	if p.curveType, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if p.widthStart, err = r.readBD(); err != nil {
+	if p.widthStart, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if p.widthEnd, err = r.readBD(); err != nil {
+	if p.widthEnd, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if p.thickness, err = r.readBT(); err != nil {
+	if p.thickness, err = r.ReadBT(); err != nil {
 		return nil, err
 	}
-	if p.elevation, err = r.readBD(); err != nil {
+	if p.elevation, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
 	// extrusion 为 FIELD_BE（单位向量压缩，默认 (0,0,1) 仅 2 位）：
 	// 3BD 读法在默认值时多读 4 位使 num_owned 错位
 	// （uhengshenhua h=17453 num_owned=418 实证，LibreDWG spec 同为 BE）
-	if ex, ey, ez, eErr := r.readBE(); eErr != nil {
+	if ex, ey, ez, eErr := r.ReadBE(); eErr != nil {
 		return nil, eErr
 	} else {
 		p.extrusion = point3{ex, ey, ez}
@@ -899,7 +900,7 @@ func decodePolyline2d(r *bitStream, head *commonEntityHead, hasOwnedCount bool) 
 	ownedCount := 0
 	if hasOwnedCount {
 		var n uint32
-		if n, err = r.readBL(); err != nil {
+		if n, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
 		if n > 1_000_000 {
@@ -910,7 +911,7 @@ func decodePolyline2d(r *bitStream, head *commonEntityHead, hasOwnedCount bool) 
 	owner, layer := decodeOwnerLayer(r, head)
 	p.owner, p.layer = owner, layer
 	// handle 流：顶点句柄在公共句柄之后
-	r.setBitPos(head.objSizeBit)
+	r.SetBitPos(head.objSizeBit)
 	// 先按公共头结构读 owner/reactors/xdic/layer 等，再读 owned 句柄
 	if _, layer2, e := parseCommonEntityHandles(r, head); e == nil {
 		p.layer = layer2
@@ -953,19 +954,19 @@ type entPolyline3d struct {
 }
 
 // decodePolyline3d POLYLINE_3D：RC×2 标志 + [R2004+ BL 顶点数] + handle 流顶点句柄。
-func decodePolyline3d(r *bitStream, head *commonEntityHead, hasOwnedCount bool) (any, error) {
+func decodePolyline3d(r *bitstream.BitStream, head *commonEntityHead, hasOwnedCount bool) (any, error) {
 	p := &entPolyline3d{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
-	if p.flags75, err = r.readRC(); err != nil {
+	if p.flags75, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
-	if p.flags70, err = r.readRC(); err != nil {
+	if p.flags70, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
 	ownedCount := 0
 	if hasOwnedCount {
 		var n uint32
-		if n, err = r.readBL(); err != nil {
+		if n, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
 		if n > 1_000_000 {
@@ -975,7 +976,7 @@ func decodePolyline3d(r *bitStream, head *commonEntityHead, hasOwnedCount bool) 
 	}
 	owner, layer := decodeOwnerLayer(r, head)
 	p.owner, p.layer = owner, layer
-	r.setBitPos(head.objSizeBit)
+	r.SetBitPos(head.objSizeBit)
 	if _, layer2, e := parseCommonEntityHandles(r, head); e == nil {
 		p.layer = layer2
 	}
@@ -1082,7 +1083,7 @@ type entTolerance struct {
 }
 
 // decodeTolerance TOLERANCE 解码兼容入口（版本由 head 推断）。
-func decodeTolerance(r *bitStream, head *commonEntityHead) (any, error) {
+func decodeTolerance(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
 	ver := verR2013
 	if head.r13r14 {
 		ver = verR14
@@ -1093,19 +1094,19 @@ func decodeTolerance(r *bitStream, head *commonEntityHead) (any, error) {
 // decodeToleranceVer TOLERANCE（AcDbFcf）：[R13/R14: unknown_short BS +
 // height BD + dimgap BD] + ins_pt/x_direction/extrusion 3BD + text_value
 // （R2007+ 字符串区零占位，否则内联 TV）→ handle 流（owner/layer/dimstyle）。
-func decodeToleranceVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
+func decodeToleranceVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
 	tol := &entTolerance{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
 	if ver == verR13 || ver == verR14 {
 		var us uint16
-		if us, err = r.readBS(); err != nil {
+		if us, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
 		tol.unknownShort = us
-		if tol.height, err = r.readBD(); err != nil {
+		if tol.height, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
-		if tol.dimgap, err = r.readBD(); err != nil {
+		if tol.dimgap, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
 	}
@@ -1119,14 +1120,14 @@ func decodeToleranceVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (a
 		return nil, err
 	}
 	if ver < verR2007 {
-		if tol.text, err = r.readTV(512); err != nil {
+		if tol.text, err = r.ReadTV(512); err != nil {
 			return nil, err
 		}
 	}
 	owner, layer := decodeOwnerLayer(r, head)
 	tol.owner, tol.layer = owner, layer
 	// handle 流：owner/layer 之后为 dimstyle 引用
-	r.setBitPos(head.objSizeBit)
+	r.SetBitPos(head.objSizeBit)
 	if _, layer2, e := parseCommonEntityHandles(r, head); e == nil {
 		tol.layer = layer2
 	}
@@ -1156,13 +1157,13 @@ type entPolylinePface struct {
 // decodePolylinePface POLYLINE_PFACE：BS 顶点数 + BS 面数 + [R2004+ BL
 // 顶点数] + handle 流顶点句柄（R13~R2000 first/last、R2004+ owned 向量）
 // + SEQEND。
-func decodePolylinePface(r *bitStream, head *commonEntityHead, hasOwnedCount bool) (any, error) {
+func decodePolylinePface(r *bitstream.BitStream, head *commonEntityHead, hasOwnedCount bool) (any, error) {
 	p := &entPolylinePface{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
-	nv, err := r.readBS()
+	nv, err := r.ReadBS()
 	if err != nil {
 		return nil, err
 	}
-	nf, err := r.readBS()
+	nf, err := r.ReadBS()
 	if err != nil {
 		return nil, err
 	}
@@ -1170,7 +1171,7 @@ func decodePolylinePface(r *bitStream, head *commonEntityHead, hasOwnedCount boo
 	ownedCount := 0
 	if hasOwnedCount {
 		var n uint32
-		if n, err = r.readBL(); err != nil {
+		if n, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
 		if n > 1_000_000 {
@@ -1180,7 +1181,7 @@ func decodePolylinePface(r *bitStream, head *commonEntityHead, hasOwnedCount boo
 	}
 	owner, layer := decodeOwnerLayer(r, head)
 	p.owner, p.layer = owner, layer
-	r.setBitPos(head.objSizeBit)
+	r.SetBitPos(head.objSizeBit)
 	if _, layer2, e := parseCommonEntityHandles(r, head); e == nil {
 		p.layer = layer2
 	}
@@ -1246,7 +1247,7 @@ type entViewport struct {
 }
 
 // decodeViewport VIEWPORT 解码兼容入口（版本由 head 推断）。
-func decodeViewport(r *bitStream, head *commonEntityHead) (any, error) {
+func decodeViewport(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
 	ver := verR2013
 	if head.r13r14 {
 		ver = verR14
@@ -1262,16 +1263,16 @@ func decodeViewport(r *bitStream, head *commonEntityHead) (any, error) {
 // R2007+ 尾部为灯光段（use_default_lights/default_lighting_type/
 // brightness/contrast/ambient_color CMC）。style_sheet 与字符串类字段
 // 一致：R2007+ 存于字符串区主数据流零占位。
-func decodeViewportVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
+func decodeViewportVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
 	vp := &entViewport{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
 	if vp.center, err = read3pt(r); err != nil {
 		return nil, err
 	}
-	if vp.width, err = r.readBD(); err != nil {
+	if vp.width, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if vp.height, err = r.readBD(); err != nil {
+	if vp.height, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
 	if ver == verR13 || ver == verR14 {
@@ -1285,76 +1286,76 @@ func decodeViewportVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (an
 	if vp.viewDir, err = read3pt(r); err != nil {
 		return nil, err
 	}
-	if vp.viewTwist, err = r.readBD(); err != nil {
+	if vp.viewTwist, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if vp.viewSize, err = r.readBD(); err != nil {
+	if vp.viewSize, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if vp.lensLength, err = r.readBD(); err != nil {
+	if vp.lensLength, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if vp.frontZ, err = r.readBD(); err != nil {
+	if vp.frontZ, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if vp.backZ, err = r.readBD(); err != nil {
+	if vp.backZ, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if vp.snapAng, err = r.readBD(); err != nil {
+	if vp.snapAng, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if vp.viewCtr.x, err = r.readRD(); err != nil {
+	if vp.viewCtr.x, err = r.ReadRD(); err != nil {
 		return nil, err
 	}
-	if vp.viewCtr.y, err = r.readRD(); err != nil {
+	if vp.viewCtr.y, err = r.ReadRD(); err != nil {
 		return nil, err
 	}
-	if vp.snapBase.x, err = r.readRD(); err != nil {
+	if vp.snapBase.x, err = r.ReadRD(); err != nil {
 		return nil, err
 	}
-	if vp.snapBase.y, err = r.readRD(); err != nil {
+	if vp.snapBase.y, err = r.ReadRD(); err != nil {
 		return nil, err
 	}
-	if vp.snapUnit.x, err = r.readRD(); err != nil {
+	if vp.snapUnit.x, err = r.ReadRD(); err != nil {
 		return nil, err
 	}
-	if vp.snapUnit.y, err = r.readRD(); err != nil {
+	if vp.snapUnit.y, err = r.ReadRD(); err != nil {
 		return nil, err
 	}
-	if vp.gridUnit.x, err = r.readRD(); err != nil {
+	if vp.gridUnit.x, err = r.ReadRD(); err != nil {
 		return nil, err
 	}
-	if vp.gridUnit.y, err = r.readRD(); err != nil {
+	if vp.gridUnit.y, err = r.ReadRD(); err != nil {
 		return nil, err
 	}
-	if vp.circleZoom, err = r.readBS(); err != nil {
+	if vp.circleZoom, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
 	if ver >= verR2007 {
-		if vp.gridMajor, err = r.readBS(); err != nil {
+		if vp.gridMajor, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
 	}
-	if vp.numFrozenLayers, err = r.readBL(); err != nil {
+	if vp.numFrozenLayers, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
-	if vp.statusFlag, err = r.readBL(); err != nil {
+	if vp.statusFlag, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
 	if ver < verR2007 {
-		if vp.styleSheet, err = r.readTV(256); err != nil {
+		if vp.styleSheet, err = r.ReadTV(256); err != nil {
 			return nil, err
 		}
 	}
-	if vp.renderMode, err = r.readRC(); err != nil {
+	if vp.renderMode, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
 	var bv uint8
-	if bv, err = r.readB(); err != nil {
+	if bv, err = r.ReadB(); err != nil {
 		return nil, err
 	}
 	vp.ucsAtOrigin = bv != 0
-	if bv, err = r.readB(); err != nil {
+	if bv, err = r.ReadB(); err != nil {
 		return nil, err
 	}
 	vp.ucsVP = bv != 0
@@ -1367,50 +1368,50 @@ func decodeViewportVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (an
 	if vp.ucsydir, err = read3pt(r); err != nil {
 		return nil, err
 	}
-	if vp.ucsElevation, err = r.readBD(); err != nil {
+	if vp.ucsElevation, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if vp.ucsOrthoView, err = r.readBS(); err != nil {
+	if vp.ucsOrthoView, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
 	if ver >= verR2004 {
-		if vp.shadeplotMode, err = r.readBS(); err != nil {
+		if vp.shadeplotMode, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
 	}
 	if ver >= verR2007 {
 		var bv uint8
-		if bv, err = r.readB(); err != nil {
+		if bv, err = r.ReadB(); err != nil {
 			return nil, err
 		}
 		vp.useDefaultLights = bv != 0
-		if vp.defaultLightingType, err = r.readRC(); err != nil {
+		if vp.defaultLightingType, err = r.ReadRC(); err != nil {
 			return nil, err
 		}
-		if vp.brightness, err = r.readBD(); err != nil {
+		if vp.brightness, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
-		if vp.contrast, err = r.readBD(); err != nil {
+		if vp.contrast, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
-		if vp.ambientIndex, err = r.readBS(); err != nil {
+		if vp.ambientIndex, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
-		if vp.ambientRGB, err = r.readBL(); err != nil {
+		if vp.ambientRGB, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
 		var cflag uint8
-		if cflag, err = r.readRC(); err != nil { // ambient CMC flag
+		if cflag, err = r.ReadRC(); err != nil { // ambient CMC flag
 			return nil, err
 		}
 		// CMC 名称字段（flag 置位时为主数据流内 TU；样本中 flag=0 仍有空串占位）
 		if cflag < 4 && cflag&1 != 0 {
-			if _, err = r.readTU(); err != nil {
+			if _, err = r.ReadTU(); err != nil {
 				return nil, err
 			}
 		}
 		if cflag < 4 && cflag&2 != 0 {
-			if _, err = r.readTU(); err != nil {
+			if _, err = r.ReadTU(); err != nil {
 				return nil, err
 			}
 		}
@@ -1439,28 +1440,28 @@ type entShape struct {
 
 // decodeShape SHAPE：3BD 插入点 + BD 缩放/旋转/宽度因子/倾斜/厚度 +
 // BS 形编号 + 3BD 挤出。
-func decodeShape(r *bitStream, head *commonEntityHead) (any, error) {
+func decodeShape(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
 	s := &entShape{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
 	if s.insertion, err = read3pt(r); err != nil {
 		return nil, err
 	}
-	if s.scale, err = r.readBD(); err != nil {
+	if s.scale, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if s.rotation, err = r.readBD(); err != nil {
+	if s.rotation, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if s.widthFactor, err = r.readBD(); err != nil {
+	if s.widthFactor, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if s.oblique, err = r.readBD(); err != nil {
+	if s.oblique, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if s.thickness, err = r.readBD(); err != nil {
+	if s.thickness, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if s.styleId, err = r.readBS(); err != nil { // STYLE 表索引（gold style_id）
+	if s.styleId, err = r.ReadBS(); err != nil { // STYLE 表索引（gold style_id）
 		return nil, err
 	}
 	if s.extrusion, err = read3pt(r); err != nil {
@@ -1485,31 +1486,31 @@ type entPolylineMesh struct {
 
 // decodePolylineMesh POLYLINE_MESH：6×BS 参数 + [R2004+ BL 顶点数] +
 // handle 流顶点句柄。
-func decodePolylineMesh(r *bitStream, head *commonEntityHead, hasOwnedCount bool) (any, error) {
+func decodePolylineMesh(r *bitstream.BitStream, head *commonEntityHead, hasOwnedCount bool) (any, error) {
 	m := &entPolylineMesh{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
-	if m.flags, err = r.readBS(); err != nil {
+	if m.flags, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if m.curveType, err = r.readBS(); err != nil {
+	if m.curveType, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if m.mVertexCount, err = r.readBS(); err != nil {
+	if m.mVertexCount, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if m.nVertexCount, err = r.readBS(); err != nil {
+	if m.nVertexCount, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if m.mDensity, err = r.readBS(); err != nil {
+	if m.mDensity, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if m.nDensity, err = r.readBS(); err != nil {
+	if m.nDensity, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
 	ownedCount := 0
 	if hasOwnedCount {
 		var n uint32
-		if n, err = r.readBL(); err != nil {
+		if n, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
 		if n > 1_000_000 {
@@ -1519,7 +1520,7 @@ func decodePolylineMesh(r *bitStream, head *commonEntityHead, hasOwnedCount bool
 	}
 	owner, layer := decodeOwnerLayer(r, head)
 	m.owner, m.layer = owner, layer
-	r.setBitPos(head.objSizeBit)
+	r.SetBitPos(head.objSizeBit)
 	if _, layer2, e := parseCommonEntityHandles(r, head); e == nil {
 		m.layer = layer2
 	}
@@ -1558,10 +1559,10 @@ type entWipeout struct {
 // clip_boundary_type BS + 裁剪顶点数组（dwg2.spec WIPEOUT，同 IMAGE 布局；
 // imagedef/imagedefreactor 句柄在 handle 流）。主体后的未记载位
 // （preview 等）按 objSizeBit 截断跳过。
-func decodeWipeoutVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
+func decodeWipeoutVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
 	w := &entWipeout{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
-	if w.classVersion, err = r.readBL(); err != nil {
+	if w.classVersion, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
 	if w.classVersion > 10 {
@@ -1576,42 +1577,42 @@ func decodeWipeoutVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any
 	if w.vvec, err = read3pt(r); err != nil {
 		return nil, err
 	}
-	if w.imageSize.x, err = r.readRD(); err != nil {
+	if w.imageSize.x, err = r.ReadRD(); err != nil {
 		return nil, err
 	}
-	if w.imageSize.y, err = r.readRD(); err != nil {
+	if w.imageSize.y, err = r.ReadRD(); err != nil {
 		return nil, err
 	}
-	if w.displayProps, err = r.readBS(); err != nil {
+	if w.displayProps, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
 	var v uint8
-	if v, err = r.readB(); err != nil {
+	if v, err = r.ReadB(); err != nil {
 		return nil, err
 	}
 	w.clipping = v != 0
-	if w.brightness, err = r.readRC(); err != nil {
+	if w.brightness, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
-	if w.contrast, err = r.readRC(); err != nil {
+	if w.contrast, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
-	if w.fade, err = r.readRC(); err != nil {
+	if w.fade, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
 	if ver >= verR2010 {
-		cm, err2 := r.readB() // clip_mode（R2010+）
+		cm, err2 := r.ReadB() // clip_mode（R2010+）
 		if err2 != nil {
 			return nil, err2
 		}
 		w.clipMode = uint8(cm)
 	}
-	if w.clipBoundaryType, err = r.readBS(); err != nil {
+	if w.clipBoundaryType, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
 	numVerts := uint32(2) // 矩形边界固定两角
 	if w.clipBoundaryType != 1 {
-		if numVerts, err = r.readBL(); err != nil {
+		if numVerts, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
 	}
@@ -1620,10 +1621,10 @@ func decodeWipeoutVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any
 	}
 	for i := uint32(0); i < numVerts; i++ {
 		var p point2
-		if p.x, err = r.readRD(); err != nil {
+		if p.x, err = r.ReadRD(); err != nil {
 			return nil, err
 		}
-		if p.y, err = r.readRD(); err != nil {
+		if p.y, err = r.ReadRD(); err != nil {
 			return nil, err
 		}
 		w.clipVerts = append(w.clipVerts, p)
@@ -1631,7 +1632,7 @@ func decodeWipeoutVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any
 	owner, layer := decodeOwnerLayer(r, head)
 	w.owner, w.layer = owner, layer
 	// handle 流：owner/layer 之后为 imagedef(5) 与 imagedefreactor(3)
-	r.setBitPos(head.objSizeBit)
+	r.SetBitPos(head.objSizeBit)
 	if _, layer2, e := parseCommonEntityHandles(r, head); e == nil {
 		w.layer = layer2
 	}
@@ -1725,7 +1726,7 @@ func acisDeobfuscate(raw []byte) []byte {
 
 // decodeAcis ACIS 实体解码的兼容入口（版本由 head 推断：R13/R14 或
 // R2007+ 最新布局）。版本感知路径经 cad.go 特判走 decodeAcisVer。
-func decodeAcis(r *bitStream, head *commonEntityHead, kind string, srcVer dwgVersion) (any, error) {
+func decodeAcis(r *bitstream.BitStream, head *commonEntityHead, kind string, srcVer dwgVersion) (any, error) {
 	ver := verR2013
 	if head.r13r14 {
 		ver = verR14
@@ -1738,20 +1739,20 @@ func decodeAcis(r *bitStream, head *commonEntityHead, kind string, srcVer dwgVer
 // 修订段（COMMON_3DSOLID）→ handle 流。r13r14 为 R13/R14 布局（无 R2007+
 // 材质与 R2013+ 修订段由版本条件内部判断，调用方传 ver）；srcVer 为分发层
 // 真实文件版本（history_id 的 R2004+ 判断用它，宽容推断版 ver 不作依据）。
-func decodeAcisVer(r *bitStream, head *commonEntityHead, kind string, ver dwgVersion, srcVer dwgVersion) (any, error) {
+func decodeAcisVer(r *bitstream.BitStream, head *commonEntityHead, kind string, ver dwgVersion, srcVer dwgVersion) (any, error) {
 	a := &entAcis{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}, kind: kind}
-	acisEmpty, err := r.readB()
+	acisEmpty, err := r.ReadB()
 	if err != nil {
 		return nil, err
 	}
 	a.acisEmpty = acisEmpty == 1
 	if !a.acisEmpty {
 		var unknown uint8
-		if unknown, err = r.readB(); err != nil {
+		if unknown, err = r.ReadB(); err != nil {
 			return nil, err
 		}
 		a.unknown = unknown
-		if a.version, err = r.readBS(); err != nil {
+		if a.version, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
 		switch a.version {
@@ -1759,15 +1760,15 @@ func decodeAcisVer(r *bitStream, head *commonEntityHead, kind string, ver dwgVer
 			total := 0
 			for {
 				var blockSize uint32
-				if blockSize, err = r.readBL(); err != nil {
+				if blockSize, err = r.ReadBL(); err != nil {
 					return nil, err
 				}
-				if blockSize == 0 || blockSize > 1<<28 || int64(r.totalBits())-int64(r.tellBits()) < int64(blockSize)*8 {
+				if blockSize == 0 || blockSize > 1<<28 || int64(r.TotalBits())-int64(r.TellBits()) < int64(blockSize)*8 {
 					break
 				}
 				raw := make([]byte, blockSize)
 				for i := uint32(0); i < blockSize; i++ {
-					if raw[i], err = r.readRC(); err != nil {
+					if raw[i], err = r.ReadRC(); err != nil {
 						return nil, err
 					}
 				}
@@ -1790,11 +1791,11 @@ func decodeAcisVer(r *bitStream, head *commonEntityHead, kind string, ver dwgVer
 				endACIS = "\x0e\x03End\x0e\x02of\x0e\x04ACIS\r\x04data"
 				endASM  = "\x0e\x03End\x0e\x02of\x0e\x03ASM\r\x04data"
 			)
-			startBit := r.tellBits()
-			size := int((r.totalBits() - startBit) / 8)
+			startBit := r.TellBits()
+			size := int((r.TotalBits() - startBit) / 8)
 			if size > 0 {
 				size-- // 预留 CRC 等尾部字节（LibreDWG: dat->size - pos - 1）
-				if buf, e := r.readRCS(size); e == nil {
+				if buf, e := r.ReadRCS(size); e == nil {
 					end := -1
 					for _, marker := range []string{endACIS, endASM} {
 						if i := bytes.Index(buf, []byte(marker)); i >= 0 {
@@ -1807,11 +1808,11 @@ func decodeAcisVer(r *bitStream, head *commonEntityHead, kind string, ver dwgVer
 					}
 					if cadTraceHandle != 0 && cadTraceHandle == head.handle {
 						fmt.Fprintf(os.Stderr, "[acis] handle=%d startBit=%d totalBits=%d size=%d end=%d head.objSizeBit=%v\n",
-							head.handle, startBit, r.totalBits(), size, end, head.objSizeBit)
+							head.handle, startBit, r.TotalBits(), size, end, head.objSizeBit)
 					}
 					a.sabSize = end
 					a.acisData = append([]byte(nil), buf[:end]...)
-					r.setBitPos(startBit + uint64(end)*8)
+					r.SetBitPos(startBit + uint64(end)*8)
 				}
 			}
 		}
@@ -1823,7 +1824,7 @@ func decodeAcisVer(r *bitStream, head *commonEntityHead, kind string, ver dwgVer
 		//（位流已错位，history_id 不可信不读取——R2013 样本实证）
 		owner, layer := decodeOwnerLayer(r, head)
 		a.owner, a.layer = owner, layer
-		r.setBitPos(head.objSizeBit)
+		r.SetBitPos(head.objSizeBit)
 		if _, layer2, e := parseCommonEntityHandles(r, head); e == nil {
 			a.layer = layer2
 		}
@@ -1831,13 +1832,13 @@ func decodeAcisVer(r *bitStream, head *commonEntityHead, kind string, ver dwgVer
 		return a, nil
 	}
 	var v uint8
-	if v, err = r.readB(); err != nil { // acis_empty_bit
+	if v, err = r.ReadB(); err != nil { // acis_empty_bit
 		return nil, err
 	}
 	a.acisEmptyBit = v != 0
 	if a.version > 1 {
 		if ver >= verR2007 {
-			if a.numMaterials, err = r.readBL(); err != nil {
+			if a.numMaterials, err = r.ReadBL(); err != nil {
 				return nil, err
 			}
 			// 材质循环（array_index BL + mat_absref BL + material handle）。
@@ -1847,11 +1848,11 @@ func decodeAcisVer(r *bitStream, head *commonEntityHead, kind string, ver dwgVer
 			// 拒绝时清零计数并放弃尾部字段、按 handle 流降级纳管——返回
 			// 错误会令扫描框架淘汰正确起点候选，反而解出错位对象
 			if a.numMaterials > 1_000_000 ||
-				int64(a.numMaterials)*24 > int64(r.totalBits()-r.tellBits()) {
+				int64(a.numMaterials)*24 > int64(r.TotalBits()-r.TellBits()) {
 				a.numMaterials = 0
 				owner, layer := decodeOwnerLayer(r, head)
 				a.owner, a.layer = owner, layer
-				r.setBitPos(head.objSizeBit)
+				r.SetBitPos(head.objSizeBit)
 				if _, layer2, e := parseCommonEntityHandles(r, head); e == nil {
 					a.layer = layer2
 				}
@@ -1861,10 +1862,10 @@ func decodeAcisVer(r *bitStream, head *commonEntityHead, kind string, ver dwgVer
 			}
 			for i := uint32(0); i < a.numMaterials; i++ {
 				var ai, ma uint32
-				if ai, err = r.readBL(); err != nil {
+				if ai, err = r.ReadBL(); err != nil {
 					return nil, err
 				}
-				if ma, err = r.readBL(); err != nil {
+				if ma, err = r.ReadBL(); err != nil {
 					return nil, err
 				}
 				// material_handle 在 handle 流（COMMON_ENTITY_HANDLE_DATA
@@ -1876,29 +1877,29 @@ func decodeAcisVer(r *bitStream, head *commonEntityHead, kind string, ver dwgVer
 	// 修订段（COMMON_3DSOLID SINCE R_2013b）不受 version>1 约束：
 	// AcDs 场景（has_ds_data=1、acis_empty=1）同样存在（spec 无版本内嵌）
 	if ver >= verR2013 {
-		if v, err = r.readB(); err != nil { // has_revision_guid
+		if v, err = r.ReadB(); err != nil { // has_revision_guid
 			return nil, err
 		}
 		a.hasRevisionGuid = v != 0
-		if a.revisionMajor, err = r.readBL(); err != nil {
+		if a.revisionMajor, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
 		var m uint16
-		if m, err = r.readBS(); err != nil { // revision_minor1
+		if m, err = r.ReadBS(); err != nil { // revision_minor1
 			return nil, err
 		}
 		a.revisionMinor1 = m
-		if m, err = r.readBS(); err != nil { // revision_minor2
+		if m, err = r.ReadBS(); err != nil { // revision_minor2
 			return nil, err
 		}
 		a.revisionMinor2 = m
 		a.revisionBytes = make([]byte, 8)
 		for i := 0; i < 8; i++ {
-			if a.revisionBytes[i], err = r.readRC(); err != nil {
+			if a.revisionBytes[i], err = r.ReadRC(); err != nil {
 				return nil, err
 			}
 		}
-		if a.endMarker, err = r.readBL(); err != nil {
+		if a.endMarker, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
 	}
@@ -1909,7 +1910,7 @@ func decodeAcisVer(r *bitStream, head *commonEntityHead, kind string, ver dwgVer
 			break
 		}
 	}
-	r.setBitPos(head.objSizeBit)
+	r.SetBitPos(head.objSizeBit)
 	if owner2, layer2, e := parseCommonEntityHandles(r, head); e == nil {
 		a.owner, a.layer = owner2, layer2
 	}
@@ -1926,7 +1927,7 @@ func decodeAcisVer(r *bitStream, head *commonEntityHead, kind string, ver dwgVer
 }
 
 // readAcisHandles 读取 ACIS 实体 handle 流的引用句柄（至多 8 个）。
-func readAcisHandles(r *bitStream, head *commonEntityHead) []uint64 {
+func readAcisHandles(r *bitstream.BitStream, head *commonEntityHead) []uint64 {
 	var out []uint64
 	for i := 0; i < 8; i++ {
 		h, err := readHandleReference(r, head.handle)
@@ -1945,31 +1946,31 @@ func readAcisHandles(r *bitStream, head *commonEntityHead) []uint64 {
 // wireframe_data_present → point_present(+point 3BD) → isolines BL →
 // isoline_present → wires/silhouettes 递归结构（WIRESTRUCT_fields）。
 // 线框明细不进入实体模型，仅按结构跳过保证位序正确。
-func decodeAcisWireframe(r *bitStream, a *entAcis) error {
+func decodeAcisWireframe(r *bitstream.BitStream, a *entAcis) error {
 	var err error
 	var v uint8
-	if v, err = r.readB(); err != nil {
+	if v, err = r.ReadB(); err != nil {
 		return err
 	}
 	a.wireframeDataPresent = v != 0
 	if !a.wireframeDataPresent {
 		return nil
 	}
-	if v, err = r.readB(); err != nil {
+	if v, err = r.ReadB(); err != nil {
 		return err
 	}
 	a.pointPresent = v != 0
 	if a.pointPresent {
-		x, y, z, err := r.read3BD()
+		x, y, z, err := r.Read3BD()
 		if err != nil {
 			return err
 		}
 		a.point = point3{x, y, z}
 	}
-	if a.isolines, err = r.readBL(); err != nil {
+	if a.isolines, err = r.ReadBL(); err != nil {
 		return err
 	}
-	if v, err = r.readB(); err != nil {
+	if v, err = r.ReadB(); err != nil {
 		return err
 	}
 	a.isolinePresent = v != 0
@@ -1979,32 +1980,32 @@ func decodeAcisWireframe(r *bitStream, a *entAcis) error {
 	skipWire := func() (acisWire, error) {
 		var w acisWire
 		var typ uint8
-		if typ, err = r.readRC(); err != nil {
+		if typ, err = r.ReadRC(); err != nil {
 			return w, err
 		}
 		w.Type = typ
 		var sm int32
 		{
 			var raw uint32
-			if raw, err = r.readBL(); err != nil { // selection_marker（BLd 有符号）
+			if raw, err = r.ReadBL(); err != nil { // selection_marker（BLd 有符号）
 				return w, err
 			}
 			sm = int32(raw)
 		}
 		w.SelectionMarker = sm
 		var c uint16
-		if c, err = r.readBS(); err != nil { // color（FIELD_CAST BS→BL）
+		if c, err = r.ReadBS(); err != nil { // color（FIELD_CAST BS→BL）
 			return w, err
 		}
 		w.Color = int64(c)
 		{
 			var raw uint32
-			if raw, err = r.readBL(); err != nil { // acis_index（BLd 有符号）
+			if raw, err = r.ReadBL(); err != nil { // acis_index（BLd 有符号）
 				return w, err
 			}
 			w.AcisIndex = int32(raw)
 		}
-		numPoints, err := r.readBL()
+		numPoints, err := r.ReadBL()
 		if err != nil {
 			return w, err
 		}
@@ -2012,22 +2013,22 @@ func decodeAcisWireframe(r *bitStream, a *entAcis) error {
 			return w, fmt.Errorf("cad: ACIS 线框点数异常 %d", numPoints)
 		}
 		for i := uint32(0); i < numPoints; i++ {
-			if _, _, _, err = r.read3BD(); err != nil {
+			if _, _, _, err = r.Read3BD(); err != nil {
 				return w, err
 			}
 		}
-		if v, err = r.readB(); err != nil { // transform_present
+		if v, err = r.ReadB(); err != nil { // transform_present
 			return w, err
 		}
 		w.TransformPresent = v != 0
 		if v != 0 {
 			for k := 0; k < 5; k++ {
-				if _, _, _, err = r.read3BD(); err != nil {
+				if _, _, _, err = r.Read3BD(); err != nil {
 					return w, err
 				}
 			}
 			for k := 0; k < 3; k++ {
-				if v, err = r.readB(); err != nil {
+				if v, err = r.ReadB(); err != nil {
 					return w, err
 				}
 				switch k {
@@ -2042,7 +2043,7 @@ func decodeAcisWireframe(r *bitStream, a *entAcis) error {
 		}
 		return w, nil
 	}
-	if a.numWires, err = r.readBL(); err != nil {
+	if a.numWires, err = r.ReadBL(); err != nil {
 		return err
 	}
 	if a.numWires > 1_000_000 {
@@ -2055,7 +2056,7 @@ func decodeAcisWireframe(r *bitStream, a *entAcis) error {
 		}
 		a.wires = append(a.wires, w)
 	}
-	if a.numSilhouettes, err = r.readBL(); err != nil {
+	if a.numSilhouettes, err = r.ReadBL(); err != nil {
 		return err
 	}
 	if a.numSilhouettes > 1_000_000 {
@@ -2063,25 +2064,25 @@ func decodeAcisWireframe(r *bitStream, a *entAcis) error {
 	}
 	for i := uint32(0); i < a.numSilhouettes; i++ {
 		sil := acisSilhouette{}
-		if sil.VpID, err = r.readBL(); err != nil { // vp_id
+		if sil.VpID, err = r.ReadBL(); err != nil { // vp_id
 			return err
 		}
 		for k := 0; k < 3; k++ {
-			if _, _, _, err = r.read3BD(); err != nil { // vp_target/dir/up
+			if _, _, _, err = r.Read3BD(); err != nil { // vp_target/dir/up
 				return err
 			}
 		}
-		if v, err = r.readB(); err != nil { // vp_perspective
+		if v, err = r.ReadB(); err != nil { // vp_perspective
 			return err
 		}
 		sil.VpPerspective = v != 0
-		if v, err = r.readB(); err != nil { // has_wires
+		if v, err = r.ReadB(); err != nil { // has_wires
 			return err
 		}
 		sil.HasWires = v != 0
 		if v != 0 {
 			var nw uint32
-			if nw, err = r.readBL(); err != nil {
+			if nw, err = r.ReadBL(); err != nil {
 				return err
 			}
 			if nw > 1_000_000 {
@@ -2108,24 +2109,24 @@ func decodeAcisWireframe(r *bitStream, a *entAcis) error {
 // 字符串区内为顺序排列的 TU 串（正文、标签等），空串是合法元素
 // （chuandongzhou ATTRIB text_value="" 后紧跟 tag 实证），一并返回，
 // 读取失败即止。
-func readStringAreaStrings(r *bitStream, head *commonEntityHead, max int) []string {
+func readStringAreaStrings(r *bitstream.BitStream, head *commonEntityHead, max int) []string {
 	if head.objSizeBit < 34 {
 		return nil
 	}
 	r2 := *r
-	r2.setBitPos(head.objSizeBit - 1)
-	hs, err := r2.readB()
+	r2.SetBitPos(head.objSizeBit - 1)
+	hs, err := r2.ReadB()
 	if err != nil || hs != 1 {
 		return nil
 	}
-	r2.setBitPos(head.objSizeBit - 17)
-	ds, err := r2.readRS()
+	r2.SetBitPos(head.objSizeBit - 17)
+	ds, err := r2.ReadRS()
 	if err != nil {
 		return nil
 	}
 	if ds&0x8000 != 0 {
-		r2.setBitPos(head.objSizeBit - 33)
-		hi, e := r2.readRS()
+		r2.SetBitPos(head.objSizeBit - 33)
+		hi, e := r2.ReadRS()
 		if e != nil {
 			return nil
 		}
@@ -2139,30 +2140,30 @@ func readStringAreaStrings(r *bitStream, head *commonEntityHead, max int) []stri
 	pos := areaStart
 	for i := 0; i < max; i++ {
 		r3 := *r
-		r3.setBitPos(uint64(pos))
-		s, e := r3.readTU()
+		r3.SetBitPos(uint64(pos))
+		s, e := r3.ReadTU()
 		if e != nil {
 			break
 		}
 		out = append(out, s)
-		pos = int64(r3.tellBits())
+		pos = int64(r3.TellBits())
 	}
 	return out
 }
 
 // decodeSolidTolerant R13/R14 SOLID/TRACE：R13 头部偶有 1 位长度抖动，
 // 首次解码结果坐标量级异常（denormal 型错位读数）时回退 1 位重试。
-func decodeSolidTolerant(r *bitStream, head *commonEntityHead, trace bool) (any, error) {
-	savedByte, savedBit := r.cursor()
+func decodeSolidTolerant(r *bitstream.BitStream, head *commonEntityHead, trace bool) (any, error) {
+	savedByte, savedBit := r.Cursor()
 	ent, err := decodeSolid(r, head, trace)
 	if err == nil {
 		if s, ok := ent.(*entSolid); ok && entitySolidSane(s) {
 			return ent, nil
 		}
 	}
-	r.restore(savedByte, savedBit)
+	r.Restore(savedByte, savedBit)
 	r2 := *r
-	bytePos, bitPos := r2.cursor()
+	bytePos, bitPos := r2.Cursor()
 	if bytePos == 0 && bitPos == 0 {
 		// 实体数据起点已在位 0：无从回退 1 位，按首遍结果返回
 		if err == nil {
@@ -2171,9 +2172,9 @@ func decodeSolidTolerant(r *bitStream, head *commonEntityHead, trace bool) (any,
 		return nil, err
 	}
 	if bitPos == 0 {
-		r2.restore(bytePos-1, 7)
+		r2.Restore(bytePos-1, 7)
 	} else {
-		r2.restore(bytePos, bitPos-1)
+		r2.Restore(bytePos, bitPos-1)
 	}
 	ent2, err2 := decodeSolid(&r2, head, trace)
 	if err2 == nil {
@@ -2194,8 +2195,8 @@ func decodeSolidTolerant(r *bitStream, head *commonEntityHead, trace bool) (any,
 // LibreDWG 规范少 1 位 mode 前缀（thickness 码位与后续 BE flag 位合并消费），
 // 导致起止角错位读出天文值。首选常规读法，角度不合理时翻转 BT 语义重试
 // （实体数据起点不动，center/radius 读取不受影响）。
-func decodeArcTolerant(r *bitStream, head *commonEntityHead) (any, error) {
-	savedByte, savedBit := r.cursor()
+func decodeArcTolerant(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
+	savedByte, savedBit := r.Cursor()
 	ent, err := decodeArc(r, head)
 	if err == nil {
 		if a, ok := ent.(*entArc); ok && arcAnglesSane(a) {
@@ -2203,8 +2204,8 @@ func decodeArcTolerant(r *bitStream, head *commonEntityHead) (any, error) {
 		}
 	}
 	r2 := *r
-	r2.restore(savedByte, savedBit)
-	r2.legacyBT = !r2.legacyBT
+	r2.Restore(savedByte, savedBit)
+	r2.LegacyBT = !r2.LegacyBT
 	ent2, err2 := decodeArc(&r2, head)
 	if err2 == nil {
 		if a, ok := ent2.(*entArc); ok && arcAnglesSane(a) {

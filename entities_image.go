@@ -5,7 +5,10 @@
 // IMAGE 布局经 dwgread -v9 对 test-data 各版本 Leader.dwg 现场核对。
 package cad
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
+)
 
 // entImage 栅格图像实体（AcDbRasterImage）。
 type entImage struct {
@@ -33,10 +36,10 @@ type entImage struct {
 // （dwgread trace 核对：hdl 序列 reactors/xdic/prev/next/layer/imagedef/
 // imagedefreactor，主体字段按 dat 流独立推进）。主体后的未记载位
 // （padding 等）按 objSizeBit 截断跳过。
-func decodeImageVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
+func decodeImageVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
 	img := &entImage{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
-	if img.classVersion, err = r.readBL(); err != nil {
+	if img.classVersion, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
 	if img.classVersion > 10 {
@@ -51,42 +54,42 @@ func decodeImageVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, 
 	if img.vvec, err = read3pt(r); err != nil {
 		return nil, err
 	}
-	if img.imageSize.x, err = r.readRD(); err != nil {
+	if img.imageSize.x, err = r.ReadRD(); err != nil {
 		return nil, err
 	}
-	if img.imageSize.y, err = r.readRD(); err != nil {
+	if img.imageSize.y, err = r.ReadRD(); err != nil {
 		return nil, err
 	}
-	if img.displayProps, err = r.readBS(); err != nil {
+	if img.displayProps, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
 	var v uint8
-	if v, err = r.readB(); err != nil {
+	if v, err = r.ReadB(); err != nil {
 		return nil, err
 	}
 	img.clipping = v != 0
-	if img.brightness, err = r.readRC(); err != nil {
+	if img.brightness, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
-	if img.contrast, err = r.readRC(); err != nil {
+	if img.contrast, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
-	if img.fade, err = r.readRC(); err != nil {
+	if img.fade, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
 	if ver >= verR2010 {
-		cm, err2 := r.readB() // clip_mode（R2010+）
+		cm, err2 := r.ReadB() // clip_mode（R2010+）
 		if err2 != nil {
 			return nil, err2
 		}
 		img.clipMode = uint8(cm)
 	}
-	if img.clipBoundaryType, err = r.readBS(); err != nil {
+	if img.clipBoundaryType, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
 	numVerts := uint32(2) // 矩形边界固定两角
 	if img.clipBoundaryType != 1 {
-		if numVerts, err = r.readBL(); err != nil {
+		if numVerts, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
 	}
@@ -95,10 +98,10 @@ func decodeImageVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, 
 	}
 	for i := uint32(0); i < numVerts; i++ {
 		var p point2
-		if p.x, err = r.readRD(); err != nil {
+		if p.x, err = r.ReadRD(); err != nil {
 			return nil, err
 		}
-		if p.y, err = r.readRD(); err != nil {
+		if p.y, err = r.ReadRD(); err != nil {
 			return nil, err
 		}
 		img.clipVerts = append(img.clipVerts, p)
@@ -106,7 +109,7 @@ func decodeImageVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, 
 	owner, layer := decodeOwnerLayer(r, head)
 	img.owner, img.layer = owner, layer
 	// handle 流：owner/layer 之后的公共序列后为 imagedef(5) 与 imagedefreactor(3)
-	r.setBitPos(head.objSizeBit)
+	r.SetBitPos(head.objSizeBit)
 	if _, layer2, e := parseCommonEntityHandles(r, head); e == nil {
 		img.layer = layer2
 	}
@@ -150,29 +153,29 @@ type entOleFrame struct {
 // data TF + [lock_aspect RC（R2000b+）]（dwg.spec DWG_ENTITY (OLE2FRAME)）。
 // 注意 dwgVersion 枚举按容器路径排序（verR2000=0），R2000b+ 判定用
 // 「非 R13/R14」口径而非大小比较。
-func decodeOle2FrameVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
+func decodeOle2FrameVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
 	ole := &entOle2Frame{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
-	if ole.oleType, err = r.readBS(); err != nil {
+	if ole.oleType, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
 	r2000b := ver != verR13 && ver != verR14
 	if r2000b {
-		if ole.mode, err = r.readBS(); err != nil {
+		if ole.mode, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
 	}
-	if ole.dataSize, err = r.readBL(); err != nil {
+	if ole.dataSize, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
 	if ole.dataSize > oleDataMaxSize {
 		return nil, fmt.Errorf("cad: OLE2FRAME data_size 异常 %d", ole.dataSize)
 	}
-	if ole.data, err = r.readRCS(int(ole.dataSize)); err != nil {
+	if ole.data, err = r.ReadRCS(int(ole.dataSize)); err != nil {
 		return nil, err
 	}
 	if r2000b {
-		if ole.lockAspect, err = r.readRC(); err != nil {
+		if ole.lockAspect, err = r.ReadRC(); err != nil {
 			return nil, err
 		}
 	}
@@ -209,21 +212,21 @@ type entProxyEntity struct {
 // （长度取公共头 preview_size）+ 原始数据位捕获（当前位置到 hdlpos 的全部
 // 位，即 LibreDWG DECODER 的 data_numbits/data）+ handle 流剩余句柄全量
 // 记为 objids（LibreDWG num_objids 循环口径）。
-func decodeProxyEntityVer(r *bitStream, head *commonEntityHead, dataEnd uint64, ver dwgVersion) (any, error) {
+func decodeProxyEntityVer(r *bitstream.BitStream, head *commonEntityHead, dataEnd uint64, ver dwgVersion) (any, error) {
 	px := &entProxyEntity{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
-	if px.proxyID, err = r.readBL(); err != nil {
+	if px.proxyID, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
 	if ver >= verR2018 {
-		if px.dwgVersionNum, err = r.readBL(); err != nil {
+		if px.dwgVersionNum, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
-		if px.maintVersion, err = r.readBL(); err != nil {
+		if px.maintVersion, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
 	} else {
-		if px.version, err = r.readBL(); err != nil {
+		if px.version, err = r.ReadBL(); err != nil {
 			return nil, err
 		}
 		px.maintVersion = px.version >> 8
@@ -231,7 +234,7 @@ func decodeProxyEntityVer(r *bitStream, head *commonEntityHead, dataEnd uint64, 
 	}
 	if ver != verR13 && ver != verR14 {
 		var v uint8
-		if v, err = r.readB(); err != nil {
+		if v, err = r.ReadB(); err != nil {
 			return nil, err
 		}
 		px.fromDxf = v != 0
@@ -239,18 +242,18 @@ func decodeProxyEntityVer(r *bitStream, head *commonEntityHead, dataEnd uint64, 
 	// proxy_data_size 即公共头 preview_size（spec DXF_OR_PRINT else 分支）
 	px.proxyDataSize = uint32(len(head.preview))
 	if px.proxyDataSize > 0 {
-		if px.proxyData, err = r.readRCS(int(px.proxyDataSize)); err != nil {
+		if px.proxyData, err = r.ReadRCS(int(px.proxyDataSize)); err != nil {
 			return nil, err
 		}
 	}
 	// 原始数据位捕获：当前位置到 hdlpos（head.objSizeBit）的全部位
-	if pos := r.tellBits(); head.objSizeBit > pos && head.objSizeBit <= dataEnd {
+	if pos := r.TellBits(); head.objSizeBit > pos && head.objSizeBit <= dataEnd {
 		n := head.objSizeBit - pos
 		if n > proxyDataMaxBits {
 			return nil, fmt.Errorf("cad: PROXY_ENTITY data 位长异常 %d", n)
 		}
 		px.dataNumBits = uint32(n)
-		if px.data, err = r.readBitsBytes(int((n + 7) / 8)); err != nil {
+		if px.data, err = r.ReadBitsBytes(int((n + 7) / 8)); err != nil {
 			return nil, err
 		}
 	}
@@ -258,9 +261,9 @@ func decodeProxyEntityVer(r *bitStream, head *commonEntityHead, dataEnd uint64, 
 	px.owner, px.layer = owner, layer
 	// handle 流剩余句柄全量收集（LibreDWG while(hdl_dat->byte < hdl_dat->size) 口径，
 	// 含尾部 CRC 字节被当作句柄的差异，与参考实现一致）
-	r.setBitPos(head.objSizeBit)
+	r.SetBitPos(head.objSizeBit)
 	if _, _, e := parseCommonEntityHandles(r, head); e == nil {
-		for r.tellBits()+8 <= dataEnd {
+		for r.TellBits()+8 <= dataEnd {
 			h, e := readHandleReference(r, head.handle)
 			if e != nil {
 				break
@@ -274,24 +277,24 @@ func decodeProxyEntityVer(r *bitStream, head *commonEntityHead, dataEnd uint64, 
 
 // decodeOleFrameVer OLEFRAME：flag BS + [mode BS（R2000b+）] + data_size BL +
 // data TF（dwg.spec DWG_ENTITY (OLEFRAME)）。
-func decodeOleFrameVer(r *bitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
+func decodeOleFrameVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion) (any, error) {
 	ole := &entOleFrame{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
-	if ole.flag, err = r.readBS(); err != nil {
+	if ole.flag, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
 	if ver != verR13 && ver != verR14 {
-		if ole.mode, err = r.readBS(); err != nil {
+		if ole.mode, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
 	}
-	if ole.dataSize, err = r.readBL(); err != nil {
+	if ole.dataSize, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
 	if ole.dataSize > oleDataMaxSize {
 		return nil, fmt.Errorf("cad: OLEFRAME data_size 异常 %d", ole.dataSize)
 	}
-	if ole.data, err = r.readRCS(int(ole.dataSize)); err != nil {
+	if ole.data, err = r.ReadRCS(int(ole.dataSize)); err != nil {
 		return nil, err
 	}
 	owner, layer := decodeOwnerLayer(r, head)
@@ -319,76 +322,76 @@ type entUnderlay struct {
 }
 
 // decodeUnderlayVer 底图引用解码（三个 UNDERLAY 类共用布局）。
-func decodeUnderlayVer(r *bitStream, head *commonEntityHead) (any, error) {
+func decodeUnderlayVer(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
 	u := &entUnderlay{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	trOn := cadTraceHandle != 0 && cadTraceHandle == head.handle
 	var err error
-	pos := r.tellBits()
+	pos := r.TellBits()
 	if u.extrusion, err = read3pt(r); err != nil {
 		return nil, err
 	}
 	if trOn {
-		cadTraceField(trOn, pos, r.tellBits(), "extrusion", fmt.Sprintf("(%v,%v,%v)", u.extrusion.x, u.extrusion.y, u.extrusion.z))
+		cadTraceField(trOn, pos, r.TellBits(), "extrusion", fmt.Sprintf("(%v,%v,%v)", u.extrusion.x, u.extrusion.y, u.extrusion.z))
 	}
-	pos = r.tellBits()
+	pos = r.TellBits()
 	if u.insPt, err = read3pt(r); err != nil {
 		return nil, err
 	}
 	if trOn {
-		cadTraceField(trOn, pos, r.tellBits(), "ins_pt", fmt.Sprintf("(%v,%v,%v)", u.insPt.x, u.insPt.y, u.insPt.z))
+		cadTraceField(trOn, pos, r.TellBits(), "ins_pt", fmt.Sprintf("(%v,%v,%v)", u.insPt.x, u.insPt.y, u.insPt.z))
 	}
-	pos = r.tellBits()
-	if u.angle, err = r.readBD(); err != nil {
+	pos = r.TellBits()
+	if u.angle, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
 	if trOn {
-		cadTraceField(trOn, pos, r.tellBits(), "angle", fmt.Sprintf("%v", u.angle))
+		cadTraceField(trOn, pos, r.TellBits(), "angle", fmt.Sprintf("%v", u.angle))
 	}
-	pos = r.tellBits()
+	pos = r.TellBits()
 	if u.scale, err = read3pt(r); err != nil {
 		return nil, err
 	}
 	if trOn {
-		cadTraceField(trOn, pos, r.tellBits(), "scale", fmt.Sprintf("(%v,%v,%v)", u.scale.x, u.scale.y, u.scale.z))
+		cadTraceField(trOn, pos, r.TellBits(), "scale", fmt.Sprintf("(%v,%v,%v)", u.scale.x, u.scale.y, u.scale.z))
 	}
-	pos = r.tellBits()
-	if u.flag, err = r.readRC(); err != nil {
+	pos = r.TellBits()
+	if u.flag, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
-	cadTraceFieldInt(trOn, pos, r.tellBits(), "flag", int64(u.flag))
-	pos = r.tellBits()
+	cadTraceFieldInt(trOn, pos, r.TellBits(), "flag", int64(u.flag))
+	pos = r.TellBits()
 	var c, f uint8
-	if c, err = r.readRC(); err != nil {
+	if c, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
 	u.contrast = int8(c)
-	cadTraceFieldInt(trOn, pos, r.tellBits(), "contrast", int64(u.contrast))
-	pos = r.tellBits()
-	if f, err = r.readRC(); err != nil {
+	cadTraceFieldInt(trOn, pos, r.TellBits(), "contrast", int64(u.contrast))
+	pos = r.TellBits()
+	if f, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
 	u.fade = int8(f)
-	cadTraceFieldInt(trOn, pos, r.tellBits(), "fade", int64(u.fade))
-	pos = r.tellBits()
+	cadTraceFieldInt(trOn, pos, r.TellBits(), "fade", int64(u.fade))
+	pos = r.TellBits()
 	var numClip uint32
-	if numClip, err = r.readBL(); err != nil {
+	if numClip, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
-	cadTraceFieldInt(trOn, pos, r.tellBits(), "num_clip_verts", int64(numClip))
+	cadTraceFieldInt(trOn, pos, r.TellBits(), "num_clip_verts", int64(numClip))
 	if numClip > 5000 { // VALUEOUTOFBOUNDS(5000) 对齐
 		return nil, fmt.Errorf("cad: UNDERLAY 裁剪顶点数异常 %d", numClip)
 	}
 	for i := uint32(0); i < numClip; i++ {
 		var p point2
-		if p.x, err = r.readRD(); err != nil {
+		if p.x, err = r.ReadRD(); err != nil {
 			return nil, err
 		}
-		if p.y, err = r.readRD(); err != nil {
+		if p.y, err = r.ReadRD(); err != nil {
 			return nil, err
 		}
 		u.clipVerts = append(u.clipVerts, p)
 		if trOn {
-			cadTraceField(trOn, 0, r.tellBits(), fmt.Sprintf("clip[%d]", i), fmt.Sprintf("(%v,%v)", p.x, p.y))
+			cadTraceField(trOn, 0, r.TellBits(), fmt.Sprintf("clip[%d]", i), fmt.Sprintf("(%v,%v)", p.x, p.y))
 		}
 	}
 	// 0.14 实测（2004/Underlay.dwg trace）：clip_verts 之后直接进
@@ -398,7 +401,7 @@ func decodeUnderlayVer(r *bitStream, head *commonEntityHead) (any, error) {
 	owner, layer := decodeOwnerLayer(r, head)
 	u.owner, u.layer = owner, layer
 	// handle 流：公共序列后为 definition_id（code 340）
-	r.setBitPos(head.objSizeBit)
+	r.SetBitPos(head.objSizeBit)
 	if _, layer2, e := parseCommonEntityHandles(r, head); e == nil {
 		u.layer = layer2
 	}

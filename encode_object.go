@@ -6,6 +6,7 @@ package cad
 
 import (
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"os"
 	"strings"
 )
@@ -16,7 +17,7 @@ import (
 // RawHandleBits（handle 流原样），对一切有专门解码器的类型位级往返。
 // 返回 body 字节与 dat/handle 分界位（即 LibreDWG 语义的 bitsize）。
 func encodeInternalObjectR2000(g *objGeneric, typeCode uint16) ([]byte, uint64, error) {
-	w := newEncWriter()
+	w := bitstream.NewEncWriter()
 	_ = typeCode
 	if g.headRawBits == "" {
 		return nil, 0, fmt.Errorf("cad: round-trip 缺少 headRawBits")
@@ -26,73 +27,73 @@ func encodeInternalObjectR2000(g *objGeneric, typeCode uint16) ([]byte, uint64, 
 		// headRawBits（dataStartBit 起的专有字段段）+ RawHandleBits
 		// （handle-stream 段）原样回放，与源 body 布局同构
 		if g.preBits != "" {
-			w.writeBitsString(g.preBits)
+			w.WriteBitsString(g.preBits)
 		}
-		w.writeBitsString(g.headRawBits)
-		datEnd := w.tellBits()
-		w.writeBitsString(g.RawHandleBits)
-		return w.bytes(), datEnd, nil
+		w.WriteBitsString(g.headRawBits)
+		datEnd := w.TellBits()
+		w.WriteBitsString(g.RawHandleBits)
+		return w.Bytes(), datEnd, nil
 	}
 	// R2000-R2007 内联 RL 语义：RL bitsize 占位（body 位 0 起字节对齐，
 	// dat 写完后回填小端 4 字节）
-	w.writeRL(0)
+	w.WriteRL(0)
 	// H/EED/公共头/专有字段原始位串原样写回（与源对象位级一致）
-	w.writeBitsString(g.headRawBits)
+	w.WriteBitsString(g.headRawBits)
 	// dat 重编码位级校验：dat 结束位 + 前导位（RL bitsize 字段在原始
 	// body 内的起点）应等于源对象的 bitsize（body 内 handle 流起点）
-	datEnd := w.tellBits()
+	datEnd := w.TellBits()
 	if g.ObjSizeBit != 0 && datEnd+g.hdOffsetBits != g.ObjSizeBit {
 		return nil, 0, fmt.Errorf("cad: round-trip dat 位长不一致 %d+%d != %d", datEnd, g.hdOffsetBits, g.ObjSizeBit)
 	}
 	// 回填 bitsize RL（位 0 起字节对齐，小端 4 字节，值 = dat 位长）
-	w.data[0] = uint8(datEnd)
-	w.data[1] = uint8(datEnd >> 8)
-	w.data[2] = uint8(datEnd >> 16)
-	w.data[3] = uint8(datEnd >> 24)
+	w.Data[0] = uint8(datEnd)
+	w.Data[1] = uint8(datEnd >> 8)
+	w.Data[2] = uint8(datEnd >> 16)
+	w.Data[3] = uint8(datEnd >> 24)
 	// handle 流原始位串原样写回（含 owner/reactors/xdic 与尾部 padding，
 	// 位级与源对象一致）
-	w.writeBitsString(g.RawHandleBits)
-	return w.bytes(), datEnd, nil
+	w.WriteBitsString(g.RawHandleBits)
+	return w.Bytes(), datEnd, nil
 }
 
 // encodeXdataItems 将 xdataItem 列表编码为扩展数据字节区
 // （与 decodeXdataItems 对称；r2007Plus 决定字符串的 UTF-16 形态）。
-func encodeXdataItems(w *encWriter, items []xdataItem, r2007Plus bool) error {
+func encodeXdataItems(w *bitstream.EncWriter, items []xdataItem, r2007Plus bool) error {
 	for _, it := range items {
-		w.writeRS(uint16(it.Code))
+		w.WriteRS(uint16(it.Code))
 		switch it.Kind {
 		case xdataString:
 			if r2007Plus {
-				units := utf16Encode(it.Str)
-				w.writeRS(uint16(len(units)))
+				units := bitstream.Utf16Encode(it.Str)
+				w.WriteRS(uint16(len(units)))
 				for _, u := range units {
-					w.writeRS(u)
+					w.WriteRS(u)
 				}
 			} else {
 				b := []byte(it.Str)
-				w.writeRS(uint16(len(b)))
-				w.writeRC(30) // ANSI_1252 语义由调用侧保证；空串场景无影响
-				w.writeTF(b)
+				w.WriteRS(uint16(len(b)))
+				w.WriteRC(30) // ANSI_1252 语义由调用侧保证；空串场景无影响
+				w.WriteTF(b)
 			}
 		case xdataReal:
-			w.writeRD(it.Float)
+			w.WriteRD(it.Float)
 		case xdataBool, xdataInt8:
-			w.writeRC(uint8(it.Int))
+			w.WriteRC(uint8(it.Int))
 		case xdataInt16:
-			w.writeRS(uint16(it.Int))
+			w.WriteRS(uint16(it.Int))
 		case xdataInt32:
-			w.writeRL(uint32(it.Int))
+			w.WriteRL(uint32(it.Int))
 		case xdataInt64:
-			w.writeRLL(uint64(it.Int))
+			w.WriteRLL(uint64(it.Int))
 		case xdataPoint3D:
 			for _, f := range it.Point {
-				w.writeRD(f)
+				w.WriteRD(f)
 			}
 		case xdataBinary:
-			w.writeRC(uint8(len(it.Bytes)))
-			w.writeTF(it.Bytes)
+			w.WriteRC(uint8(len(it.Bytes)))
+			w.WriteTF(it.Bytes)
 		case xdataHandle:
-			w.writeRLL(uint64(it.Int))
+			w.WriteRLL(uint64(it.Int))
 		default:
 			return fmt.Errorf("cad: xdata 未知类型 %d", it.Kind)
 		}
@@ -104,79 +105,79 @@ func encodeXdataItems(w *encWriter, items []xdataItem, r2007Plus bool) error {
 // （两遍法：先编码 xdata items 得字节数，再整编含 BL 压缩长度的完整流）。
 // EED 维持跳过语义（对称写终止 BS 0）；objid 句柄值为占位。
 func encodeXrecordR2000(x *objXrecord, ver dwgVersion) ([]byte, error) {
-	writeHead := func(w *encWriter) {
-		w.writeRL(0) // bitsize 占位
+	writeHead := func(w *bitstream.EncWriter) {
+		w.WriteRL(0) // bitsize 占位
 		dbg := os.Getenv("CAD_DECODE_DBG") != ""
 		if dbg {
-			fmt.Fprintf(os.Stderr, "[dS] RL @%d\n", w.tellBits())
+			fmt.Fprintf(os.Stderr, "[dS] RL @%d\n", w.TellBits())
 		}
 		switch {
 		case x.handle == 0:
-			w.writeH(0, 0, 0)
+			w.WriteH(0, 0, 0)
 		case x.handle <= 0xFF:
-			w.writeH(0, 1, x.handle)
+			w.WriteH(0, 1, x.handle)
 		case x.handle <= 0xFFFF:
-			w.writeH(0, 2, x.handle)
+			w.WriteH(0, 2, x.handle)
 		case x.handle <= 0xFFFFFF:
-			w.writeH(0, 3, x.handle)
+			w.WriteH(0, 3, x.handle)
 		default:
-			w.writeH(0, 4, x.handle)
+			w.WriteH(0, 4, x.handle)
 		}
-		w.writeBS(0) // EED 终止（XRECORD 路径解码端为跳过语义）
+		w.WriteBS(0) // EED 终止（XRECORD 路径解码端为跳过语义）
 	}
 	// 第一遍：编码 xdata items 得字节数
-	tmp := newEncWriter()
+	tmp := bitstream.NewEncWriter()
 	if err := encodeXdataItems(tmp, x.xdata, ver >= verR2007); err != nil {
 		return nil, err
 	}
-	xdBytes := tmp.bytes()
+	xdBytes := tmp.Bytes()
 
-	w := newEncWriter()
+	w := bitstream.NewEncWriter()
 	writeHead(w)
-	w.writeBL(uint32(x.numReactors)) // num_reactors（解码端在 EED 后、xdata_size 前读取）
-	w.writeBL(uint32(len(xdBytes)))
+	w.WriteBL(uint32(x.numReactors)) // num_reactors（解码端在 EED 后、xdata_size 前读取）
+	w.WriteBL(uint32(len(xdBytes)))
 	if err := encodeXdataItems(w, x.xdata, ver >= verR2007); err != nil {
 		return nil, err
 	}
 	if ver != verR13 && ver != verR14 {
-		w.writeBS(x.cloning)
+		w.WriteBS(x.cloning)
 		// num_objid_handles 非流字段：objid 句柄原样保留在
 		// RawHandleBits 位串中，无需单独写出
 	}
 	// dat 结束，回填 bitsize（body 位 0 起字节对齐，小端 4 字节）
-	datEnd := w.tellBits()
-	w.data[0] = uint8(datEnd)
-	w.data[1] = uint8(datEnd >> 8)
-	w.data[2] = uint8(datEnd >> 16)
-	w.data[3] = uint8(datEnd >> 24)
+	datEnd := w.TellBits()
+	w.Data[0] = uint8(datEnd)
+	w.Data[1] = uint8(datEnd >> 8)
+	w.Data[2] = uint8(datEnd >> 16)
+	w.Data[3] = uint8(datEnd >> 24)
 	// handle 流原始位串原样写回（owner/reactors/objid 全在原始位串中）
-	w.writeBitsString(x.RawHandleBits)
-	for w.bit != 0 {
-		w.writeBitsMsb(0, 1)
+	w.WriteBitsString(x.RawHandleBits)
+	for w.Bit != 0 {
+		w.WriteBitsMsb(0, 1)
 	}
-	return w.bytes(), nil
+	return w.Bytes(), nil
 }
 
 // encodeDictionaryR2000 重编码 R2000-R2007 家族的 DICTIONARY/
 // DICTIONARYWDFLT 对象 body。
 func encodeDictionaryR2000(d *objDictionary, ver dwgVersion, withDefault bool) ([]byte, error) {
-	w := newEncWriter()
-	w.writeRL(0) // bitsize 占位
+	w := bitstream.NewEncWriter()
+	w.WriteRL(0) // bitsize 占位
 	dbg := os.Getenv("CAD_DECODE_DBG") != ""
 	if dbg {
-		fmt.Fprintf(os.Stderr, "[dS] RL @%d\n", w.tellBits())
+		fmt.Fprintf(os.Stderr, "[dS] RL @%d\n", w.TellBits())
 	}
 	switch {
 	case d.handle == 0:
-		w.writeH(0, 0, 0)
+		w.WriteH(0, 0, 0)
 	case d.handle <= 0xFF:
-		w.writeH(0, 1, d.handle)
+		w.WriteH(0, 1, d.handle)
 	case d.handle <= 0xFFFF:
-		w.writeH(0, 2, d.handle)
+		w.WriteH(0, 2, d.handle)
 	case d.handle <= 0xFFFFFF:
-		w.writeH(0, 3, d.handle)
+		w.WriteH(0, 3, d.handle)
 	default:
-		w.writeH(0, 4, d.handle)
+		w.WriteH(0, 4, d.handle)
 	}
 	// EED：结构化字段非空时对称重建，否则写终止 BS 0
 	if len(d.EedFields) != 0 {
@@ -184,42 +185,42 @@ func encodeDictionaryR2000(d *objDictionary, ver dwgVersion, withDefault bool) (
 			return nil, err
 		}
 	} else {
-		w.writeBS(0)
+		w.WriteBS(0)
 	}
 	if dbg {
-		fmt.Fprintf(os.Stderr, "[dS] EED @%d\n", w.tellBits())
+		fmt.Fprintf(os.Stderr, "[dS] EED @%d\n", w.TellBits())
 	}
-	w.writeBL(uint32(d.numReactors))
+	w.WriteBL(uint32(d.numReactors))
 	if dbg {
-		fmt.Fprintf(os.Stderr, "[dS] nR @%d\n", w.tellBits())
+		fmt.Fprintf(os.Stderr, "[dS] nR @%d\n", w.TellBits())
 	}
-	w.writeBL(uint32(d.numItems))
+	w.WriteBL(uint32(d.numItems))
 	if dbg {
-		fmt.Fprintf(os.Stderr, "[dS] nI @%d\n", w.tellBits())
+		fmt.Fprintf(os.Stderr, "[dS] nI @%d\n", w.TellBits())
 	}
-	w.writeBS(d.cloning)
+	w.WriteBS(d.cloning)
 	if dbg {
-		fmt.Fprintf(os.Stderr, "[dS] cloning @%d\n", w.tellBits())
+		fmt.Fprintf(os.Stderr, "[dS] cloning @%d\n", w.TellBits())
 	}
 	if d.isHardOwner {
-		w.writeRC(1)
+		w.WriteRC(1)
 	} else {
-		w.writeRC(0)
+		w.WriteRC(0)
 	}
 	if dbg {
-		fmt.Fprintf(os.Stderr, "[dS] hard @%d\n", w.tellBits())
+		fmt.Fprintf(os.Stderr, "[dS] hard @%d\n", w.TellBits())
 	}
 	// texts：TV 长度含 \0 与否因写入方而异，优先按解码时记录的原始
 	// 位串原样写回；无记录（合成场景）时按 writeTV（长度不含 \0）
 	if d.textRawBits != "" {
-		w.writeBitsString(d.textRawBits)
+		w.WriteBitsString(d.textRawBits)
 	} else {
 		for _, s := range d.texts {
-			w.writeTV(s)
+			w.WriteTV(s)
 		}
 	}
 	// dat 重编码位级校验（ObjSizeBit 含 OT 类型码位）
-	datEnd := w.tellBits()
+	datEnd := w.TellBits()
 	if os.Getenv("CAD_DECODE_DBG") != "" {
 		fmt.Fprintf(os.Stderr, "[dRT] dat=%d objSizeBit=%d handle=%d nR=%d nI=%d texts=%q cloning=%d hard=%v rawHB=%d\n",
 			datEnd, d.objSizeBit, d.handle, d.numReactors, d.numItems, d.texts, d.cloning, d.isHardOwner, len(d.RawHandleBits))
@@ -229,17 +230,17 @@ func encodeDictionaryR2000(d *objDictionary, ver dwgVersion, withDefault bool) (
 	}
 	// bitsize RL 回填（dat 结束位，小端 4 字节；重解码端按 RL 值
 	// 定位 handle 流起点）
-	w.data[0] = uint8(datEnd)
-	w.data[1] = uint8(datEnd >> 8)
-	w.data[2] = uint8(datEnd >> 16)
-	w.data[3] = uint8(datEnd >> 24)
+	w.Data[0] = uint8(datEnd)
+	w.Data[1] = uint8(datEnd >> 8)
+	w.Data[2] = uint8(datEnd >> 16)
+	w.Data[3] = uint8(datEnd >> 24)
 	// handle 流原始位串原样写回（owner/reactors/xdic/itemhandles/
 	// defaultid 全在原始位串中）
-	w.writeBitsString(d.RawHandleBits)
-	for w.bit != 0 {
-		w.writeBitsMsb(0, 1)
+	w.WriteBitsString(d.RawHandleBits)
+	for w.Bit != 0 {
+		w.WriteBitsMsb(0, 1)
 	}
-	return w.bytes(), nil
+	return w.Bytes(), nil
 }
 
 // eedInt64Field EED 标量字段（.code/.size）的安全类型断言：
@@ -345,29 +346,29 @@ func gfHandleValues(v any) []uint64 {
 
 // gfWritePoint2/Point3/TV/RC/BS/BL 字段原语包装（缺省值兜底写出，保证
 // 位流布局与读侧解码器逐字段对齐）。
-func gfWriteTV(w *encWriter, g *objGeneric, key string) { w.writeTV(gfStr(g, key)) }
-func gfWriteRC(w *encWriter, g *objGeneric, key string) { w.writeRC(uint8(gfNum(g, key))) }
-func gfWriteBS(w *encWriter, g *objGeneric, key string) { w.writeBS(uint16(gfNum(g, key))) }
-func gfWriteBL(w *encWriter, g *objGeneric, key string) { w.writeBL(uint32(gfNum(g, key))) }
-func gfWriteBD(w *encWriter, g *objGeneric, key string) { w.writeBD(gfReal(g, key)) }
-func gfWriteB(w *encWriter, g *objGeneric, key string)  { w.writeB(gfBool(g, key)) }
+func gfWriteTV(w *bitstream.EncWriter, g *objGeneric, key string) { w.WriteTV(gfStr(g, key)) }
+func gfWriteRC(w *bitstream.EncWriter, g *objGeneric, key string) { w.WriteRC(uint8(gfNum(g, key))) }
+func gfWriteBS(w *bitstream.EncWriter, g *objGeneric, key string) { w.WriteBS(uint16(gfNum(g, key))) }
+func gfWriteBL(w *bitstream.EncWriter, g *objGeneric, key string) { w.WriteBL(uint32(gfNum(g, key))) }
+func gfWriteBD(w *bitstream.EncWriter, g *objGeneric, key string) { w.WriteBD(gfReal(g, key)) }
+func gfWriteB(w *bitstream.EncWriter, g *objGeneric, key string)  { w.WriteB(gfBool(g, key)) }
 
 // gfWritePoint2 BD 压缩点（gfRead Point2 的逆）。
-func gfWritePoint2(w *encWriter, g *objGeneric, key string) {
+func gfWritePoint2(w *bitstream.EncWriter, g *objGeneric, key string) {
 	p := gfPoint(g, key, 2)
-	w.writeBD(p[0])
-	w.writeBD(p[1])
+	w.WriteBD(p[0])
+	w.WriteBD(p[1])
 }
 
 // gfWritePoint2RD raw double 点（gfRead Point2RD 的逆）。
-func gfWritePoint2RD(w *encWriter, g *objGeneric, key string) {
+func gfWritePoint2RD(w *bitstream.EncWriter, g *objGeneric, key string) {
 	p := gfPoint(g, key, 2)
-	w.writeRD(p[0])
-	w.writeRD(p[1])
+	w.WriteRD(p[0])
+	w.WriteRD(p[1])
 }
 
 // gfWritePoint3 3BD 点（gfRead Point3 的逆）。
-func gfWritePoint3(w *encWriter, g *objGeneric, key string) {
+func gfWritePoint3(w *bitstream.EncWriter, g *objGeneric, key string) {
 	p := gfPoint(g, key, 3)
 	write3BD(w, point3{p[0], p[1], p[2]})
 }
@@ -375,14 +376,14 @@ func gfWritePoint3(w *encWriter, g *objGeneric, key string) {
 // gfWriteCommonTableFlags COMMON_TABLE_FLAGS 写出（readCommonTableFlags
 // 的逆）：pre-R2004 为 B is_xref_ref + BS is_xref_resolved + B is_xref_dep，
 // R2004+ 仅 BS is_xref_resolved。
-func gfWriteCommonTableFlags(w *encWriter, g *objGeneric, ver dwgVersion) {
+func gfWriteCommonTableFlags(w *bitstream.EncWriter, g *objGeneric, ver dwgVersion) {
 	if verUntilR2004(ver) {
-		w.writeB(gfBool(g, "is_xref_ref"))
-		w.writeBS(uint16(gfNum(g, "is_xref_resolved")))
-		w.writeB(gfBool(g, "is_xref_dep"))
+		w.WriteB(gfBool(g, "is_xref_ref"))
+		w.WriteBS(uint16(gfNum(g, "is_xref_resolved")))
+		w.WriteB(gfBool(g, "is_xref_dep"))
 		return
 	}
-	w.writeBS(uint16(gfNum(g, "is_xref_resolved")))
+	w.WriteBS(uint16(gfNum(g, "is_xref_resolved")))
 }
 
 // gfWriteXdataItemsFromFields 从 Fields 的 xdata 数组（JSON 形态
@@ -451,8 +452,8 @@ func gfWriteXdataItemsFromFields(g *objGeneric) []xdataItem {
 
 // gfWriters 通用对象专有字段写出器（镜像读侧 decoders 表的 R2000 分支；
 // 缺席类型无正向编码器，collectForwardObjects 跳过）。
-var gfWriters = map[string]func(w *encWriter, g *objGeneric, ver dwgVersion) error{
-	"PLACEHOLDER":      func(*encWriter, *objGeneric, dwgVersion) error { return nil }, // 无专有字段
+var gfWriters = map[string]func(w *bitstream.EncWriter, g *objGeneric, ver dwgVersion) error{
+	"PLACEHOLDER":      func(*bitstream.EncWriter, *objGeneric, dwgVersion) error { return nil }, // 无专有字段
 	"DICTIONARYVAR":    gfWriteDictionaryVar,
 	"SCALE":            gfWriteScale,
 	"GROUP":            gfWriteGroup,
@@ -465,7 +466,7 @@ var gfWriters = map[string]func(w *encWriter, g *objGeneric, ver dwgVersion) err
 
 // gfWriteDictionaryVar DICTIONARYVAR：RC schema(280) + T strvalue
 // （镜像 decodeGenericDICTIONARYVAR）。
-func gfWriteDictionaryVar(w *encWriter, g *objGeneric, _ dwgVersion) error {
+func gfWriteDictionaryVar(w *bitstream.EncWriter, g *objGeneric, _ dwgVersion) error {
 	gfWriteRC(w, g, "schema")
 	gfWriteTV(w, g, "strvalue")
 	return nil
@@ -473,7 +474,7 @@ func gfWriteDictionaryVar(w *encWriter, g *objGeneric, _ dwgVersion) error {
 
 // gfWriteScale SCALE：BS flag(70) + T name(300) + BD paper_units(140) +
 // BD drawing_units(141) + B is_unit_scale(290)（镜像 decodeGenericSCALE）。
-func gfWriteScale(w *encWriter, g *objGeneric, _ dwgVersion) error {
+func gfWriteScale(w *bitstream.EncWriter, g *objGeneric, _ dwgVersion) error {
 	gfWriteBS(w, g, "flag")
 	gfWriteTV(w, g, "name")
 	gfWriteBD(w, g, "paper_units")
@@ -485,23 +486,23 @@ func gfWriteScale(w *encWriter, g *objGeneric, _ dwgVersion) error {
 // gfWriteGroup GROUP：T name + BS unnamed + BS selectable + BL num_groups
 // （gold JSON 无 num_groups 键，以 groups 数组长度为准；组员句柄在
 // handle 流，镜像 decodeGenericGROUP）。
-func gfWriteGroup(w *encWriter, g *objGeneric, _ dwgVersion) error {
+func gfWriteGroup(w *bitstream.EncWriter, g *objGeneric, _ dwgVersion) error {
 	gfWriteTV(w, g, "name")
 	gfWriteBS(w, g, "unnamed")
 	gfWriteBS(w, g, "selectable")
-	w.writeBL(uint32(len(gfHandleValues(g.Field("groups")))))
+	w.WriteBL(uint32(len(gfHandleValues(g.Field("groups")))))
 	return nil
 }
 
 // gfWriteWipeoutVariables WIPEOUTVARIABLES：BS display_frame(70)。
-func gfWriteWipeoutVariables(w *encWriter, g *objGeneric, _ dwgVersion) error {
+func gfWriteWipeoutVariables(w *bitstream.EncWriter, g *objGeneric, _ dwgVersion) error {
 	gfWriteBS(w, g, "display_frame")
 	return nil
 }
 
 // gfWriteTableRecordSimple 简单表记录（APPID）：T name +
 // COMMON_TABLE_FLAGS + RC unknown（镜像 decodeGenericAPPID）。
-func gfWriteTableRecordSimple(w *encWriter, g *objGeneric, ver dwgVersion) error {
+func gfWriteTableRecordSimple(w *bitstream.EncWriter, g *objGeneric, ver dwgVersion) error {
 	gfWriteTV(w, g, "name")
 	gfWriteCommonTableFlags(w, g, ver)
 	gfWriteRC(w, g, "unknown")
@@ -511,7 +512,7 @@ func gfWriteTableRecordSimple(w *encWriter, g *objGeneric, ver dwgVersion) error
 // gfWriteStyle STYLE 表记录：T name + COMMON_TABLE_FLAGS + is_shape/
 // is_vertical B + 字体尺寸组 + T font_file/bigfont_file
 // （镜像 decodeGenericSTYLE 的 R2000 分支）。
-func gfWriteStyle(w *encWriter, g *objGeneric, ver dwgVersion) error {
+func gfWriteStyle(w *bitstream.EncWriter, g *objGeneric, ver dwgVersion) error {
 	gfWriteTV(w, g, "name")
 	gfWriteCommonTableFlags(w, g, ver)
 	gfWriteB(w, g, "is_shape")
@@ -529,17 +530,17 @@ func gfWriteStyle(w *encWriter, g *objGeneric, ver dwgVersion) error {
 // gfWriteXrecordGeneric objGeneric 形态的 XRECORD（JSON 来源）：BL
 // num_reactors（公共段）之后为 BL xdata_size + xdata items（两遍法，
 // 同 encodeXrecordR2000 布局）+ BS cloning。objid 句柄在 handle 流占位。
-func gfWriteXrecordGeneric(w *encWriter, g *objGeneric, ver dwgVersion) error {
+func gfWriteXrecordGeneric(w *bitstream.EncWriter, g *objGeneric, ver dwgVersion) error {
 	items := gfWriteXdataItemsFromFields(g)
-	tmp := newEncWriter()
+	tmp := bitstream.NewEncWriter()
 	if err := encodeXdataItems(tmp, items, ver >= verR2007); err != nil {
 		return err
 	}
 	// xdata_size 以重编码实际字节数为准（写读自洽，不回放 gold 声明值）
-	w.writeBL(uint32(len(tmp.bytes())))
-	w.writeTF(tmp.bytes())
+	w.WriteBL(uint32(len(tmp.Bytes())))
+	w.WriteTF(tmp.Bytes())
 	if ver != verR13 && ver != verR14 {
-		w.writeBS(uint16(gfNum(g, "cloning")))
+		w.WriteBS(uint16(gfNum(g, "cloning")))
 	}
 	return nil
 }
@@ -547,7 +548,7 @@ func gfWriteXrecordGeneric(w *encWriter, g *objGeneric, ver dwgVersion) error {
 // gfWriteLayout LAYOUT（R2000 分支，镜像 decodeGenericLAYOUT 的步骤序）：
 // plotsettings 系 + plotview_name T（R13~R2000）+ layout 头 + INSBASE/
 // LIMMIN/LIMMAX/UCS 段 + EXTMIN/EXTMAX；num_viewports 为 R2004a+ 不写。
-func gfWriteLayout(w *encWriter, g *objGeneric, ver dwgVersion) error {
+func gfWriteLayout(w *bitstream.EncWriter, g *objGeneric, ver dwgVersion) error {
 	gfWriteTV(w, g, "plotsettings.printer_cfg_file")
 	gfWriteTV(w, g, "plotsettings.paper_size")
 	gfWriteBS(w, g, "plotsettings.plot_flags")
@@ -656,22 +657,22 @@ func encodeForwardGenericObject(g *objGeneric, ver dwgVersion, dyn map[string]ui
 		}
 		typeCode = code
 	}
-	w := newEncWriter()
-	w.writeBS(typeCode)
-	rlOff := w.tellBits()
-	w.writeRL(0)
+	w := bitstream.NewEncWriter()
+	w.WriteBS(typeCode)
+	rlOff := w.TellBits()
+	w.WriteRL(0)
 	writeHdlSelf(w, g.Handle)
-	w.writeBS(0) // EED 终止
+	w.WriteBS(0) // EED 终止
 	// num_reactors：Fields 的 reactors 数组长度（JSON 来源 NumReactors 未填）
 	numReactors := len(gfHandleValues(g.Field("reactors")))
 	if g.NumReactors != 0 {
 		numReactors = g.NumReactors
 	}
-	w.writeBL(uint32(numReactors))
+	w.WriteBL(uint32(numReactors))
 	if err := write(w, g, ver); err != nil {
 		return nil, err
 	}
-	patchRL(w, rlOff, uint32(w.tellBits()))
+	patchRL(w, rlOff, uint32(w.TellBits()))
 	// handle 流：owner（Fields 的 ownerhandle 兜底）→ reactors（空引用
 	// 占位）→ xdic → 类型专属引用
 	owner := g.Owner
@@ -705,15 +706,15 @@ func encodeForwardGenericObject(g *objGeneric, ver dwgVersion, dyn map[string]ui
 			writeHdlNull(w)
 		}
 	}
-	w.alignByte()
-	return w.bytes(), nil
+	w.AlignByte()
+	return w.Bytes(), nil
 }
 
 // encodeEEDFields 将 parseEEDChain 产出的结构化 EED 字段对称编码回
 // EED 位流（含各块 size BS + handle H + (code RC + value)* 序列与
 // 终止 BS 0）。键形如 eed[i].size/handle/code/value；带 size 的元素
 // 为块首。
-func encodeEEDFields(w *encWriter, fields []objField) error {
+func encodeEEDFields(w *bitstream.EncWriter, fields []objField) error {
 	// 按数组下标分组
 	type pair struct {
 		code  int64
@@ -766,51 +767,51 @@ func encodeEEDFields(w *encWriter, fields []objField) error {
 			return fmt.Errorf("cad: EED 字段下标 %d 缺失", i)
 		}
 		if p.first {
-			w.writeBS(uint16(p.size))
+			w.WriteBS(uint16(p.size))
 			if len(p.hdl) == 3 {
-				w.writeH(uint8(p.hdl[0]), uint8(p.hdl[1]), p.hdl[2])
+				w.WriteH(uint8(p.hdl[0]), uint8(p.hdl[1]), p.hdl[2])
 			}
 		}
-		w.writeRC(uint8(p.code))
+		w.WriteRC(uint8(p.code))
 		switch p.code {
 		case 0:
 			s, _ := p.val.(string)
 			b := []byte(s)
-			w.writeRC(uint8(len(b)))
-			w.writeRS(30) // 码页占位（ANSI_1252 语义）
-			w.writeTF(b)
+			w.WriteRC(uint8(len(b)))
+			w.WriteRS(30) // 码页占位（ANSI_1252 语义）
+			w.WriteTF(b)
 		case 1:
-			w.writeRS(uint16(p.val.(int64)))
+			w.WriteRS(uint16(p.val.(int64)))
 		case 2:
-			w.writeRC(uint8(p.val.(int64)))
+			w.WriteRC(uint8(p.val.(int64)))
 		case 3:
-			w.writeRS(0)
-			w.writeRLL(uint64(p.val.(int64)))
+			w.WriteRS(0)
+			w.WriteRLL(uint64(p.val.(int64)))
 		case 4:
 			b, _ := p.val.(string)
 			raw := make([]byte, len(b)/2)
 			for j := 0; j < len(raw); j++ {
 				fmt.Sscanf(b[2*j:2*j+2], "%02X", &raw[j])
 			}
-			w.writeRC(uint8(len(raw)))
-			w.writeTF(raw)
+			w.WriteRC(uint8(len(raw)))
+			w.WriteTF(raw)
 		case 5:
-			w.writeRLL(uint64(p.val.(int64)))
+			w.WriteRLL(uint64(p.val.(int64)))
 		case 10, 11, 12, 13, 14, 15:
 			pt, _ := p.val.([]float64)
 			for _, f := range pt {
-				w.writeRD(f)
+				w.WriteRD(f)
 			}
 		case 40, 41, 42:
-			w.writeRD(p.val.(float64))
+			w.WriteRD(p.val.(float64))
 		case 70:
-			w.writeRS(uint16(int16(p.val.(int64))))
+			w.WriteRS(uint16(int16(p.val.(int64))))
 		case 71:
-			w.writeRL(uint32(int32(p.val.(int64))))
+			w.WriteRL(uint32(int32(p.val.(int64))))
 		default:
-			w.writeRC(0)
+			w.WriteRC(0)
 		}
 	}
-	w.writeBS(0) // 链终止
+	w.WriteBS(0) // 链终止
 	return nil
 }

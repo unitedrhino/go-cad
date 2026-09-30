@@ -6,6 +6,7 @@ package cad
 
 import (
 	"bytes"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"testing"
 )
 
@@ -13,44 +14,44 @@ import (
 // handle 流起点位（datEnd）。RL objSize 先占位，构造完成后按位回填
 // （其起点在 BS 类型码之后的位 10 处，非字节对齐）。
 func buildSyntheticLineR2000() ([]byte, uint64) {
-	w := newEncWriter()
-	w.writeBS(0x13)    // BS 类型码：LINE=0x13（R2000 非 R2010+ 布局）
-	w.writeRL(0)       // RL objSize 占位（单位=位，body 局部 handle 流起点）
-	w.writeH(0, 1, 50) // 主句柄
-	w.writeBS(0)       // EED 链终止
-	w.writeB(false)    // 图形图像不存在
-	w.writeBB(2)       // entmode=2（模型空间）
-	w.writeBL(0)       // num_reactors=0
-	w.writeB(true)     // nolinks 位（R2000 布局该位为 noLinks）
+	w := bitstream.NewEncWriter()
+	w.WriteBS(0x13)    // BS 类型码：LINE=0x13（R2000 非 R2010+ 布局）
+	w.WriteRL(0)       // RL objSize 占位（单位=位，body 局部 handle 流起点）
+	w.WriteH(0, 1, 50) // 主句柄
+	w.WriteBS(0)       // EED 链终止
+	w.WriteB(false)    // 图形图像不存在
+	w.WriteBB(2)       // entmode=2（模型空间）
+	w.WriteBL(0)       // num_reactors=0
+	w.WriteB(true)     // nolinks 位（R2000 布局该位为 noLinks）
 	// 颜色段（parseEntityColorHead）：no_links=0 → mode=1 → RC 索引
-	w.writeB(false)
-	w.writeB(true)
-	w.writeRC(7)
-	w.writeBD(1.0) // ltype_scale
-	w.writeBB(0)   // ltype_flags=0（handle 流不读 ltype 句柄）
-	w.writeBB(0)   // plotstyle_flags=0
-	w.writeBS(0)   // invisibility
-	w.writeRC(25)  // lineweight（R2000+LW 布局尾部 RC）
+	w.WriteB(false)
+	w.WriteB(true)
+	w.WriteRC(7)
+	w.WriteBD(1.0) // ltype_scale
+	w.WriteBB(0)   // ltype_flags=0（handle 流不读 ltype 句柄）
+	w.WriteBB(0)   // plotstyle_flags=0
+	w.WriteBS(0)   // invisibility
+	w.WriteRC(25)  // lineweight（R2000+LW 布局尾部 RC）
 	// LINE 几何（decodeLine）：z 对 + 差分端点 + BT 厚度 + BE 挤出。
 	// DD 字段手工按 readDD 语义写（0=same/3=full RD）：bitwriter.go 的
 	// writeDD 与 readDD 分支错位（缺陷另行记录），不使用
-	w.writeB(false) // z_is_zero=0 → 读 z 对
-	w.writeRD(1.0)  // x_start
-	w.writeBB(3)    // x_end：DD full RD
-	w.writeRD(2.0)
-	w.writeRD(3.0) // y_start
-	w.writeBB(3)   // y_end：DD full RD
-	w.writeRD(4.0)
-	w.writeRD(0.0) // z_start
-	w.writeBB(0)   // z_end：DD same as default
-	w.writeB(true) // thickness BT flag=1 → 0
-	w.writeB(true) // extrusion BE flag=1 → (0,0,1)
-	datEnd := w.tellBits()
+	w.WriteB(false) // z_is_zero=0 → 读 z 对
+	w.WriteRD(1.0)  // x_start
+	w.WriteBB(3)    // x_end：DD full RD
+	w.WriteRD(2.0)
+	w.WriteRD(3.0) // y_start
+	w.WriteBB(3)   // y_end：DD full RD
+	w.WriteRD(4.0)
+	w.WriteRD(0.0) // z_start
+	w.WriteBB(0)   // z_end：DD same as default
+	w.WriteB(true) // thickness BT flag=1 → 0
+	w.WriteB(true) // extrusion BE flag=1 → (0,0,1)
+	datEnd := w.TellBits()
 	// handle 流：mode=2 无 owner、reactors=0、xdicMissing=false → xdic + layer
-	w.writeH(4, 1, 10) // xdicobjhandle
-	w.writeH(4, 1, 11) // layer
-	for w.bit != 0 {
-		w.writeBitsMsb(0, 1)
+	w.WriteH(4, 1, 10) // xdicobjhandle
+	w.WriteH(4, 1, 11) // layer
+	for w.Bit != 0 {
+		w.WriteBitsMsb(0, 1)
 	}
 	// 按位回填 RL objSize = datEnd（位 10 起 32 位小端）
 	const objSizePos = 10
@@ -59,13 +60,13 @@ func buildSyntheticLineR2000() ([]byte, uint64) {
 		for j := 0; j < 8; j++ {
 			idx := objSizePos + 8*i + j
 			if (v>>(7-j))&1 == 1 {
-				w.data[idx/8] |= 1 << (7 - idx%8)
+				w.Data[idx/8] |= 1 << (7 - idx%8)
 			} else {
-				w.data[idx/8] &^= 1 << (7 - idx%8)
+				w.Data[idx/8] &^= 1 << (7 - idx%8)
 			}
 		}
 	}
-	return w.bytes(), datEnd
+	return w.Bytes(), datEnd
 }
 
 func TestEntityRoundTripSynthetic(t *testing.T) {
@@ -80,7 +81,7 @@ func TestEntityRoundTripSynthetic(t *testing.T) {
 		t.Fatalf("typeCode: %X != 0x13", h.typeCode)
 	}
 	rr := rec.bodyBitStream()
-	rr.setBitPos(h.dataStartBit)
+	rr.SetBitPos(h.dataStartBit)
 	e1, err := decodeEntityFieldsVer(rr, h, 50, rec.size, "LINE", 0x13, verR2000, 0, nil, "")
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
@@ -135,7 +136,7 @@ func TestEntityRoundTripSynthetic(t *testing.T) {
 		t.Fatalf("重解码 parseObjHeader 失败: %v", err)
 	}
 	rr2 := rec2.bodyBitStream()
-	rr2.setBitPos(h2.dataStartBit)
+	rr2.SetBitPos(h2.dataStartBit)
 	e2, err := decodeEntityFieldsVer(rr2, h2, 50, rec2.size, "LINE", 0x13, verR2000, 0, nil, "")
 	if err != nil {
 		t.Fatalf("重解码失败: %v", err)

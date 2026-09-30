@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"math"
 	"os"
 	"strconv"
@@ -182,13 +183,13 @@ func probeLightingUnits(refs []objectRef, objectsData []byte, d *Document, dynam
 		r := rec.bodyBitStream()
 		switch h.typeCode {
 		case 0x2A:
-			r.setBitPos(h.dataStartBit)
+			r.SetBitPos(h.dataStartBit)
 			if dd, err := decodeDictionaryObject(r, rec, d.version, d.version >= verR2013); err == nil {
 				dicts[ref.handle] = dd
 			}
 		default:
 			if entityTypeName(h.typeCode, dynamicTypes) == "DICTIONARYVAR" {
-				r.setBitPos(h.dataStartBit)
+				r.SetBitPos(h.dataStartBit)
 				if g, err := decodeInternalObject(r, rec, d.version, d.version >= verR2013, h.typeCode, "DICTIONARYVAR", d.codepage); err == nil {
 					if v, ok := g.Field("strvalue").(string); ok {
 						vars[ref.handle] = v
@@ -248,7 +249,7 @@ func (d *Document) decodeObjects(fileData []byte) error {
 			continue
 		case 0x2A: // DICTIONARY
 			r := rec.bodyBitStream()
-			r.setBitPos(h.dataStartBit)
+			r.SetBitPos(h.dataStartBit)
 			if dd, err := decodeDictionaryObject(r, rec, d.version, d.version >= verR2013); err == nil {
 				d.dictionaries[ref.handle] = dd
 			} else if os.Getenv("CAD_DECODE_DBG") != "" {
@@ -257,7 +258,7 @@ func (d *Document) decodeObjects(fileData []byte) error {
 			continue
 		case 0x4F: // XRECORD
 			r := rec.bodyBitStream()
-			r.setBitPos(h.dataStartBit)
+			r.SetBitPos(h.dataStartBit)
 			if xx, err := decodeXrecordObject(r, rec, d.version, d.version >= verR2013); err == nil {
 				d.xrecords[ref.handle] = xx
 			} else if os.Getenv("CAD_DECODE_DBG") != "" {
@@ -270,7 +271,7 @@ func (d *Document) decodeObjects(fileData []byte) error {
 		if name == "" || !isEntityType(h.typeCode, dynamicTypes) {
 			if decodeInternalObjectOK(h.typeCode, name) {
 				r := rec.bodyBitStream()
-				r.setBitPos(h.dataStartBit)
+				r.SetBitPos(h.dataStartBit)
 				if g, err := decodeInternalObject(r, rec, d.version, d.version >= verR2013, h.typeCode, name, d.codepage); err == nil {
 					d.internalObjects[ref.handle] = g
 				} else if os.Getenv("CAD_DECODE_DBG") != "" {
@@ -284,7 +285,7 @@ func (d *Document) decodeObjects(fileData []byte) error {
 			continue
 		}
 		r := rec.bodyBitStream()
-		r.setBitPos(h.dataStartBit)
+		r.SetBitPos(h.dataStartBit)
 		if isVersionedEntityKind(name) {
 			// ACIS 系/WIPEOUT：版本感知专用解码（纳管进 entityByHandle）
 			ent, err := decodeVersionedEntity(r, h, ref.handle, name, d.version)
@@ -437,12 +438,12 @@ func isVersionedEntityKind(name string) bool {
 
 // decodeVersionedEntity 版本感知实体的扫描解码：与 decodeEntityFieldsVer
 // 同一候选扫描框架，主体解码按类型分发到 ACIS 系/WIPEOUT 专用解码器。
-func decodeVersionedEntity(r *bitStream, h objHeader, objHandle uint64, typeName string, ver dwgVersion) (any, error) {
+func decodeVersionedEntity(r *bitstream.BitStream, h objHeader, objHandle uint64, typeName string, ver dwgVersion) (any, error) {
 	dataEnd := h.rec.dataEndBit()
-	startByte, startBit := r.cursor()
+	startByte, startBit := r.Cursor()
 	base := uint64(startByte)*8 + uint64(startBit)
 	parsers := headParsersForVersion(ver)
-	ent, _, err := scanEntityBest(r, base, dataEnd, hdlSizeFieldBits(h), parsers, objHandle, h.rec.size, typeName, h.typeCode, func(r *bitStream, head *commonEntityHead) (any, error) {
+	ent, _, err := scanEntityBest(r, base, dataEnd, hdlSizeFieldBits(h), parsers, objHandle, h.rec.size, typeName, h.typeCode, func(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
 		switch typeName {
 		case "WIPEOUT":
 			return decodeWipeoutVer(r, head, ver)
@@ -610,14 +611,14 @@ func parseR2000Document(data []byte) (*Document, error) {
 			continue
 		case 0x2A: // DICTIONARY
 			r := rec.bodyBitStream()
-			r.setBitPos(h.dataStartBit)
+			r.SetBitPos(h.dataStartBit)
 			if dd, err := decodeDictionaryObject(r, rec, doc.version, false); err == nil {
 				doc.dictionaries[ref.handle] = dd
 			}
 			continue
 		case 0x4F: // XRECORD
 			r := rec.bodyBitStream()
-			r.setBitPos(h.dataStartBit)
+			r.SetBitPos(h.dataStartBit)
 			if xx, err := decodeXrecordObject(r, rec, doc.version, false); err == nil {
 				doc.xrecords[ref.handle] = xx
 			}
@@ -627,7 +628,7 @@ func parseR2000Document(data []byte) (*Document, error) {
 		if name == "XRECORD" {
 			// R13/R14 的 XRECORD 为类类型（type≥500 经类名表解析），非固定 0x4F
 			r := rec.bodyBitStream()
-			r.setBitPos(h.dataStartBit)
+			r.SetBitPos(h.dataStartBit)
 			if xx, err := decodeXrecordObject(r, rec, doc.version, false); err == nil {
 				doc.xrecords[ref.handle] = xx
 			}
@@ -638,7 +639,7 @@ func parseR2000Document(data []byte) (*Document, error) {
 			// 落到下方实体解码
 		} else if decodeInternalObjectOK(h.typeCode, name) {
 			r := rec.bodyBitStream()
-			r.setBitPos(h.dataStartBit)
+			r.SetBitPos(h.dataStartBit)
 			if g, err := decodeInternalObject(r, rec, doc.version, false, h.typeCode, name, doc.codepage); err == nil {
 				doc.internalObjects[ref.handle] = g
 			} else if os.Getenv("CAD_DECODE_DBG") != "" {
@@ -649,7 +650,7 @@ func parseR2000Document(data []byte) (*Document, error) {
 			continue
 		}
 		r := rec.bodyBitStream()
-		r.setBitPos(h.dataStartBit)
+		r.SetBitPos(h.dataStartBit)
 		if isVersionedEntityKind(name) {
 			// ACIS 系/WIPEOUT：版本感知专用解码（纳管进 entityByHandle）
 			ent, err := decodeVersionedEntity(r, h, ref.handle, name, doc.version)
@@ -1265,7 +1266,7 @@ func DebugScanGoldLines(data []byte, gold map[uint64][6]float64) []string {
 			continue
 		}
 		r := rec.bodyBitStream()
-		r.setBitPos(h.dataStartBit)
+		r.SetBitPos(h.dataStartBit)
 		ent, err := decodeEntityFieldsVer(r, h, ref.handle, h.rec.size, "LINE", 30, verR2018, 0, nil, "")
 		if err != nil {
 			continue

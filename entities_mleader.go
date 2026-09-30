@@ -7,7 +7,10 @@
 // T 字符串存于记录尾字符串区（obj_string_stream），dat 不占位。
 package cad
 
-import "math"
+import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"math"
+)
 
 // mleaderCMC MULTILEADER 颜色字段：isTrue 标记 R2004+ 结构（BS index +
 // BL rgb + RC flag，含 method 修正与调色板反查），更早版本仅 BS 索引。
@@ -185,9 +188,9 @@ type entMLeader struct {
 // readMLeaderCMC 读颜色字段（对齐 LibreDWG bit_read_CMC 的版本分支）：
 // R2004+ 为 BS index + BL rgb + RC flag（flag>=4 非法清零；method 越界
 // 修正为 0xc2；index 按调色板反查覆盖），更早版本仅 BS 索引。
-func readMLeaderCMC(r *bitStream, ver dwgVersion) (mleaderCMC, error) {
+func readMLeaderCMC(r *bitstream.BitStream, ver dwgVersion) (mleaderCMC, error) {
 	var c mleaderCMC
-	idx, err := r.readBS()
+	idx, err := r.ReadBS()
 	if err != nil {
 		return c, err
 	}
@@ -196,12 +199,12 @@ func readMLeaderCMC(r *bitStream, ver dwgVersion) (mleaderCMC, error) {
 		return c, nil
 	}
 	c.isTrue = true
-	rgb, err := r.readBL()
+	rgb, err := r.ReadBL()
 	if err != nil {
 		return c, err
 	}
 	c.rgb = rgb
-	flag, err := r.readRC()
+	flag, err := r.ReadRC()
 	if err != nil {
 		return c, err
 	}
@@ -219,8 +222,8 @@ func readMLeaderCMC(r *bitStream, ver dwgVersion) (mleaderCMC, error) {
 }
 
 // readMLeader3BD 读 3BD 点。
-func readMLeader3BD(r *bitStream) (point3, error) {
-	x, y, z, err := r.read3BD()
+func readMLeader3BD(r *bitstream.BitStream) (point3, error) {
+	x, y, z, err := r.Read3BD()
 	if err != nil {
 		return point3{}, err
 	}
@@ -244,7 +247,7 @@ func (s *mleaderStrArea) next() string {
 }
 
 // decodeMLeader MULTILEADER 主体：公共头之后按 spec 顺序解码。
-func decodeMLeader(r *bitStream, head *commonEntityHead, ver dwgVersion, codepage uint16) (any, error) {
+func decodeMLeader(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion, codepage uint16) (any, error) {
 	m := &entMLeader{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	r2010 := ver >= verR2010
 	r2013 := ver >= verR2013
@@ -257,14 +260,14 @@ func decodeMLeader(r *bitStream, head *commonEntityHead, ver dwgVersion, codepag
 
 	if r2010 {
 		m.hasVersion = true
-		cv, err := r.readBS()
+		cv, err := r.ReadBS()
 		if err != nil {
 			return nil, err
 		}
 		m.classVersion = cv
 		// VALUEOUTOFBOUNDS(class_version, 10)：越界视为布局错位
 		if m.classVersion > 10 {
-			return nil, errUnexpectedEOF
+			return nil, bitstream.ErrUnexpectedEOF
 		}
 	}
 	if err := decodeMLeaderLeaders(r, m, ver, r2010); err != nil {
@@ -274,71 +277,71 @@ func decodeMLeader(r *bitStream, head *commonEntityHead, ver dwgVersion, codepag
 		return nil, err
 	}
 	if r2010 {
-		v, err := r.readBS()
+		v, err := r.ReadBS()
 		if err != nil {
 			return nil, err
 		}
 		m.ctx.textTop = v
-		if v, err = r.readBS(); err != nil {
+		if v, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
 		m.ctx.textBottom = v
 	}
 
 	var err error
-	if m.flags, err = r.readBL(); err != nil {
+	if m.flags, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
-	if m.mleaderType, err = r.readBS(); err != nil {
+	if m.mleaderType, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
 	if m.lineColor, err = readMLeaderCMC(r, ver); err != nil {
 		return nil, err
 	}
-	if lw, e := r.readBL(); e != nil {
+	if lw, e := r.ReadBL(); e != nil {
 		return nil, e
 	} else {
 		m.lineLinewt = int32(lw)
 	}
-	if b, e := r.readB(); e != nil {
+	if b, e := r.ReadB(); e != nil {
 		return nil, e
 	} else {
 		m.hasLanding = b == 1
 	}
-	if b, e := r.readB(); e != nil {
+	if b, e := r.ReadB(); e != nil {
 		return nil, e
 	} else {
 		m.hasDogleg = b == 1
 	}
-	if m.landingDist, err = r.readBD(); err != nil {
+	if m.landingDist, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
 	// NaN 防御（spec DECODER bit_isnan → 置 0）：防止垃圾位流污染导出
 	if math.IsNaN(m.landingDist) {
 		m.landingDist = 0
 	}
-	if m.arrowSize, err = r.readBD(); err != nil {
+	if m.arrowSize, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if m.styleContent, err = r.readBS(); err != nil {
+	if m.styleContent, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if m.textLeft, err = r.readBS(); err != nil {
+	if m.textLeft, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if m.textRight, err = r.readBS(); err != nil {
+	if m.textRight, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if m.textAngletype, err = r.readBS(); err != nil {
+	if m.textAngletype, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if m.textAlignment, err = r.readBS(); err != nil {
+	if m.textAlignment, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
 	if m.textColor, err = readMLeaderCMC(r, ver); err != nil {
 		return nil, err
 	}
-	if b, e := r.readB(); e != nil {
+	if b, e := r.ReadB(); e != nil {
 		return nil, e
 	} else {
 		m.hasTextFrame = b == 1
@@ -349,13 +352,13 @@ func decodeMLeader(r *bitStream, head *commonEntityHead, ver dwgVersion, codepag
 	if m.blockScale, err = readMLeader3BD(r); err != nil {
 		return nil, err
 	}
-	if m.blockRotation, err = r.readBD(); err != nil {
+	if m.blockRotation, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if m.styleAttachment, err = r.readBS(); err != nil {
+	if m.styleAttachment, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if b, e := r.readB(); e != nil {
+	if b, e := r.ReadB(); e != nil {
 		return nil, e
 	} else {
 		m.isAnnotative = b == 1
@@ -363,74 +366,74 @@ func decodeMLeader(r *bitStream, head *commonEntityHead, ver dwgVersion, codepag
 
 	// VERSIONS(R_14, R_2007)：箭头/块标签数组（R13 无该段，R2010b+ 移除）
 	if ver == verR14 || ver == verR2000 || ver == verR2004 || ver == verR2007 {
-		numArrowheads, e := r.readBL()
+		numArrowheads, e := r.ReadBL()
 		if e != nil {
 			return nil, e
 		}
 		if numArrowheads > 5000 {
-			return nil, errUnexpectedEOF
+			return nil, bitstream.ErrUnexpectedEOF
 		}
 		for i := uint32(0); i < numArrowheads; i++ {
 			var ah mleaderArrowhead
-			if b, e := r.readB(); e != nil {
+			if b, e := r.ReadB(); e != nil {
 				return nil, e
 			} else {
 				ah.isDefault = b == 1
 			}
 			m.arrowheads = append(m.arrowheads, ah)
 		}
-		numLabels, e := r.readBL()
+		numLabels, e := r.ReadBL()
 		if e != nil {
 			return nil, e
 		}
 		if numLabels > 5000 {
-			return nil, errUnexpectedEOF
+			return nil, bitstream.ErrUnexpectedEOF
 		}
 		for i := uint32(0); i < numLabels; i++ {
 			var bl mleaderBlockLabel
 			if ver >= verR2007 {
 				bl.labelText = strArea.next() // 字符串区，dat 不占位
 			} else {
-				if bl.labelText, e = r.readTV(codepage); e != nil {
+				if bl.labelText, e = r.ReadTV(codepage); e != nil {
 					return nil, e
 				}
 			}
-			if bl.uiIndex, e = r.readBS(); e != nil {
+			if bl.uiIndex, e = r.ReadBS(); e != nil {
 				return nil, e
 			}
-			if bl.width, e = r.readBD(); e != nil {
+			if bl.width, e = r.ReadBD(); e != nil {
 				return nil, e
 			}
 			m.blocklabels = append(m.blocklabels, bl)
 		}
-		if b, e := r.readB(); e != nil {
+		if b, e := r.ReadB(); e != nil {
 			return nil, e
 		} else {
 			m.isNegTextdir = b == 1
 		}
-		if m.ipeAlignment, err = r.readBS(); err != nil {
+		if m.ipeAlignment, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
-		if m.justification, err = r.readBS(); err != nil {
+		if m.justification, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
-		if m.scaleFactor, err = r.readBD(); err != nil {
+		if m.scaleFactor, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
 	}
 	if r2010 {
-		if m.attachDir, err = r.readBS(); err != nil {
+		if m.attachDir, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
-		if m.attachTop, err = r.readBS(); err != nil {
+		if m.attachTop, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
-		if m.attachBottom, err = r.readBS(); err != nil {
+		if m.attachBottom, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
 	}
 	if r2013 {
-		if b, e := r.readB(); e != nil {
+		if b, e := r.ReadB(); e != nil {
 			return nil, e
 		} else {
 			m.isTextExtended = b == 1
@@ -445,8 +448,8 @@ func decodeMLeader(r *bitStream, head *commonEntityHead, ver dwgVersion, codepag
 	//   R2010b+：lline ltype/arrow → content style/blockTable →
 	//     mleaderstyle → arrow_handle → text_style → block_style → line_ltype
 	// 句柄失败不阻断（审计不比对句柄键）。
-	savedByte, savedBit := r.cursor()
-	r.setBitPos(head.objSizeBit)
+	savedByte, savedBit := r.Cursor()
+	r.SetBitPos(head.objSizeBit)
 	if owner, layer, herr := parseCommonEntityHandles(r, head); herr == nil {
 		m.owner, m.layer = owner, layer
 		ok := true
@@ -486,7 +489,7 @@ func decodeMLeader(r *bitStream, head *commonEntityHead, ver dwgVersion, codepag
 					}
 				}
 			}
-			r.restore(savedByte, savedBit)
+			r.Restore(savedByte, savedBit)
 			return m, nil
 		}
 		for i := range m.ctx.leaders {
@@ -526,29 +529,29 @@ func decodeMLeader(r *bitStream, head *commonEntityHead, ver dwgVersion, codepag
 			}
 		}
 	}
-	r.restore(savedByte, savedBit)
+	r.Restore(savedByte, savedBit)
 	return m, nil
 }
 
 // decodeMLeaderLeaders ctx.num_leaders + 三层嵌套 REPEAT
 // （leaders→lines→breaks/points），数量越界视为布局错位。
-func decodeMLeaderLeaders(r *bitStream, m *entMLeader, ver dwgVersion, r2010 bool) error {
-	numLeaders, err := r.readBL()
+func decodeMLeaderLeaders(r *bitstream.BitStream, m *entMLeader, ver dwgVersion, r2010 bool) error {
+	numLeaders, err := r.ReadBL()
 	if err != nil {
 		return err
 	}
 	if numLeaders > 5000 {
-		return errUnexpectedEOF
+		return bitstream.ErrUnexpectedEOF
 	}
 	m.ctx.numLeaders = numLeaders
 	for i := uint32(0); i < numLeaders; i++ {
 		var node mleaderNode
 		var b uint8
-		if b, err = r.readB(); err != nil {
+		if b, err = r.ReadB(); err != nil {
 			return err
 		}
 		node.hasLastLeaderLinePoint = b == 1
-		if b, err = r.readB(); err != nil {
+		if b, err = r.ReadB(); err != nil {
 			return err
 		}
 		node.hasDogleg = b == 1
@@ -562,11 +565,11 @@ func decodeMLeaderLeaders(r *bitStream, m *entMLeader, ver dwgVersion, r2010 boo
 				return err
 			}
 		}
-		if node.numBreaks, err = r.readBL(); err != nil {
+		if node.numBreaks, err = r.ReadBL(); err != nil {
 			return err
 		}
 		if node.numBreaks > 5000 {
-			return errUnexpectedEOF
+			return bitstream.ErrUnexpectedEOF
 		}
 		for j := uint32(0); j < node.numBreaks; j++ {
 			var brk mleaderBreak
@@ -578,26 +581,26 @@ func decodeMLeaderLeaders(r *bitStream, m *entMLeader, ver dwgVersion, r2010 boo
 			}
 			node.breaks = append(node.breaks, brk)
 		}
-		if node.branchIndex, err = r.readBL(); err != nil {
+		if node.branchIndex, err = r.ReadBL(); err != nil {
 			return err
 		}
-		if node.doglegLength, err = r.readBD(); err != nil {
+		if node.doglegLength, err = r.ReadBD(); err != nil {
 			return err
 		}
-		if node.numLines, err = r.readBL(); err != nil {
+		if node.numLines, err = r.ReadBL(); err != nil {
 			return err
 		}
 		if node.numLines > 5000 {
-			return errUnexpectedEOF
+			return bitstream.ErrUnexpectedEOF
 		}
 		for j := uint32(0); j < node.numLines; j++ {
 			var line mleaderLine
 			var numPoints uint32
-			if numPoints, err = r.readBL(); err != nil {
+			if numPoints, err = r.ReadBL(); err != nil {
 				return err
 			}
 			if numPoints > 5000 {
-				return errUnexpectedEOF
+				return bitstream.ErrUnexpectedEOF
 			}
 			for k := uint32(0); k < numPoints; k++ {
 				var pt point3
@@ -606,11 +609,11 @@ func decodeMLeaderLeaders(r *bitStream, m *entMLeader, ver dwgVersion, r2010 boo
 				}
 				line.points = append(line.points, pt)
 			}
-			if line.numBreaks, err = r.readBL(); err != nil {
+			if line.numBreaks, err = r.ReadBL(); err != nil {
 				return err
 			}
 			if line.numBreaks > 5000 {
-				return errUnexpectedEOF
+				return bitstream.ErrUnexpectedEOF
 			}
 			for k := uint32(0); k < line.numBreaks; k++ {
 				var brk mleaderBreak
@@ -622,32 +625,32 @@ func decodeMLeaderLeaders(r *bitStream, m *entMLeader, ver dwgVersion, r2010 boo
 				}
 				line.breaks = append(line.breaks, brk)
 			}
-			if line.lineIndex, err = r.readBL(); err != nil {
+			if line.lineIndex, err = r.ReadBL(); err != nil {
 				return err
 			}
 			if r2010 {
-				if line.mleaderType, err = r.readBS(); err != nil {
+				if line.mleaderType, err = r.ReadBS(); err != nil {
 					return err
 				}
 				if line.color, err = readMLeaderCMC(r, ver); err != nil {
 					return err
 				}
-				if lw, e := r.readBL(); e != nil {
+				if lw, e := r.ReadBL(); e != nil {
 					return e
 				} else {
 					line.linewt = int32(lw)
 				}
-				if line.arrowSize, err = r.readBD(); err != nil {
+				if line.arrowSize, err = r.ReadBD(); err != nil {
 					return err
 				}
-				if line.flags, err = r.readBL(); err != nil {
+				if line.flags, err = r.ReadBL(); err != nil {
 					return err
 				}
 			}
 			node.lines = append(node.lines, line)
 		}
 		if r2010 {
-			if node.attachDir, err = r.readBS(); err != nil {
+			if node.attachDir, err = r.ReadBS(); err != nil {
 				return err
 			}
 		}
@@ -658,38 +661,38 @@ func decodeMLeaderLeaders(r *bitStream, m *entMLeader, ver dwgVersion, r2010 boo
 
 // decodeMLeaderContext MLEADER_CONTEXT_DATA_fields（非 DXF 顺序：leaders
 // 之后）：标量组 → txt/blk 内容联合 → base 三点 + is_normal_reversed。
-func decodeMLeaderContext(r *bitStream, m *entMLeader, ver dwgVersion, codepage uint16, strArea *mleaderStrArea) error {
+func decodeMLeaderContext(r *bitstream.BitStream, m *entMLeader, ver dwgVersion, codepage uint16, strArea *mleaderStrArea) error {
 	c := &m.ctx
 	var err error
-	if c.scaleFactor, err = r.readBD(); err != nil {
+	if c.scaleFactor, err = r.ReadBD(); err != nil {
 		return err
 	}
 	if c.contentBase, err = readMLeader3BD(r); err != nil {
 		return err
 	}
-	if c.textHeight, err = r.readBD(); err != nil {
+	if c.textHeight, err = r.ReadBD(); err != nil {
 		return err
 	}
-	if c.arrowSize, err = r.readBD(); err != nil {
+	if c.arrowSize, err = r.ReadBD(); err != nil {
 		return err
 	}
-	if c.landingGap, err = r.readBD(); err != nil {
+	if c.landingGap, err = r.ReadBD(); err != nil {
 		return err
 	}
-	if c.textLeft, err = r.readBS(); err != nil {
+	if c.textLeft, err = r.ReadBS(); err != nil {
 		return err
 	}
-	if c.textRight, err = r.readBS(); err != nil {
+	if c.textRight, err = r.ReadBS(); err != nil {
 		return err
 	}
-	if c.textAngletype, err = r.readBS(); err != nil {
+	if c.textAngletype, err = r.ReadBS(); err != nil {
 		return err
 	}
-	if c.textAlignment, err = r.readBS(); err != nil {
+	if c.textAlignment, err = r.ReadBS(); err != nil {
 		return err
 	}
 	var b uint8
-	if b, err = r.readB(); err != nil {
+	if b, err = r.ReadB(); err != nil {
 		return err
 	}
 	c.hasContentTxt = b == 1
@@ -700,7 +703,7 @@ func decodeMLeaderContext(r *bitStream, m *entMLeader, ver dwgVersion, codepage 
 		if ver >= verR2007 && strArea != nil {
 			t.defaultText = strArea.next()
 		} else {
-			if t.defaultText, err = r.readTV(codepage); err != nil {
+			if t.defaultText, err = r.ReadTV(codepage); err != nil {
 				return err
 			}
 		}
@@ -714,87 +717,87 @@ func decodeMLeaderContext(r *bitStream, m *entMLeader, ver dwgVersion, codepage 
 		if t.direction, err = readMLeader3BD(r); err != nil {
 			return err
 		}
-		if t.rotation, err = r.readBD(); err != nil {
+		if t.rotation, err = r.ReadBD(); err != nil {
 			return err
 		}
-		if t.width, err = r.readBD(); err != nil {
+		if t.width, err = r.ReadBD(); err != nil {
 			return err
 		}
-		if t.height, err = r.readBD(); err != nil {
+		if t.height, err = r.ReadBD(); err != nil {
 			return err
 		}
-		if t.lineSpacingFactor, err = r.readBD(); err != nil {
+		if t.lineSpacingFactor, err = r.ReadBD(); err != nil {
 			return err
 		}
-		if t.lineSpacingStyle, err = r.readBS(); err != nil {
+		if t.lineSpacingStyle, err = r.ReadBS(); err != nil {
 			return err
 		}
 		if t.color, err = readMLeaderCMC(r, ver); err != nil {
 			return err
 		}
-		if t.alignment, err = r.readBS(); err != nil {
+		if t.alignment, err = r.ReadBS(); err != nil {
 			return err
 		}
-		if t.flow, err = r.readBS(); err != nil {
+		if t.flow, err = r.ReadBS(); err != nil {
 			return err
 		}
 		if t.bgColor, err = readMLeaderCMC(r, ver); err != nil {
 			return err
 		}
-		if t.bgScale, err = r.readBD(); err != nil {
+		if t.bgScale, err = r.ReadBD(); err != nil {
 			return err
 		}
-		if t.bgTransparency, err = r.readBL(); err != nil {
+		if t.bgTransparency, err = r.ReadBL(); err != nil {
 			return err
 		}
-		if b, err = r.readB(); err != nil {
+		if b, err = r.ReadB(); err != nil {
 			return err
 		}
 		t.isBgFill = b == 1
-		if b, err = r.readB(); err != nil {
+		if b, err = r.ReadB(); err != nil {
 			return err
 		}
 		t.isBgMaskFill = b == 1
-		if t.colType, err = r.readBS(); err != nil {
+		if t.colType, err = r.ReadBS(); err != nil {
 			return err
 		}
-		if b, err = r.readB(); err != nil {
+		if b, err = r.ReadB(); err != nil {
 			return err
 		}
 		t.isHeightAuto = b == 1
-		if t.colWidth, err = r.readBD(); err != nil {
+		if t.colWidth, err = r.ReadBD(); err != nil {
 			return err
 		}
-		if t.colGutter, err = r.readBD(); err != nil {
+		if t.colGutter, err = r.ReadBD(); err != nil {
 			return err
 		}
-		if b, err = r.readB(); err != nil {
+		if b, err = r.ReadB(); err != nil {
 			return err
 		}
 		t.isColFlowReversed = b == 1
-		if t.numColSizes, err = r.readBL(); err != nil {
+		if t.numColSizes, err = r.ReadBL(); err != nil {
 			return err
 		}
 		if t.numColSizes > 5000 {
-			return errUnexpectedEOF
+			return bitstream.ErrUnexpectedEOF
 		}
 		for i := uint32(0); i < t.numColSizes; i++ {
 			var v float64
-			if v, err = r.readBD(); err != nil {
+			if v, err = r.ReadBD(); err != nil {
 				return err
 			}
 			t.colSizes = append(t.colSizes, v)
 		}
-		if b, err = r.readB(); err != nil {
+		if b, err = r.ReadB(); err != nil {
 			return err
 		}
 		t.wordBreak = b == 1
-		if b, err = r.readB(); err != nil {
+		if b, err = r.ReadB(); err != nil {
 			return err
 		}
 		t.unknown = b == 1
 	} else {
-		if b, err = r.readB(); err != nil {
+		if b, err = r.ReadB(); err != nil {
 			return err
 		}
 		c.hasContentBlk = b == 1
@@ -810,14 +813,14 @@ func decodeMLeaderContext(r *bitStream, m *entMLeader, ver dwgVersion, codepage 
 			if k.scale, err = readMLeader3BD(r); err != nil {
 				return err
 			}
-			if k.rotation, err = r.readBD(); err != nil {
+			if k.rotation, err = r.ReadBD(); err != nil {
 				return err
 			}
 			if k.color, err = readMLeaderCMC(r, ver); err != nil {
 				return err
 			}
 			for i := 0; i < 16; i++ {
-				if k.transform[i], err = r.readBD(); err != nil {
+				if k.transform[i], err = r.ReadBD(); err != nil {
 					return err
 				}
 			}
@@ -832,7 +835,7 @@ func decodeMLeaderContext(r *bitStream, m *entMLeader, ver dwgVersion, codepage 
 	if c.baseVert, err = readMLeader3BD(r); err != nil {
 		return err
 	}
-	if b, err = r.readB(); err != nil {
+	if b, err = r.ReadB(); err != nil {
 		return err
 	}
 	c.isNormalReversed = b == 1

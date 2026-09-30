@@ -4,7 +4,10 @@
 // 的消解策略：对每种前后未知位数的排列各自试解，按候选合理性评分择优。
 package cad
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
+)
 
 // layerColor LAYER 记录解析结果。name 为图层真名（DXF 写出与符号表
 // 消费方使用；渲染不需要，故历史路径未保存——R13-R2007 在扫描定位时
@@ -52,13 +55,13 @@ func decodeLayerRecordR2010Plus(rec *objectRecord, objHandle uint64, ver dwgVers
 	}
 	var lc layerColor
 	r := rec.bodyBitStream()
-	steps := []func(*bitStream) error{
-		func(r *bitStream) error { _, e := r.readUMC(); return e }, // handle-stream-size
-		func(r *bitStream) error { _, e := r.readOT(); return e },  // 类型码
-		func(r *bitStream) error { _, e := r.readH(); return e },   // 记录句柄
+	steps := []func(*bitstream.BitStream) error{
+		func(r *bitstream.BitStream) error { _, e := r.ReadUMC(); return e }, // handle-stream-size
+		func(r *bitstream.BitStream) error { _, e := r.ReadOT(); return e },  // 类型码
+		func(r *bitstream.BitStream) error { _, e := r.ReadH(); return e },   // 记录句柄
 		skipLayerEED,
-		func(r *bitStream) error { _, e := r.readBL(); return e }, // reactors
-		func(r *bitStream) error { _, e := r.readB(); return e },  // xdic missing flag
+		func(r *bitstream.BitStream) error { _, e := r.ReadBL(); return e }, // reactors
+		func(r *bitstream.BitStream) error { _, e := r.ReadB(); return e },  // xdic missing flag
 	}
 	for _, step := range steps {
 		if err := step(r); err != nil {
@@ -67,7 +70,7 @@ func decodeLayerRecordR2010Plus(rec *objectRecord, objHandle uint64, ver dwgVers
 	}
 	if ver == verR2013 || ver == verR2018 {
 		// ds binary 位（仅 R2013+/R2018，R2010 无）
-		if _, err := r.readB(); err != nil {
+		if _, err := r.ReadB(); err != nil {
 			return lc, err
 		}
 	}
@@ -90,21 +93,21 @@ func scanLayerRecordClassic(rec *objectRecord, objHandle uint64, ver dwgVersion)
 	var lastName string
 	for delta := uint64(0); delta <= 160; delta++ {
 		r := rec.bodyBitStream()
-		r.setBitPos(delta)
-		hd, e := r.readH()
-		if e != nil || hd.value != objHandle {
+		r.SetBitPos(delta)
+		hd, e := r.ReadH()
+		if e != nil || hd.Value != objHandle {
 			continue
 		}
 		if e := skipLayerEED(r); e != nil {
 			continue
 		}
-		if _, e := r.readBL(); e != nil { // reactors
+		if _, e := r.ReadBL(); e != nil { // reactors
 			continue
 		}
-		if _, e := r.readB(); e != nil { // xdic missing flag
+		if _, e := r.ReadB(); e != nil { // xdic missing flag
 			continue
 		}
-		nm, e := r.readTV(256) // entry name
+		nm, e := r.ReadTV(256) // entry name
 		if e != nil {
 			continue
 		}
@@ -146,43 +149,43 @@ func parseLayerSpecR2010Plus(rec *objectRecord, objHandle uint64, ver dwgVersion
 		return lc, err
 	}
 	r := rec.bodyBitStream()
-	r.setBitPos(h.dataStartBit)
-	hd, err := r.readH()
+	r.SetBitPos(h.dataStartBit)
+	hd, err := r.ReadH()
 	if err != nil {
 		return lc, err
 	}
-	if hd.value != objHandle {
-		return lc, fmt.Errorf("cad: LAYER 记录句柄不匹配（got %d want %d）", hd.value, objHandle)
+	if hd.Value != objHandle {
+		return lc, fmt.Errorf("cad: LAYER 记录句柄不匹配（got %d want %d）", hd.Value, objHandle)
 	}
 	if err := skipLayerEED(r); err != nil {
 		return lc, err
 	}
 	// 公共字段序列：reactors / xdic missing / [R2013+ ds 位] / xref resolved / flag0
-	fields := []func(*bitStream) error{
-		func(r *bitStream) error { _, e := r.readBL(); return e },
-		func(r *bitStream) error { _, e := r.readB(); return e },
+	fields := []func(*bitstream.BitStream) error{
+		func(r *bitstream.BitStream) error { _, e := r.ReadBL(); return e },
+		func(r *bitstream.BitStream) error { _, e := r.ReadB(); return e },
 	}
 	if ver == verR2013 || ver == verR2018 {
-		fields = append(fields, func(r *bitStream) error { _, e := r.readB(); return e })
+		fields = append(fields, func(r *bitstream.BitStream) error { _, e := r.ReadB(); return e })
 	}
 	fields = append(fields,
-		func(r *bitStream) error { _, e := r.readBS(); return e },
-		func(r *bitStream) error { _, e := r.readBS(); return e },
+		func(r *bitstream.BitStream) error { _, e := r.ReadBS(); return e },
+		func(r *bitstream.BitStream) error { _, e := r.ReadBS(); return e },
 	)
 	for _, step := range fields {
 		if err := step(r); err != nil {
 			return lc, err
 		}
 	}
-	idx, err := r.readBS() // CMC 颜色索引
+	idx, err := r.ReadBS() // CMC 颜色索引
 	if err != nil {
 		return lc, err
 	}
-	rgb, err := r.readBL() // CMC 真彩（高字节为 method 标记）
+	rgb, err := r.ReadBL() // CMC 真彩（高字节为 method 标记）
 	if err != nil {
 		return lc, err
 	}
-	if _, err := r.readRC(); err != nil { // CMC 标志字节
+	if _, err := r.ReadRC(); err != nil { // CMC 标志字节
 		return lc, err
 	}
 	// bitsize 闭环：R2010+ 无内联 bitsize，由记录头 UMC 推导。dat 流 =
@@ -191,28 +194,28 @@ func parseLayerSpecR2010Plus(rec *objectRecord, objHandle uint64, ver dwgVersion
 	// dataEndBit-17-data_size。字段区（CMC 后）结束位与字符串区起点严丝
 	// 合缝即整条 dat 流零歧义（has_strings=0 时无字符串区，仅校验字段区
 	// 不越过 has_strings 位）。
-	endBit := r.tellBits()
+	endBit := r.TellBits()
 	strEnd := rec.dataEndBit()
 	if strEnd < 34 {
 		return lc, fmt.Errorf("cad: LAYER 记录过短（handle %d）", objHandle)
 	}
 	rr := rec.bodyBitStream()
-	rr.setBitPos(strEnd - 1)
-	hasStrings, err := rr.readB()
+	rr.SetBitPos(strEnd - 1)
+	hasStrings, err := rr.ReadB()
 	if err != nil {
 		return lc, err
 	}
 	strStart := strEnd - 1
 	if hasStrings == 1 {
-		rr.setBitPos(strEnd - 17)
-		ds, e := rr.readRS()
+		rr.SetBitPos(strEnd - 17)
+		ds, e := rr.ReadRS()
 		if e != nil {
 			return lc, e
 		}
 		if ds&0x8000 != 0 {
 			// 扩展格式：hi_size RS 在 bitsize-33（对齐 readStringAreaBitRange）
-			rr.setBitPos(strEnd - 33)
-			hi, e := rr.readRS()
+			rr.SetBitPos(strEnd - 33)
+			hi, e := rr.ReadRS()
 			if e != nil {
 				return lc, e
 			}
@@ -250,8 +253,8 @@ func readR2010PlusLayerName(rec *objectRecord) string {
 	r := rec.bodyBitStream()
 	bitsize := rec.dataEndBit() - rec.bodyBitOffset - uint64(rec.handleSizeFieldBits)
 	libreBase := uint64(rec.handleSizeFieldBits) + rec.bodyBitOffset
-	r.setBitPos(libreBase + bitsize - 1)
-	if has, e := r.readB(); e == nil && has == 1 {
+	r.SetBitPos(libreBase + bitsize - 1)
+	if has, e := r.ReadB(); e == nil && has == 1 {
 		if strs := readStringAreaBitRange(r, libreBase+bitsize, 1, true); len(strs) > 0 {
 			return strs[0]
 		}
@@ -274,44 +277,44 @@ func decodeLayerRecordPreR2004(rec *objectRecord, objHandle uint64, ver dwgVersi
 		return layerColor{}, err
 	}
 	r := rec.bodyBitStream()
-	r.setBitPos(h.dataStartBit)
+	r.SetBitPos(h.dataStartBit)
 	var bitsize uint64
 	if ver == verR2000 {
-		bs, err := r.readRL()
+		bs, err := r.ReadRL()
 		if err != nil {
 			return layerColor{}, err
 		}
 		bitsize = uint64(bs)
 	}
-	hd, err := r.readH()
+	hd, err := r.ReadH()
 	if err != nil {
 		return layerColor{}, err
 	}
-	if hd.value != objHandle {
-		return layerColor{}, fmt.Errorf("cad: LAYER 记录句柄不匹配（got %d want %d）", hd.value, objHandle)
+	if hd.Value != objHandle {
+		return layerColor{}, fmt.Errorf("cad: LAYER 记录句柄不匹配（got %d want %d）", hd.Value, objHandle)
 	}
 	if err := skipLayerEED(r); err != nil {
 		return layerColor{}, err
 	}
 	if ver == verR13 || ver == verR14 {
-		bs, err := r.readRL()
+		bs, err := r.ReadRL()
 		if err != nil {
 			return layerColor{}, err
 		}
 		bitsize = uint64(bs)
 	}
-	if _, err := r.readBL(); err != nil { // num_reactors
+	if _, err := r.ReadBL(); err != nil { // num_reactors
 		return layerColor{}, err
 	}
-	nm, err := r.readTV(256)
+	nm, err := r.ReadTV(256)
 	if err != nil {
 		return layerColor{}, err
 	}
 	// xref 标志组：R2004 前在 dat 流（is_xref_ref 恒 1 的占位位 + resolved + dep）
-	for _, step := range []func(*bitStream) error{
-		func(r *bitStream) error { _, e := r.readB(); return e },  // is_xref_ref
-		func(r *bitStream) error { _, e := r.readBS(); return e }, // is_xref_resolved
-		func(r *bitStream) error { _, e := r.readB(); return e },  // is_xref_dep
+	for _, step := range []func(*bitstream.BitStream) error{
+		func(r *bitstream.BitStream) error { _, e := r.ReadB(); return e },  // is_xref_ref
+		func(r *bitstream.BitStream) error { _, e := r.ReadBS(); return e }, // is_xref_resolved
+		func(r *bitstream.BitStream) error { _, e := r.ReadB(); return e },  // is_xref_dep
 	} {
 		if err := step(r); err != nil {
 			return layerColor{}, err
@@ -321,26 +324,26 @@ func decodeLayerRecordPreR2004(rec *objectRecord, objHandle uint64, ver dwgVersi
 		// R13/R14：frozen/off/frozen_in_new/locked 各 1 位；off 表现为
 		// 颜色索引取负（dwg.spec VERSIONS(R_13b1,R_14) DECODER）
 		for i := 0; i < 4; i++ {
-			if _, err := r.readB(); err != nil {
+			if _, err := r.ReadB(); err != nil {
 				return layerColor{}, err
 			}
 		}
 	} else {
 		// R2000：flag0 位包（frozen/off/frozen_in_new/locked/plotflag/linewt），
 		// 渲染只需颜色，位包值不展开
-		if _, err := r.readBS(); err != nil {
+		if _, err := r.ReadBS(); err != nil {
 			return layerColor{}, err
 		}
 	}
-	idx, err := r.readBS() // CMC：BS 颜色索引（off 时负）
+	idx, err := r.ReadBS() // CMC：BS 颜色索引（off 时负）
 	if err != nil {
 		return layerColor{}, err
 	}
 	// bitsize 闭环：LibreDWG 的 bitsize 以 body 起点（BS 类型码前）为基准，
 	// 与 dat 流结束局部位直接相等即零歧义
-	if bitsize == 0 || r.tellBits() != bitsize {
+	if bitsize == 0 || r.TellBits() != bitsize {
 		return layerColor{}, fmt.Errorf("cad: LAYER bitsize 校验失败（end %d != %d, handle %d）",
-			r.tellBits(), bitsize, objHandle)
+			r.TellBits(), bitsize, objHandle)
 	}
 	if idx&(1<<15) != 0 {
 		// off 图层的索引以 16 位补码负值存储（dwg.spec：off = index < 0）；
@@ -359,14 +362,14 @@ func readLayerNameStringStream(rec *objectRecord) (string, bool) {
 		return "", false
 	}
 	r := rec.bodyBitStream()
-	r.setBitPos(h.dataStartBit)
+	r.SetBitPos(h.dataStartBit)
 	bitsize, err := readInlineBitsize(r)
 	if err != nil {
 		return "", false
 	}
 	base := rec.bodyBitOffset
-	r.setBitPos(base + bitsize - 1)
-	has, err := r.readB()
+	r.SetBitPos(base + bitsize - 1)
+	has, err := r.ReadB()
 	if err != nil || has != 1 {
 		return "", false
 	}
@@ -379,19 +382,19 @@ func readLayerNameStringStream(rec *objectRecord) (string, bool) {
 
 // skipLayerEED 跳过 EED 链：BS size 为 0 结束；每项为 H 应用句柄 +
 // size 字节原始数据。
-func skipLayerEED(r *bitStream) error {
+func skipLayerEED(r *bitstream.BitStream) error {
 	for {
-		extSize, err := r.readBS()
+		extSize, err := r.ReadBS()
 		if err != nil {
 			return err
 		}
 		if extSize == 0 {
 			return nil
 		}
-		if _, err := r.readH(); err != nil {
+		if _, err := r.ReadH(); err != nil {
 			return err
 		}
-		if _, err := r.readRCS(int(extSize)); err != nil {
+		if _, err := r.ReadRCS(int(extSize)); err != nil {
 			return err
 		}
 	}
@@ -400,13 +403,13 @@ func skipLayerEED(r *bitStream) error {
 // scanLayerColorVariants 在 CMC 区域按 layerCMCLayouts 全部 8 种变体各自
 // 试解，按 layerColorPlausibility 合理性评分择优（越低越可信，平局取先）；
 // 全部失败时按最简变体兜底解析以保持推进。
-func scanLayerColorVariants(r *bitStream, objHandle uint64) (layerColor, error) {
-	mark, markBit := r.cursor()
+func scanLayerColorVariants(r *bitstream.BitStream, objHandle uint64) (layerColor, error) {
+	mark, markBit := r.Cursor()
 	var best layerColor
 	bestScore := uint64(0)
 	found := false
 	for _, layout := range layerCMCLayouts {
-		r.restore(mark, markBit)
+		r.Restore(mark, markBit)
 		idx, tc, hasT, cb, err := decodeLayerCMC(r, layout)
 		if err != nil {
 			continue
@@ -421,7 +424,7 @@ func scanLayerColorVariants(r *bitStream, objHandle uint64) (layerColor, error) 
 	if found {
 		return best, nil
 	}
-	r.restore(mark, markBit)
+	r.Restore(mark, markBit)
 	idx, tc, hasT, _, err := decodeLayerCMC(r, layerCMCLayouts[0])
 	if err != nil {
 		return layerColor{}, fmt.Errorf("cad: LAYER 颜色解析失败（handle %d）: %w", objHandle, err)
@@ -434,21 +437,21 @@ func scanLayerColorVariants(r *bitStream, objHandle uint64) (layerColor, error) 
 // B×5 状态位 + [values 前 2 位×bit2] + BS values + BS 颜色索引 +
 // BL rgb + RC 颜色字节 [+ TV 名称串×标志位]。
 // 注意：颜色索引不做 0x01FF 掩码——保留 BS 原始值（gold 中可见 idx>256）。
-func decodeLayerCMC(r *bitStream, layout uint8) (uint16, uint32, bool, uint8, error) {
+func decodeLayerCMC(r *bitstream.BitStream, layout uint8) (uint16, uint32, bool, uint8, error) {
 	skipBits := func(n int) error {
 		if n > 0 {
-			if _, err := r.readBitsMsb(uint8(n)); err != nil {
+			if _, err := r.ReadBitsMsb(uint8(n)); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
 	expectB := func() error {
-		_, err := r.readB()
+		_, err := r.ReadB()
 		return err
 	}
 	expectBS := func() error {
-		_, err := r.readBS()
+		_, err := r.ReadBS()
 		return err
 	}
 	if err := skipBits(2 * int(layout&1)); err != nil {
@@ -474,25 +477,25 @@ func decodeLayerCMC(r *bitStream, layout uint8) (uint16, uint32, bool, uint8, er
 	if err := expectBS(); err != nil { // values
 		return 0, 0, false, 0, err
 	}
-	idx, err := r.readBS()
+	idx, err := r.ReadBS()
 	if err != nil {
 		return 0, 0, false, 0, err
 	}
-	rgb, err := r.readBL()
+	rgb, err := r.ReadBL()
 	if err != nil {
 		return 0, 0, false, 0, err
 	}
-	cb, err := r.readRC()
+	cb, err := r.ReadRC()
 	if err != nil {
 		return 0, 0, false, 0, err
 	}
 	if cb&0x01 != 0 {
-		if _, err := r.readTV(256); err != nil { // name
+		if _, err := r.ReadTV(256); err != nil { // name
 			return 0, 0, false, 0, err
 		}
 	}
 	if cb&0x02 != 0 {
-		if _, err := r.readTV(256); err != nil { // book name
+		if _, err := r.ReadTV(256); err != nil { // book name
 			return 0, 0, false, 0, err
 		}
 	}

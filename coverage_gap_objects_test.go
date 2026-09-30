@@ -5,6 +5,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,27 +19,27 @@ func TestReadTableValueFields(t *testing.T) {
 	// R2004（verUntilR2004）：无 format_flags，值分支直读
 	cases := []struct {
 		name   string
-		build  func(w *encWriter)
+		build  func(w *bitstream.EncWriter)
 		dt     int64
 		key    string
 		nHdl   bool
 		failed bool
 	}{
-		{"long0", func(w *encWriter) { w.writeBL(0); w.writeBL(7) }, 0, "data_long", false, false},
-		{"double", func(w *encWriter) { w.writeBL(2); w.writeBD(3.5) }, 2, "data_double", false, false},
-		{"string", func(w *encWriter) { w.writeBL(4); w.writeTV("s") }, 4, "data_string", false, false},
-		{"date", func(w *encWriter) { w.writeBL(8); w.writeBL(3); w.writeTF([]byte{1, 2, 3}) }, 8, "data_date", false, false},
-		{"point", func(w *encWriter) { w.writeBL(16); w.writeBL(0); w.writeRD(1); w.writeRD(2) }, 16, "data_point", false, false},
-		{"point3d", func(w *encWriter) { w.writeBL(32); w.writeBL(0); w.writeRD(1); w.writeRD(2); w.writeRD(3) }, 32, "data_3dpoint", false, false},
-		{"objid", func(w *encWriter) { w.writeBL(64) }, 64, "", true, false},
-		{"unknown", func(w *encWriter) { w.writeBL(7) }, 7, "", false, true},
+		{"long0", func(w *bitstream.EncWriter) { w.WriteBL(0); w.WriteBL(7) }, 0, "data_long", false, false},
+		{"double", func(w *bitstream.EncWriter) { w.WriteBL(2); w.WriteBD(3.5) }, 2, "data_double", false, false},
+		{"string", func(w *bitstream.EncWriter) { w.WriteBL(4); w.WriteTV("s") }, 4, "data_string", false, false},
+		{"date", func(w *bitstream.EncWriter) { w.WriteBL(8); w.WriteBL(3); w.WriteTF([]byte{1, 2, 3}) }, 8, "data_date", false, false},
+		{"point", func(w *bitstream.EncWriter) { w.WriteBL(16); w.WriteBL(0); w.WriteRD(1); w.WriteRD(2) }, 16, "data_point", false, false},
+		{"point3d", func(w *bitstream.EncWriter) { w.WriteBL(32); w.WriteBL(0); w.WriteRD(1); w.WriteRD(2); w.WriteRD(3) }, 32, "data_3dpoint", false, false},
+		{"objid", func(w *bitstream.EncWriter) { w.WriteBL(64) }, 64, "", true, false},
+		{"unknown", func(w *bitstream.EncWriter) { w.WriteBL(7) }, 7, "", false, true},
 	}
 	for _, tc := range cases {
-		w := newEncWriter()
+		w := bitstream.NewEncWriter()
 		tc.build(w)
 		g := &objGeneric{}
 		nHdl := 0
-		fr := &gfRead{r: newBitStream(w.bytes()), ver: verR2004}
+		fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: verR2004}
 		err := readTableValueFields(fr.r, fr, g, "", &nHdl)
 		if tc.failed {
 			if err == nil {
@@ -59,15 +60,15 @@ func TestReadTableValueFields(t *testing.T) {
 	}
 
 	// R2007+：format_flags 低 2 位非 0 跳过值分支；尾部 unit/format/value
-	w2 := newEncWriter()
-	w2.writeBL(1) // format_flags（&3 != 0 → skip）
-	w2.writeBL(2) // data_type（不按类型读值）
-	w2.writeBL(2) // unit_type（!= 12 → 读 value_string）
+	w2 := bitstream.NewEncWriter()
+	w2.WriteBL(1) // format_flags（&3 != 0 → skip）
+	w2.WriteBL(2) // data_type（不按类型读值）
+	w2.WriteBL(2) // unit_type（!= 12 → 读 value_string）
 	// R2007+ has_strings=0 时尾部三串为 TU 内联（fr2.hasStrings=false）
-	w2.writeTU("FMT")
-	w2.writeTU("VAL")
+	w2.WriteTU("FMT")
+	w2.WriteTU("VAL")
 	g2 := &objGeneric{}
-	fr2 := &gfRead{r: newBitStream(w2.bytes()), ver: verR2018}
+	fr2 := &gfRead{r: bitstream.NewBitStream(w2.Bytes()), ver: verR2018}
 	if err := readTableValueFields(fr2.r, fr2, g2, "v.", new(int)); err != nil {
 		t.Fatalf("R2007 skip 分支失败: %v", err)
 	}
@@ -76,14 +77,14 @@ func TestReadTableValueFields(t *testing.T) {
 	}
 
 	// R2007+：format_flags=0 且 data_type=kLong 走值分支
-	w3 := newEncWriter()
-	w3.writeBL(0)   // format_flags
-	w3.writeBL(0)   // data_type = kLong
-	w3.writeBL(42)  // data_long
-	w3.writeBL(12)  // unit_type = 12（不读 value_string）
-	w3.writeTV("F") // format_string
+	w3 := bitstream.NewEncWriter()
+	w3.WriteBL(0)   // format_flags
+	w3.WriteBL(0)   // data_type = kLong
+	w3.WriteBL(42)  // data_long
+	w3.WriteBL(12)  // unit_type = 12（不读 value_string）
+	w3.WriteTV("F") // format_string
 	g3 := &objGeneric{}
-	fr3 := &gfRead{r: newBitStream(w3.bytes()), ver: verR2018}
+	fr3 := &gfRead{r: bitstream.NewBitStream(w3.Bytes()), ver: verR2018}
 	if err := readTableValueFields(fr3.r, fr3, g3, "", new(int)); err != nil {
 		t.Fatalf("R2007 kLong 分支失败: %v", err)
 	}
@@ -96,10 +97,10 @@ func TestReadTableValueFields(t *testing.T) {
 
 // TestGfReadRL gfRead.RL 原语。
 func TestGfReadRL(t *testing.T) {
-	w := newEncWriter()
-	w.writeRL(0xAABBCCDD)
+	w := bitstream.NewEncWriter()
+	w.WriteRL(0xAABBCCDD)
 	g := &objGeneric{}
-	fr := &gfRead{r: newBitStream(w.bytes()), ver: verR2000}
+	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: verR2000}
 	if err := fr.RL("k", g); err != nil {
 		t.Fatalf("RL 失败: %v", err)
 	}
@@ -183,7 +184,7 @@ func TestXrecordAccessors(t *testing.T) {
 
 // TestDumpBitsAndSkipEEDChain dumpBits 位串输出与 EED 链收集。
 func TestDumpBitsAndSkipEEDChain(t *testing.T) {
-	r := newBitStream([]byte{0b10110000, 0xFF})
+	r := bitstream.NewBitStream([]byte{0b10110000, 0xFF})
 	if got := dumpBits(r, 0, 4); got != "1011" {
 		t.Errorf("dumpBits = %q", got)
 	}
@@ -192,12 +193,12 @@ func TestDumpBitsAndSkipEEDChain(t *testing.T) {
 	}
 
 	// EED 链：BS 长度 + H 应用句柄 + 长度字节，BS 0 终止
-	w := newEncWriter()
-	w.writeBS(3)
-	w.writeH(4, 1, 0x0A)
-	w.writeTF([]byte{1, 2, 3})
-	w.writeBS(0)
-	bits, err := skipEEDChainCollect(newBitStream(w.bytes()))
+	w := bitstream.NewEncWriter()
+	w.WriteBS(3)
+	w.WriteH(4, 1, 0x0A)
+	w.WriteTF([]byte{1, 2, 3})
+	w.WriteBS(0)
+	bits, err := skipEEDChainCollect(bitstream.NewBitStream(w.Bytes()))
 	if err != nil {
 		t.Fatalf("skipEEDChainCollect 失败: %v", err)
 	}
@@ -300,15 +301,15 @@ func TestDeBoor(t *testing.T) {
 // TestReadTextString TU 优先与 TV 回退两条路径（TU 返回含 \0 结尾，
 // 比对时去除）。
 func TestReadTextString(t *testing.T) {
-	w := newEncWriter()
-	w.writeTU("ABCD")
-	s, err := readTextString(newBitStream(w.bytes()), 0)
+	w := bitstream.NewEncWriter()
+	w.WriteTU("ABCD")
+	s, err := readTextString(bitstream.NewBitStream(w.Bytes()), 0)
 	if err != nil || strings.TrimSuffix(s, "\x00") != "ABCD" {
 		t.Errorf("TU 路径: %q err=%v", s, err)
 	}
-	w2 := newEncWriter()
-	w2.writeTV("ROOM")
-	s2, err2 := readTextString(newBitStream(w2.bytes()), 0)
+	w2 := bitstream.NewEncWriter()
+	w2.WriteTV("ROOM")
+	s2, err2 := readTextString(bitstream.NewBitStream(w2.Bytes()), 0)
 	if err2 != nil || strings.TrimSuffix(s2, "\x00") != "ROOM" {
 		t.Errorf("TV 路径: %q err=%v", s2, err2)
 	}
@@ -316,9 +317,9 @@ func TestReadTextString(t *testing.T) {
 
 // TestReadMTextStringBest 正常 TU 直读 + 短文本触发窗口重扫。
 func TestReadMTextStringBest(t *testing.T) {
-	w := newEncWriter()
-	w.writeTU("LONGTEXT-OK")
-	r := newBitStream(w.bytes())
+	w := bitstream.NewEncWriter()
+	w.WriteTU("LONGTEXT-OK")
+	r := bitstream.NewBitStream(w.Bytes())
 	text, end, err := readMTextStringBest(r, 0)
 	if err != nil || strings.TrimSuffix(text, "\x00") != "LONGTEXT-OK" {
 		t.Fatalf("直读路径: %q err=%v", text, err)
@@ -327,9 +328,9 @@ func TestReadMTextStringBest(t *testing.T) {
 		t.Error("结束位不应为 0")
 	}
 	// 短文本（评分低于阈值）触发 ±64 位窗口扫描，仍应返回非空文本
-	w2 := newEncWriter()
-	w2.writeTU("AB")
-	text2, _, err2 := readMTextStringBest(newBitStream(w2.bytes()), 0)
+	w2 := bitstream.NewEncWriter()
+	w2.WriteTU("AB")
+	text2, _, err2 := readMTextStringBest(bitstream.NewBitStream(w2.Bytes()), 0)
 	if err2 != nil || strings.TrimSuffix(text2, "\x00") == "" {
 		t.Errorf("窗口重扫路径: %q err=%v", text2, err2)
 	}

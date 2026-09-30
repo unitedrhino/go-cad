@@ -6,6 +6,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"strings"
 	"testing"
 )
@@ -13,11 +14,11 @@ import (
 // writeR2000ObjectPrefix 构造 R2000 对象记录前缀：RL bitsize 占位 +
 // H handle + BS EED 终止 + BL num_reactors（R2000 无 xdic/ds 位）。
 // 返回回填 bitsize 的写入口。
-func writeR2000ObjectPrefix(w *encWriter, handle uint64) {
-	w.writeRL(0) // bitsize 占位
-	w.writeH(0, 1, handle)
-	w.writeBS(0) // EED 终止
-	w.writeBL(0) // num_reactors = 0
+func writeR2000ObjectPrefix(w *bitstream.EncWriter, handle uint64) {
+	w.WriteRL(0) // bitsize 占位
+	w.WriteH(0, 1, handle)
+	w.WriteBS(0) // EED 终止
+	w.WriteBL(0) // num_reactors = 0
 }
 
 // fillR2000Bitsize 回填 body 开头的 RL bitsize（datEnd：专有字段结束位）。
@@ -29,26 +30,26 @@ func fillR2000Bitsize(body []byte, datEnd uint64) {
 }
 
 // padToByte 位流补齐到字节边界（合成 handle 流后的尾部对齐）。
-func padToByte(w *encWriter) {
-	for w.bit != 0 {
-		w.writeBitsMsb(0, 1)
+func padToByte(w *bitstream.EncWriter) {
+	for w.Bit != 0 {
+		w.WriteBitsMsb(0, 1)
 	}
 }
 
 // TestIDBufferSynthetic 合成 R2000 IDBUFFER：unknown RC=7 +
 // num_obj_ids=2 + handle 流 owner/xdic/obj_ids×2。
 func TestIDBufferSynthetic(t *testing.T) {
-	w := newEncWriter()
+	w := bitstream.NewEncWriter()
 	writeR2000ObjectPrefix(w, 0x64)
-	w.writeRC(7) // unknown
-	w.writeBL(2) // num_obj_ids
-	datEnd := w.tellBits()
-	w.writeH(4, 1, 10)   // owner
-	w.writeH(3, 0, 0)    // xdic
-	w.writeH(5, 2, 0x91) // obj_ids[0]
-	w.writeH(5, 2, 0x92) // obj_ids[1]
+	w.WriteRC(7) // unknown
+	w.WriteBL(2) // num_obj_ids
+	datEnd := w.TellBits()
+	w.WriteH(4, 1, 10)   // owner
+	w.WriteH(3, 0, 0)    // xdic
+	w.WriteH(5, 2, 0x91) // obj_ids[0]
+	w.WriteH(5, 2, 0x92) // obj_ids[1]
 	padToByte(w)
-	body := w.bytes()
+	body := w.Bytes()
 	fillR2000Bitsize(body, datEnd)
 
 	rec := &objectRecord{body: body, bodyBitOffset: 0, size: uint32(len(body))}
@@ -74,15 +75,15 @@ func TestIDBufferSynthetic(t *testing.T) {
 
 // TestIndexSynthetic 合成 R2000 INDEX：TIMEBLL last_updated=[days, ms]。
 func TestIndexSynthetic(t *testing.T) {
-	w := newEncWriter()
+	w := bitstream.NewEncWriter()
 	writeR2000ObjectPrefix(w, 0x65)
-	w.writeBL(40210)  // last_updated.days
-	w.writeBL(314159) // last_updated.ms
-	datEnd := w.tellBits()
-	w.writeH(4, 1, 11) // owner
-	w.writeH(3, 0, 0)  // xdic
+	w.WriteBL(40210)  // last_updated.days
+	w.WriteBL(314159) // last_updated.ms
+	datEnd := w.TellBits()
+	w.WriteH(4, 1, 11) // owner
+	w.WriteH(3, 0, 0)  // xdic
 	padToByte(w)
-	body := w.bytes()
+	body := w.Bytes()
 	fillR2000Bitsize(body, datEnd)
 
 	rec := &objectRecord{body: body, bodyBitOffset: 0, size: uint32(len(body))}
@@ -106,22 +107,22 @@ func TestIndexSynthetic(t *testing.T) {
 // TestLayerIndexSynthetic 合成 R2000 LAYER_INDEX：TIMEBLL + num_entries=2 +
 // 2×(numlayers BL + name TV) + handle 流 owner/xdic/layer handles×2。
 func TestLayerIndexSynthetic(t *testing.T) {
-	w := newEncWriter()
+	w := bitstream.NewEncWriter()
 	writeR2000ObjectPrefix(w, 0x66)
-	w.writeBL(40000)  // last_updated.days
-	w.writeBL(250000) // last_updated.ms
-	w.writeBL(2)      // num_entries
-	w.writeBL(1)      // entries[0].numlayers
-	w.writeTV("Wall") // entries[0].name
-	w.writeBL(2)      // entries[1].numlayers
-	w.writeTV("Door") // entries[1].name
-	datEnd := w.tellBits()
-	w.writeH(4, 1, 12)   // owner
-	w.writeH(3, 0, 0)    // xdic
-	w.writeH(5, 2, 0x8A) // entries[0].handle
-	w.writeH(5, 2, 0x8B) // entries[1].handle
+	w.WriteBL(40000)  // last_updated.days
+	w.WriteBL(250000) // last_updated.ms
+	w.WriteBL(2)      // num_entries
+	w.WriteBL(1)      // entries[0].numlayers
+	w.WriteTV("Wall") // entries[0].name
+	w.WriteBL(2)      // entries[1].numlayers
+	w.WriteTV("Door") // entries[1].name
+	datEnd := w.TellBits()
+	w.WriteH(4, 1, 12)   // owner
+	w.WriteH(3, 0, 0)    // xdic
+	w.WriteH(5, 2, 0x8A) // entries[0].handle
+	w.WriteH(5, 2, 0x8B) // entries[1].handle
 	padToByte(w)
-	body := w.bytes()
+	body := w.Bytes()
 	fillR2000Bitsize(body, datEnd)
 
 	rec := &objectRecord{body: body, bodyBitOffset: 0, size: uint32(len(body))}
@@ -148,21 +149,21 @@ func TestLayerIndexSynthetic(t *testing.T) {
 // proxy_id=499 + version=0x0102 + from_dxf=0 + 3 字节原始数据位 +
 // handle 流 owner/xdic/objids×2。
 func TestProxyObjectSynthetic(t *testing.T) {
-	w := newEncWriter()
+	w := bitstream.NewEncWriter()
 	writeR2000ObjectPrefix(w, 0x67)
-	w.writeBL(499)    // proxy_id（恒 499）
-	w.writeBL(0x0102) // version：maint=1、dwg=2
-	w.writeB(false)   // from_dxf
+	w.WriteBL(499)    // proxy_id（恒 499）
+	w.WriteBL(0x0102) // version：maint=1、dwg=2
+	w.WriteB(false)   // from_dxf
 	// 原始数据位串：任意内容，写入后位长由 bitsize 定界捕获
 	dataBytes := []byte{0xAB, 0xCD, 0xEF}
-	w.writeTF(dataBytes)
-	datEnd := w.tellBits()
-	w.writeH(4, 1, 13)   // owner
-	w.writeH(3, 0, 0)    // xdic
-	w.writeH(5, 2, 0x93) // objids[0]
-	w.writeH(5, 2, 0x94) // objids[1]
+	w.WriteTF(dataBytes)
+	datEnd := w.TellBits()
+	w.WriteH(4, 1, 13)   // owner
+	w.WriteH(3, 0, 0)    // xdic
+	w.WriteH(5, 2, 0x93) // objids[0]
+	w.WriteH(5, 2, 0x94) // objids[1]
 	padToByte(w)
-	body := w.bytes()
+	body := w.Bytes()
 	fillR2000Bitsize(body, datEnd)
 
 	rec := &objectRecord{body: body, bodyBitOffset: 0, size: uint32(len(body))}

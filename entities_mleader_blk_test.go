@@ -6,6 +6,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"testing"
 )
@@ -13,41 +14,41 @@ import (
 // TestMLeaderContextBlkContent blk 内容分支合成验证（verR2000 布局：
 // CMC 为 BS 索引单形态、无字符串流）。
 func TestMLeaderContextBlkContent(t *testing.T) {
-	w3bd := func(w *encWriter, x, y, z float64) {
-		w.writeBD(x)
-		w.writeBD(y)
-		w.writeBD(z)
+	w3bd := func(w *bitstream.EncWriter, x, y, z float64) {
+		w.WriteBD(x)
+		w.WriteBD(y)
+		w.WriteBD(z)
 	}
-	w := newEncWriter()
+	w := bitstream.NewEncWriter()
 	// ctx 标量组
-	w.writeBD(1.0)   // scaleFactor
+	w.WriteBD(1.0)   // scaleFactor
 	w3bd(w, 0, 0, 0) // contentBase
-	w.writeBD(2.0)   // textHeight
-	w.writeBD(0.5)   // arrowSize
-	w.writeBD(0.1)   // landingGap
-	w.writeBS(0)     // textLeft
-	w.writeBS(0)     // textRight
-	w.writeBS(1)     // textAngletype
-	w.writeBS(0)     // textAlignment
-	w.writeB(false)  // has_content_txt = 0 → 走 else 联合
-	w.writeB(true)   // has_content_blk = 1
+	w.WriteBD(2.0)   // textHeight
+	w.WriteBD(0.5)   // arrowSize
+	w.WriteBD(0.1)   // landingGap
+	w.WriteBS(0)     // textLeft
+	w.WriteBS(0)     // textRight
+	w.WriteBS(1)     // textAngletype
+	w.WriteBS(0)     // textAlignment
+	w.WriteB(false)  // has_content_txt = 0 → 走 else 联合
+	w.WriteB(true)   // has_content_blk = 1
 	// blk 七字段
 	w3bd(w, 0, 0, 1)  // normal
 	w3bd(w, 5, 6, 7)  // location
 	w3bd(w, 2, 2, 2)  // scale
-	w.writeBD(1.5708) // rotation
-	w.writeBS(3)      // color CMC 索引
+	w.WriteBD(1.5708) // rotation
+	w.WriteBS(3)      // color CMC 索引
 	for i := 0; i < 16; i++ {
-		w.writeBD(float64(i) * 0.25) // transform BD×16
+		w.WriteBD(float64(i) * 0.25) // transform BD×16
 	}
 	// base 三点 + is_normal_reversed（blk 段必须精确消费后才能对齐）
 	w3bd(w, 9, 8, 7)
 	w3bd(w, 0, 1, 0)
 	w3bd(w, 1, 0, 0)
-	w.writeB(true)
+	w.WriteB(true)
 
 	m := &entMLeader{}
-	if err := decodeMLeaderContext(newBitStream(w.bytes()), m, verR2000, 0, nil); err != nil {
+	if err := decodeMLeaderContext(bitstream.NewBitStream(w.Bytes()), m, verR2000, 0, nil); err != nil {
 		t.Fatalf("decodeMLeaderContext 失败: %v", err)
 	}
 	c := &m.ctx

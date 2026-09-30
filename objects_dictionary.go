@@ -6,6 +6,7 @@ package cad
 
 import (
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"os"
 	"strings"
 )
@@ -36,13 +37,13 @@ type objDictionary struct {
 // + [R2004+ B is_xdic_missing] + [R2013+ B has_ds_data] + BL numitems
 // + [R2000b+ BS cloning] + RC is_hardowner + numitems×T 文字（R2007+ TU，更早 TV）。
 // handle 流（bitsize 起）：ownerhandle + reactors + xdic + itemhandles×numitems。
-func decodeDictionaryObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013Plus bool) (*objDictionary, error) {
+func decodeDictionaryObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVersion, r2013Plus bool) (*objDictionary, error) {
 	return decodeDictionaryObjectFull(r, rec, ver, r2013Plus, false)
 }
 
 // decodeDictionaryObjectFull 解析 DICTIONARY；withDefault 为 true 时
 // 按 DICTIONARYWDFLT 在 itemhandles 后追加读取 defaultid 句柄。
-func decodeDictionaryObjectFull(r *bitStream, rec *objectRecord, ver dwgVersion, r2013Plus bool, withDefault bool) (*objDictionary, error) {
+func decodeDictionaryObjectFull(r *bitstream.BitStream, rec *objectRecord, ver dwgVersion, r2013Plus bool, withDefault bool) (*objDictionary, error) {
 	d := &objDictionary{}
 	var err error
 	// bitsize 定位策略：R2000-R2007 内联 RL 在最前；R13/R14 在 EED 后；
@@ -51,7 +52,7 @@ func decodeDictionaryObjectFull(r *bitStream, rec *objectRecord, ver dwgVersion,
 	// dat 段前导位：RL bitsize 字段起点（body 内）；原始流中 bitsize RL
 	// 之前可能有对象 section 头的残留位，重编码从 RL 占位起编，位长
 	// 校验需补回前导
-	d.hdOffsetBits = r.tellBits() - rec.bodyBitOffset
+	d.hdOffsetBits = r.TellBits() - rec.bodyBitOffset
 	if bitsizePos == bitsizePosHead {
 		if d.objSizeBit, err = readInlineBitsize(r); err != nil {
 			return nil, err
@@ -69,7 +70,7 @@ func decodeDictionaryObjectFull(r *bitStream, rec *objectRecord, ver dwgVersion,
 		}
 	}
 	var numReactors uint32
-	if numReactors, err = r.readBL(); err != nil {
+	if numReactors, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
 	if numReactors > 4096 {
@@ -77,19 +78,19 @@ func decodeDictionaryObjectFull(r *bitStream, rec *objectRecord, ver dwgVersion,
 	}
 	d.numReactors = int(numReactors)
 	if ver >= verR2004 {
-		if xdic, e := r.readB(); e != nil {
+		if xdic, e := r.ReadB(); e != nil {
 			return nil, e
 		} else {
 			d.xdicMissing = xdic == 1
 		}
 	}
 	if r2013Plus {
-		if _, e := r.readB(); e != nil { // has_ds_data
+		if _, e := r.ReadB(); e != nil { // has_ds_data
 			return nil, e
 		}
 	}
 	var numItems uint32
-	if numItems, err = r.readBL(); err != nil {
+	if numItems, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
 	if numItems > 100_000 {
@@ -101,12 +102,12 @@ func decodeDictionaryObjectFull(r *bitStream, rec *objectRecord, ver dwgVersion,
 	// DICTIONARYWDFLT（withDefault）例外：spec 中 cloning/is_hardowner
 	// 为无条件字段（该类为后期补充，文件内字段恒存在）。
 	if withDefault || (ver != verR13 && ver != verR14) {
-		if d.cloning, err = r.readBS(); err != nil {
+		if d.cloning, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
 	}
 	if withDefault || ver != verR13 {
-		if isHardOwner, e := r.readRC(); e != nil {
+		if isHardOwner, e := r.ReadRC(); e != nil {
 			return nil, e
 		} else {
 			d.isHardOwner = isHardOwner != 0
@@ -115,34 +116,34 @@ func decodeDictionaryObjectFull(r *bitStream, rec *objectRecord, ver dwgVersion,
 	// 文字：dat 流内联 T 序列（R2007+ TU = BS 长度 + UTF-16LE；更早为 TV）；
 	// 记录原始 TV 位长与整段位串（长度含 \0 与否因写入方而异，重编码
 	// 原样写回）
-	textsStart := r.tellBits()
+	textsStart := r.TellBits()
 	for i := 0; i < d.numItems; i++ {
-		tvStart := r.tellBits()
+		tvStart := r.TellBits()
 		var s string
 		if ver >= verR2007 {
-			if s, err = r.readTU(); err != nil {
+			if s, err = r.ReadTU(); err != nil {
 				return nil, err
 			}
 		} else {
-			if s, err = r.readTV(0); err != nil {
+			if s, err = r.ReadTV(0); err != nil {
 				return nil, err
 			}
 		}
-		d.textRawLens = append(d.textRawLens, int(r.tellBits()-tvStart))
+		d.textRawLens = append(d.textRawLens, int(r.TellBits()-tvStart))
 		d.texts = append(d.texts, s)
 	}
-	d.textRawBits = collectBits(r, textsStart, r.tellBits())
+	d.textRawBits = bitstream.CollectBits(r, textsStart, r.TellBits())
 	// handle 流起点：内联 bitsize 相对 MS 字段之后；R2010+ 无内联字段，
 	// 直接取记录数据结束位（含 handle-stream-size 字段自身的位长）
 	switch bitsizePos {
 	case bitsizePosDerived:
 		d.objSizeBit = rec.dataEndBit() - rec.bodyBitOffset - uint64(rec.handleSizeFieldBits)
-		r.setBitPos(rec.dataEndBit())
+		r.SetBitPos(rec.dataEndBit())
 	default:
-		r.setBitPos(rec.bodyBitOffset + d.objSizeBit)
+		r.SetBitPos(rec.bodyBitOffset + d.objSizeBit)
 	}
 	// handle 流原始位串：起点（bitsize）至 body 尾，供重编码原样写回
-	d.RawHandleBits = collectBits(r, r.tellBits(), uint64(len(r.src))*8)
+	d.RawHandleBits = bitstream.CollectBits(r, r.TellBits(), uint64(len(r.Src))*8)
 	if d.owner, err = readOwnerHandle(r, d.handle); err != nil {
 		return nil, err
 	}
@@ -198,7 +199,7 @@ func (x *objXrecord) XdataItems() []xdataItem { return x.xdata }
 // + [R2004+ B is_xdic_missing] + [R2013+ B has_ds_data] + BL xdata_size
 // + xdata 原始字节（内容暂不解析） + [R2000b+ BS cloning]。
 // handle 流（bitsize 起）：ownerhandle + reactors + xdic + objid_handles 至流尾。
-func decodeXrecordObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013Plus bool) (*objXrecord, error) {
+func decodeXrecordObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVersion, r2013Plus bool) (*objXrecord, error) {
 	x := &objXrecord{}
 	var err error
 	bitsizePos := dictBitsizePos(ver)
@@ -208,16 +209,16 @@ func decodeXrecordObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013P
 		}
 	}
 	if os.Getenv("CAD_DECODE_DBG") != "" {
-		fmt.Fprintf(os.Stderr, "[xr] RL done objSizeBit=%d @%d\n", x.objSizeBit, r.tellBits())
+		fmt.Fprintf(os.Stderr, "[xr] RL done objSizeBit=%d @%d\n", x.objSizeBit, r.TellBits())
 	}
 	if x.handle, err = readHandleValue(r); err != nil {
 		return nil, err
 	}
 	if os.Getenv("CAD_DECODE_DBG") != "" {
-		fmt.Fprintf(os.Stderr, "[xr] handle done @%d\n", r.tellBits())
+		fmt.Fprintf(os.Stderr, "[xr] handle done @%d\n", r.TellBits())
 	}
 	if os.Getenv("CAD_DECODE_DBG") != "" {
-		fmt.Fprintf(os.Stderr, "[xr] skipEED 前 @%d\n", r.tellBits())
+		fmt.Fprintf(os.Stderr, "[xr] skipEED 前 @%d\n", r.TellBits())
 	}
 	if err = parseEEDChain(r, ver, &x.EedFields); err != nil {
 		if os.Getenv("CAD_DECODE_DBG") != "" {
@@ -226,7 +227,7 @@ func decodeXrecordObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013P
 		return nil, err
 	}
 	if os.Getenv("CAD_DECODE_DBG") != "" {
-		fmt.Fprintf(os.Stderr, "[xr] skipEED 后 @%d\n", r.tellBits())
+		fmt.Fprintf(os.Stderr, "[xr] skipEED 后 @%d\n", r.TellBits())
 	}
 	if bitsizePos == bitsizePosTail {
 		if x.objSizeBit, err = readInlineBitsize(r); err != nil {
@@ -234,54 +235,54 @@ func decodeXrecordObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013P
 		}
 	}
 	var numReactors uint32
-	if numReactors, err = r.readBL(); err != nil {
+	if numReactors, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
 	if os.Getenv("CAD_DECODE_DBG") != "" {
-		fmt.Fprintf(os.Stderr, "[xr] num_reactors=%d @%d\n", numReactors, r.tellBits())
+		fmt.Fprintf(os.Stderr, "[xr] num_reactors=%d @%d\n", numReactors, r.TellBits())
 	}
 	if numReactors > 4096 {
 		return nil, fmt.Errorf("cad: XRECORD reactors 异常 %d", numReactors)
 	}
 	x.numReactors = int(numReactors)
 	if ver >= verR2004 {
-		if xdic, e := r.readB(); e != nil {
+		if xdic, e := r.ReadB(); e != nil {
 			return nil, e
 		} else {
 			x.xdicMissing = xdic == 1
 		}
 	}
 	if r2013Plus {
-		if _, e := r.readB(); e != nil { // has_ds_data
+		if _, e := r.ReadB(); e != nil { // has_ds_data
 			return nil, e
 		}
 	}
 	var xdataSize uint32
-	if xdataSize, err = r.readBL(); err != nil {
+	if xdataSize, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
 	if os.Getenv("CAD_DECODE_DBG") != "" {
-		fmt.Fprintf(os.Stderr, "[xr] xdata_size=%d @%d\n", xdataSize, r.tellBits())
+		fmt.Fprintf(os.Stderr, "[xr] xdata_size=%d @%d\n", xdataSize, r.TellBits())
 	}
 	if xdataSize > 1<<24 {
 		return nil, fmt.Errorf("cad: XRECORD 扩展数据过大 %d", xdataSize)
 	}
 	x.xdataSize = int(xdataSize)
 	if os.Getenv("CAD_DECODE_DBG") != "" {
-		fmt.Fprintf(os.Stderr, "[xr] xdataSize=%d @%d 位串(36..100)=%v\n", x.xdataSize, r.tellBits(), collectBits(r, 36, 100))
+		fmt.Fprintf(os.Stderr, "[xr] xdataSize=%d @%d 位串(36..100)=%v\n", x.xdataSize, r.TellBits(), bitstream.CollectBits(r, 36, 100))
 	}
 	// 扩展数据：类型化值序列（DXF 组码 + 对应类型值，字节定长区）
 	if x.xdata, err = decodeXdataItems(r, x.xdataSize, ver >= verR2007); err != nil {
 		return nil, err
 	}
 	if os.Getenv("CAD_DECODE_DBG") != "" {
-		fmt.Fprintf(os.Stderr, "[xr] xdata done @%d\n", r.tellBits())
+		fmt.Fprintf(os.Stderr, "[xr] xdata done @%d\n", r.TellBits())
 	}
 	// cloning BS 为 R2000b+ 字段（R13/R14 无）。注意流中没有
 	// num_objid_handles 字段：LibreDWG dwg2.spec 中该值由解码端在
 	// handle 流中推导（读到 handlestream_size 为止）
 	if ver != verR13 && ver != verR14 {
-		if x.cloning, err = r.readBS(); err != nil {
+		if x.cloning, err = r.ReadBS(); err != nil {
 			return nil, err
 		}
 	}
@@ -290,12 +291,12 @@ func decodeXrecordObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013P
 	switch bitsizePos {
 	case bitsizePosDerived:
 		x.objSizeBit = rec.dataEndBit() - rec.bodyBitOffset - uint64(rec.handleSizeFieldBits)
-		r.setBitPos(rec.dataEndBit())
+		r.SetBitPos(rec.dataEndBit())
 	default:
-		r.setBitPos(rec.bodyBitOffset + x.objSizeBit)
+		r.SetBitPos(rec.bodyBitOffset + x.objSizeBit)
 	}
 	// handle 流原始位串：起点（bitsize）至 body 尾，供重编码原样写回
-	x.RawHandleBits = collectBits(r, r.tellBits(), uint64(len(r.src))*8)
+	x.RawHandleBits = bitstream.CollectBits(r, r.TellBits(), uint64(len(r.Src))*8)
 	if x.owner, err = readOwnerHandle(r, x.handle); err != nil {
 		return nil, err
 	}
@@ -313,8 +314,8 @@ func decodeXrecordObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013P
 	// 即 RawHandleBits 区间）为止；读到无效句柄即停（对应 spec 的
 	// if (!FIELD_VALUE) break），数量记入 numObjidHandles
 	{
-		hdlEnd := r.tellBits() + uint64(len(x.RawHandleBits))
-		for r.tellBits() < hdlEnd && x.numObjidHandles <= 4096 {
+		hdlEnd := r.TellBits() + uint64(len(x.RawHandleBits))
+		for r.TellBits() < hdlEnd && x.numObjidHandles <= 4096 {
 			h, e := readHandleReference(r, x.handle)
 			if e != nil || h == 0 {
 				break
@@ -350,8 +351,8 @@ func dictBitsizePos(ver dwgVersion) objBitsizePos {
 }
 
 // readInlineBitsize 读取内联 RL bitsize 并校验上界（相对 MS 字段之后的位）。
-func readInlineBitsize(r *bitStream) (uint64, error) {
-	bitsize, err := r.readRL()
+func readInlineBitsize(r *bitstream.BitStream) (uint64, error) {
+	bitsize, err := r.ReadRL()
 	if err != nil {
 		return 0, err
 	}
@@ -362,12 +363,12 @@ func readInlineBitsize(r *bitStream) (uint64, error) {
 }
 
 // readHandleValue 读取对象主句柄（H：4bit code + 4bit size + size 字节）。
-func readHandleValue(r *bitStream) (uint64, error) {
-	h, err := r.readH()
+func readHandleValue(r *bitstream.BitStream) (uint64, error) {
+	h, err := r.ReadH()
 	if err != nil {
 		return 0, err
 	}
-	return h.value, nil
+	return h.Value, nil
 }
 
 // skipEEDChain 跳过 EED 链：BS 大小为 0 表示结束，否则 H + size 字节。
@@ -378,14 +379,14 @@ func readHandleValue(r *bitStream) (uint64, error) {
 // 其余 RC 长度 + RS_BE 码页）、1=RS、2=RC、3=layer(RS+RLL)、4=二进制、
 // 5=RLL_BE、10-15=3×RD、40-42=RD、70=RS 符号、71=RL 符号。
 // 解析失败时回退到 skipEEDChain 语义（保序跳过，不产生 eed 字段）。
-func parseEEDChain(r *bitStream, ver dwgVersion, out *[]objField) error {
-	start := r.tellBits()
+func parseEEDChain(r *bitstream.BitStream, ver dwgVersion, out *[]objField) error {
+	start := r.TellBits()
 	savedLen := len(*out)
 	i := 0
 	fail := func(err error) error {
 		// 回退：截断结构化字段，收集整条链的原始位串（供重编码原样
 		// 写回），并按 skip 语义推进到链尾
-		r.setBitPos(start)
+		r.SetBitPos(start)
 		*out = (*out)[:savedLen]
 		raw, err2 := skipEEDChainCollect(r)
 		if err2 != nil {
@@ -395,61 +396,61 @@ func parseEEDChain(r *bitStream, ver dwgVersion, out *[]objField) error {
 		return nil
 	}
 	for {
-		sz, err := r.readBS()
+		sz, err := r.ReadBS()
 		if err != nil {
 			return fail(err)
 		}
 		if os.Getenv("CAD_DECODE_DBG") != "" {
-			fmt.Fprintf(os.Stderr, "[pEED] sz=%d @%d r.pos=%d dataLen=%d\n", sz, r.tellBits(), r.pos, len(r.src))
+			fmt.Fprintf(os.Stderr, "[pEED] sz=%d @%d r.pos=%d dataLen=%d\n", sz, r.TellBits(), r.Pos, len(r.Src))
 		}
 		if sz == 0 {
 			return nil
 		}
-		h, err := r.readH()
+		h, err := r.ReadH()
 		if err != nil {
 			return fail(err)
 		}
-		if int(sz) > len(r.src)-r.pos {
-			return fail(errUnexpectedEOF)
+		if int(sz) > len(r.Src)-r.Pos {
+			return fail(bitstream.ErrUnexpectedEOF)
 		}
-		end := r.pos + int(sz)
+		end := r.Pos + int(sz)
 		first := true
-		for r.pos < end {
-			code, err := r.readRC()
+		for r.Pos < end {
+			code, err := r.ReadRC()
 			if err != nil {
 				return fail(err)
 			}
 			if os.Getenv("CAD_DECODE_DBG") != "" {
-				fmt.Fprintf(os.Stderr, "[eed] blk sz=%d code=%d byte@%d end@%d pos=%d bits=%v\n", sz, code, r.pos, end, r.tellBits(), dumpBits(r, r.tellBits(), 40))
+				fmt.Fprintf(os.Stderr, "[eed] blk sz=%d code=%d byte@%d end@%d pos=%d bits=%v\n", sz, code, r.Pos, end, r.TellBits(), dumpBits(r, r.TellBits(), 40))
 			}
 			p := fmt.Sprintf("eed[%d].", i)
 			var val any
 			switch code {
 			case 0:
 				if ver >= verR2007 {
-					l, e := r.readRS()
+					l, e := r.ReadRS()
 					if e != nil {
 						return fail(e)
 					}
 					us := make([]uint16, l)
 					for j := range us {
-						us[j], e = r.readRS()
+						us[j], e = r.ReadRS()
 						if e != nil {
 							return fail(e)
 						}
 					}
 					// LibreDWG bit_read_TU 语义：NUL 终止，输出不含 NUL
-					val = strings.SplitN(string(utf16Decode(us)), "\x00", 2)[0]
+					val = strings.SplitN(string(bitstream.Utf16Decode(us)), "\x00", 2)[0]
 				} else {
-					l, e := r.readRC()
+					l, e := r.ReadRC()
 					if e != nil {
 						return fail(e)
 					}
-					cpHi, e := r.readRC()
+					cpHi, e := r.ReadRC()
 					if e != nil {
 						return fail(e)
 					}
-					cpLo, e := r.readRC()
+					cpLo, e := r.ReadRC()
 					if e != nil {
 						return fail(e)
 					}
@@ -458,45 +459,45 @@ func parseEEDChain(r *bitStream, ver dwgVersion, out *[]objField) error {
 					for j := 0; j < int(l); j++ {
 						var cb uint8
 						var e2 error
-						cb, e2 = r.readRC()
+						cb, e2 = r.ReadRC()
 						if e2 != nil {
 							return fail(e2)
 						}
 						b[j] = cb
 					}
 					// TV 同为 NUL 终止字符串
-					val = strings.SplitN(decodeCodepage(b, cp), "\x00", 2)[0]
+					val = strings.SplitN(bitstream.DecodeCodepage(b, cp), "\x00", 2)[0]
 				}
 			case 1:
-				v, e := r.readRS()
+				v, e := r.ReadRS()
 				if e != nil {
 					return fail(e)
 				}
 				val = int64(v)
 			case 2:
-				v, err := r.readRC()
+				v, err := r.ReadRC()
 				if err != nil {
 					return fail(err)
 				}
 				val = int64(v)
 			case 3:
 				// layer：RS + RLL（LibreDWG 同款双读）
-				if _, e := r.readRS(); e != nil {
+				if _, e := r.ReadRS(); e != nil {
 					return fail(e)
 				}
-				v, e := r.readBLL()
+				v, e := r.ReadBLL()
 				if e != nil {
 					return fail(e)
 				}
 				val = int64(v)
 			case 4:
-				l, e := r.readRC()
+				l, e := r.ReadRC()
 				if e != nil {
 					return fail(e)
 				}
 				b := make([]byte, l)
 				for j := 0; j < int(l); j++ {
-					cb, e2 := r.readRC()
+					cb, e2 := r.ReadRC()
 					if e2 != nil {
 						return fail(e2)
 					}
@@ -505,7 +506,7 @@ func parseEEDChain(r *bitStream, ver dwgVersion, out *[]objField) error {
 				val = fmt.Sprintf("%X", b)
 			case 5:
 				// entity：RLL 大端
-				v, e := r.readBitsMsb(64)
+				v, e := r.ReadBitsMsb(64)
 				if e != nil {
 					return fail(e)
 				}
@@ -514,26 +515,26 @@ func parseEEDChain(r *bitStream, ver dwgVersion, out *[]objField) error {
 				pt := make([]float64, 3)
 				for j := 0; j < 3; j++ {
 					var e error
-					pt[j], e = r.readRD()
+					pt[j], e = r.ReadRD()
 					if e != nil {
 						return fail(e)
 					}
 				}
 				val = pt
 			case 40, 41, 42:
-				f, e := r.readRD()
+				f, e := r.ReadRD()
 				if e != nil {
 					return fail(e)
 				}
 				val = f
 			case 70:
-				v, e := r.readRS()
+				v, e := r.ReadRS()
 				if e != nil {
 					return fail(e)
 				}
 				val = int64(int16(v))
 			case 71:
-				v, e := r.readRL()
+				v, e := r.ReadRL()
 				if e != nil {
 					return fail(e)
 				}
@@ -547,54 +548,54 @@ func parseEEDChain(r *bitStream, ver dwgVersion, out *[]objField) error {
 			if first {
 				*out = append(*out,
 					objField{p + "size", int64(sz)},
-					objField{p + "handle", []uint64{uint64(h.code), uint64(h.counter), h.value}})
+					objField{p + "handle", []uint64{uint64(h.Code), uint64(h.Counter), h.Value}})
 				first = false
 			}
 			i++
 		}
-		r.pos = end
+		r.Pos = end
 	}
 }
 
 // skipEEDChainCollect 跳过 EED 链并返回链的完整位串（0/1 字符串，
 // 含尾字节对齐填充），供重编码原样写回。
-func skipEEDChainCollect(r *bitStream) (string, error) {
-	start := r.tellBits()
+func skipEEDChainCollect(r *bitstream.BitStream) (string, error) {
+	start := r.TellBits()
 	if err := skipEEDChain(r); err != nil {
 		return "", err
 	}
-	end := r.tellBits()
+	end := r.TellBits()
 	var out []byte
 	for p := start; p < end; p++ {
-		if int(p/8) >= len(r.src) {
+		if int(p/8) >= len(r.Src) {
 			break
 		}
-		b := (r.src[p/8] >> (7 - p%8)) & 1
+		b := (r.Src[p/8] >> (7 - p%8)) & 1
 		out = append(out, '0'+b)
 	}
 	return string(out), nil
 }
 
-func skipEEDChain(r *bitStream) error {
+func skipEEDChain(r *bitstream.BitStream) error {
 	for {
-		sz, err := r.readBS()
+		sz, err := r.ReadBS()
 		if err != nil {
 			return err
 		}
 		if sz == 0 {
 			return nil
 		}
-		if _, err = r.readH(); err != nil {
+		if _, err = r.ReadH(); err != nil {
 			return err
 		}
-		if _, err = r.readRCS(int(sz)); err != nil {
+		if _, err = r.ReadRCS(int(sz)); err != nil {
 			return err
 		}
 	}
 }
 
 // readOwnerHandle 读取 ownerhandle（H，绝对引用）。
-func readOwnerHandle(r *bitStream, cur uint64) (uint64, error) {
+func readOwnerHandle(r *bitstream.BitStream, cur uint64) (uint64, error) {
 	return readHandleReference(r, cur)
 }
 
@@ -746,32 +747,19 @@ func resbufValueType(gc int) xdataKind {
 	}
 }
 
-// readRLL 读 64 位小端整数（两次 32 位拼合）
-func (r *bitStream) readRLL() (uint64, error) {
-	lo, err := r.readRL()
-	if err != nil {
-		return 0, err
-	}
-	hi, err := r.readRL()
-	if err != nil {
-		return 0, err
-	}
-	return uint64(hi)<<32 | uint64(lo), nil
-}
-
 // decodeXdataItems 解析 XRECORD 扩展数据：每项 = RS 类型码 + 类型对应值，
 // 总长 sizeBytes 字节（对照 LibreDWG dwg_decode_xdata）。
 // 终点按字节位置判定（位流原语读取，与参考实现行为一致）。
-func decodeXdataItems(r *bitStream, sizeBytes int, r2007Plus bool) ([]xdataItem, error) {
-	startBits := r.tellBits()
+func decodeXdataItems(r *bitstream.BitStream, sizeBytes int, r2007Plus bool) ([]xdataItem, error) {
+	startBits := r.TellBits()
 	endBits := startBits + uint64(sizeBytes)*8
 	items := make([]xdataItem, 0, 8)
-	for uint64(r.tellBits()) < endBits {
-		code, err := r.readRS()
+	for uint64(r.TellBits()) < endBits {
+		code, err := r.ReadRS()
 		if err != nil {
 			return nil, err
 		}
-		if uint64(r.tellBits()) >= endBits {
+		if uint64(r.TellBits()) >= endBits {
 			// 类型码后已到终点：丢弃（与参考实现防死循环一致）
 			break
 		}
@@ -781,15 +769,15 @@ func decodeXdataItems(r *bitStream, sizeBytes int, r2007Plus bool) ([]xdataItem,
 		it := xdataItem{Code: int(code), Kind: resbufValueType(int(code))}
 		switch it.Kind {
 		case xdataString:
-			length, e := r.readRS()
+			length, e := r.ReadRS()
 			if e != nil {
 				return nil, e
 			}
 			if r2007Plus {
-				if int(length) > 0 && uint64(r.tellBits())+uint64(length)*16 <= endBits {
+				if int(length) > 0 && uint64(r.TellBits())+uint64(length)*16 <= endBits {
 					var sb []byte
 					for i := uint16(0); i < length; i++ {
-						ch, e := r.readRS()
+						ch, e := r.ReadRS()
 						if e != nil {
 							return nil, e
 						}
@@ -798,91 +786,91 @@ func decodeXdataItems(r *bitStream, sizeBytes int, r2007Plus bool) ([]xdataItem,
 					it.Str = decodeUTF16LE(sb)
 				}
 			} else {
-				cp, e := r.readRC()
+				cp, e := r.ReadRC()
 				if e != nil {
 					return nil, e
 				}
-				if uint64(r.tellBits())+uint64(length)*8 <= endBits {
-					b, e := r.readBitsBytes(int(length))
+				if uint64(r.TellBits())+uint64(length)*8 <= endBits {
+					b, e := r.ReadBitsBytes(int(length))
 					if e != nil {
 						return nil, e
 					}
-					it.Str = decodeCodepage(b, uint16(cp))
+					it.Str = bitstream.DecodeCodepage(b, uint16(cp))
 				}
 			}
 		case xdataReal:
-			if uint64(r.tellBits())+8 > endBits {
+			if uint64(r.TellBits())+8 > endBits {
 				break
 			}
-			if it.Float, err = r.readRD(); err != nil {
+			if it.Float, err = r.ReadRD(); err != nil {
 				return nil, err
 			}
 		case xdataBool, xdataInt8:
-			if uint64(r.tellBits())+8 > endBits {
+			if uint64(r.TellBits())+8 > endBits {
 				break
 			}
-			b, e := r.readRC()
+			b, e := r.ReadRC()
 			if e != nil {
 				return nil, e
 			}
 			it.Int = int64(b)
 		case xdataInt16:
-			if uint64(r.tellBits())+2 > endBits {
+			if uint64(r.TellBits())+2 > endBits {
 				break
 			}
-			v, e := r.readRS()
+			v, e := r.ReadRS()
 			if e != nil {
 				return nil, e
 			}
 			it.Int = int64(int16(v))
 		case xdataInt32:
-			if uint64(r.tellBits())+4 > endBits {
+			if uint64(r.TellBits())+4 > endBits {
 				break
 			}
-			v, e := r.readRL()
+			v, e := r.ReadRL()
 			if e != nil {
 				return nil, e
 			}
 			it.Int = int64(int32(v))
 		case xdataInt64:
-			if uint64(r.tellBits())+8 > endBits {
+			if uint64(r.TellBits())+8 > endBits {
 				break
 			}
-			v, e := r.readRLL()
+			v, e := r.ReadRLL()
 			if e != nil {
 				return nil, e
 			}
 			it.Int = int64(v)
 		case xdataPoint3D:
-			if uint64(r.tellBits())+24 > endBits {
+			if uint64(r.TellBits())+24 > endBits {
 				break
 			}
-			if it.Point[0], err = r.readRD(); err != nil {
+			if it.Point[0], err = r.ReadRD(); err != nil {
 				return nil, err
 			}
-			if it.Point[1], err = r.readRD(); err != nil {
+			if it.Point[1], err = r.ReadRD(); err != nil {
 				return nil, err
 			}
-			if it.Point[2], err = r.readRD(); err != nil {
+			if it.Point[2], err = r.ReadRD(); err != nil {
 				return nil, err
 			}
 		case xdataBinary:
-			sz, e := r.readRC()
+			sz, e := r.ReadRC()
 			if e != nil {
 				return nil, e
 			}
-			if uint64(r.tellBits())+uint64(sz)*8 <= endBits {
-				b, e := r.readBitsBytes(int(sz))
+			if uint64(r.TellBits())+uint64(sz)*8 <= endBits {
+				b, e := r.ReadBitsBytes(int(sz))
 				if e != nil {
 					return nil, e
 				}
 				it.Bytes = b
 			}
 		case xdataHandle:
-			if uint64(r.tellBits())+8 > endBits {
+			if uint64(r.TellBits())+8 > endBits {
 				break
 			}
-			v, e := r.readRLL()
+			v, e := r.ReadRLL()
 			if e != nil {
 				return nil, e
 			}
@@ -896,14 +884,14 @@ func decodeXdataItems(r *bitStream, sizeBytes int, r2007Plus bool) ([]xdataItem,
 }
 
 // dumpBits 调试用：从指定位起输出 n 位 0/1 串。
-func dumpBits(r *bitStream, pos uint64, n int) string {
+func dumpBits(r *bitstream.BitStream, pos uint64, n int) string {
 	out := make([]byte, 0, n)
 	for i := 0; i < n; i++ {
 		p := pos + uint64(i)
-		if int(p/8) >= len(r.src) {
+		if int(p/8) >= len(r.Src) {
 			break
 		}
-		b := (r.src[p/8] >> (7 - p%8)) & 1
+		b := (r.Src[p/8] >> (7 - p%8)) & 1
 		out = append(out, '0'+b)
 	}
 	return string(out)

@@ -3,6 +3,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"strings"
 	"testing"
@@ -25,9 +26,9 @@ func TestDecodeAcisEmpty(t *testing.T) {
 		w.RC(byte(i + 1)) // revision_bytes
 	}
 	w.BL(0) // end_marker
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)
@@ -79,9 +80,9 @@ func TestDecodeAcisSATBlocks(t *testing.T) {
 		w.RC(0) // revision_bytes
 	}
 	w.BL(0) // end_marker
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)

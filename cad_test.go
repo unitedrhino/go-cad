@@ -3,28 +3,29 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"testing"
 )
 
 func TestBitReaderReadB(t *testing.T) {
-	r := newBitStream([]byte{0b10110000})
-	if v, _ := r.readB(); v != 1 {
+	r := bitstream.NewBitStream([]byte{0b10110000})
+	if v, _ := r.ReadB(); v != 1 {
 		t.Fatalf("期望 1 得到 %d", v)
 	}
-	if v, _ := r.readB(); v != 0 {
+	if v, _ := r.ReadB(); v != 0 {
 		t.Fatalf("期望 0 得到 %d", v)
 	}
-	if v, _ := r.readB(); v != 1 {
+	if v, _ := r.ReadB(); v != 1 {
 		t.Fatalf("期望 1 得到 %d", v)
 	}
 }
 
 func TestBitReaderReadBS(t *testing.T) {
 	// BS 前缀 01 → 后续 RC 单字节值 0x2A
-	r := newBitStream(testsupport.BitsToBytes("01" + "00101010"))
-	v, err := r.readBS()
+	r := bitstream.NewBitStream(testsupport.BitsToBytes("01" + "00101010"))
+	v, err := r.ReadBS()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,15 +36,15 @@ func TestBitReaderReadBS(t *testing.T) {
 
 func TestBitReaderReadBD(t *testing.T) {
 	// BD 前缀 01 → 1.0；前缀 10 → 0.0
-	r := newBitStream(testsupport.BitsToBytes("01" + "10"))
-	v1, err := r.readBD()
+	r := bitstream.NewBitStream(testsupport.BitsToBytes("01" + "10"))
+	v1, err := r.ReadBD()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v1 != 1.0 {
 		t.Fatalf("期望 1.0 得到 %v", v1)
 	}
-	v2, _ := r.readBD()
+	v2, _ := r.ReadBD()
 	if v2 != 0.0 {
 		t.Fatalf("期望 0.0 得到 %v", v2)
 	}
@@ -51,8 +52,8 @@ func TestBitReaderReadBD(t *testing.T) {
 
 func TestBitReaderReadDD(t *testing.T) {
 	// DD 前缀 00 → 直接使用默认值
-	r := newBitStream(testsupport.BitsToBytes("00"))
-	v, err := r.readDD(3.14)
+	r := bitstream.NewBitStream(testsupport.BitsToBytes("00"))
+	v, err := r.ReadDD(3.14)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,20 +64,20 @@ func TestBitReaderReadDD(t *testing.T) {
 
 func TestBitReaderReadH(t *testing.T) {
 	// code=0 counter=2 值 0x06CE（1742）
-	r := newBitStream([]byte{0x02, 0x06, 0xCE})
-	h, err := r.readH()
+	r := bitstream.NewBitStream([]byte{0x02, 0x06, 0xCE})
+	h, err := r.ReadH()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if h.code != 0 || h.counter != 2 || h.value != 1742 {
+	if h.Code != 0 || h.Counter != 2 || h.Value != 1742 {
 		t.Fatalf("句柄解析错误: %+v", h)
 	}
 }
 
 func TestBitReaderReadTU(t *testing.T) {
 	// BS 长度=1（前缀 00 + RS 16 位小端 1）+ UTF-16LE 单元 "A"(0x0041)
-	r := newBitStream(testsupport.BitsToBytes("00" + "00000001" + "00000000" + "01000001" + "00000000"))
-	v, err := r.readTU()
+	r := bitstream.NewBitStream(testsupport.BitsToBytes("00" + "00000001" + "00000000" + "01000001" + "00000000"))
+	v, err := r.ReadTU()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +88,7 @@ func TestBitReaderReadTU(t *testing.T) {
 
 func TestReadHandleReferenceRelative(t *testing.T) {
 	// code=0x0A（软引用 +offset），counter=1 值 5：头字节 0xA1（code 高 4 位 + counter 低 4 位）
-	r := newBitStream([]byte{0xA1, 0x05})
+	r := bitstream.NewBitStream([]byte{0xA1, 0x05})
 	v, err := readHandleReference(r, 100)
 	if err != nil {
 		t.Fatal(err)
@@ -96,13 +97,13 @@ func TestReadHandleReferenceRelative(t *testing.T) {
 		t.Fatalf("期望 105 得到 %d", v)
 	}
 	// code=0x06（+1），counter=0：头字节 0x60
-	r2 := newBitStream([]byte{0x60})
+	r2 := bitstream.NewBitStream([]byte{0x60})
 	v2, _ := readHandleReference(r2, 100)
 	if v2 != 101 {
 		t.Fatalf("期望 101 得到 %d", v2)
 	}
 	// code=0x0C（-offset），counter=1 值 3：头字节 0xC1
-	r3 := newBitStream([]byte{0xC1, 0x03})
+	r3 := bitstream.NewBitStream([]byte{0xC1, 0x03})
 	v3, _ := readHandleReference(r3, 100)
 	if v3 != 97 {
 		t.Fatalf("期望 97 得到 %d", v3)

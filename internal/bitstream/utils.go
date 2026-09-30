@@ -1,5 +1,5 @@
 // utils.go 提供位级解码使用的数值与 UTF-16 转换辅助函数。
-package cad
+package bitstream
 
 import "math"
 
@@ -20,7 +20,7 @@ func f64LeBytes(f float64) [8]byte {
 }
 
 // utf16Decode 将 UTF-16 单元序列解码为 UTF-8 字符串（含代理对处理）。
-func utf16Decode(units []uint16) []rune {
+func Utf16Decode(units []uint16) []rune {
 	runes := make([]rune, 0, len(units))
 	for i := 0; i < len(units); i++ {
 		u := units[i]

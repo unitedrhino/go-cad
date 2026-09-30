@@ -4,6 +4,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"testing"
 )
@@ -23,9 +24,9 @@ func TestDecodeProxyEntityFromBits(t *testing.T) {
 	w.H(5, 22)                                                // objids[0]
 	w.H(5, 23)                                                // objids[1] → dataEnd=215
 	const objSizeBit, dataEnd = uint64(151), uint64(215)
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)
@@ -67,9 +68,9 @@ func TestDecodeProxyEntityR2018FromBits(t *testing.T) {
 	w.H(5, 20)                                                // xdic
 	w.H(5, 21)                                                // layer → dataEnd=161
 	const objSizeBit, dataEnd = uint64(129), uint64(161)
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)
@@ -118,9 +119,9 @@ func TestDecodeProxyEntityPreviewFromBits(t *testing.T) {
 	w.H(5, 20)                                                // xdic
 	w.H(5, 21)                                                // layer → dataEnd=235
 	const objSizeBit, dataEnd = uint64(203), uint64(235)
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)

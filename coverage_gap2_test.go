@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"math"
 	"math/rand"
 	"os"
@@ -22,23 +23,23 @@ const gap2BaseHandle = 0x30
 // execClassDecoder 按类名取注册解码器，用合成 dat 流执行 decode；
 // buildHdl 非空且 spec 带 hdl 时继续执行 handle 流解码。
 // 返回解码产物供字段断言。
-func execClassDecoder(t *testing.T, class string, ver dwgVersion, build, buildHdl func(w *encWriter)) *objGeneric {
+func execClassDecoder(t *testing.T, class string, ver dwgVersion, build, buildHdl func(w *bitstream.EncWriter)) *objGeneric {
 	t.Helper()
 	spec, ok := internalClassDecoders[class]
 	if !ok {
 		t.Fatalf("无 %s 内部对象解码器", class)
 	}
 	g := &objGeneric{Name: class, Handle: gap2BaseHandle}
-	w := newEncWriter()
+	w := bitstream.NewEncWriter()
 	build(w)
-	fr := &gfRead{r: newBitStream(w.bytes()), ver: ver}
+	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: ver}
 	if err := spec.decode(fr.r, ver, fr, g); err != nil {
 		t.Fatalf("%s decode 失败: %v", class, err)
 	}
 	if spec.hdl != nil && buildHdl != nil {
-		hw := newEncWriter()
+		hw := bitstream.NewEncWriter()
 		buildHdl(hw)
-		hfr := &gfRead{r: newBitStream(hw.bytes()), ver: ver}
+		hfr := &gfRead{r: bitstream.NewBitStream(hw.Bytes()), ver: ver}
 		if err := spec.hdl(hfr.r, ver, hfr, g); err != nil {
 			t.Fatalf("%s hdl 失败: %v", class, err)
 		}
@@ -47,157 +48,157 @@ func execClassDecoder(t *testing.T, class string, ver dwgVersion, build, buildHd
 }
 
 // gap2WriteHandles 写 n 个相对句柄引用（code 0x0A + value）。
-func gap2WriteHandles(w *encWriter, n int) {
+func gap2WriteHandles(w *bitstream.EncWriter, n int) {
 	for i := 0; i < n; i++ {
-		w.writeH(0x0A, 1, uint64(i+1))
+		w.WriteH(0x0A, 1, uint64(i+1))
 	}
 }
 
 // gap2WriteEvalExpr 写 AcDbEvalExpr_fields：BLd parentid + major/minor BL
 // + BS value_code + 按 code 的值 + BL nodeid（code=91 时不占 dat 位）。
-func gap2WriteEvalExpr(w *encWriter, code int64) {
-	w.writeBL(0) // parentid（BLd 与 BL 同位流）
-	w.writeBL(1) // major
-	w.writeBL(2) // minor
-	w.writeBS(uint16(code))
+func gap2WriteEvalExpr(w *bitstream.EncWriter, code int64) {
+	w.WriteBL(0) // parentid（BLd 与 BL 同位流）
+	w.WriteBL(1) // major
+	w.WriteBL(2) // minor
+	w.WriteBS(uint16(code))
 	switch code {
 	case 40:
-		w.writeBD(1.5)
+		w.WriteBD(1.5)
 	case 10, 11:
-		w.writeRD(1)
-		w.writeRD(2)
+		w.WriteRD(1)
+		w.WriteRD(2)
 	case 1:
-		w.writeTV("v")
+		w.WriteTV("v")
 	case 90:
-		w.writeBL(9)
+		w.WriteBL(9)
 	case 70:
-		w.writeBS(7)
+		w.WriteBS(7)
 	}
-	w.writeBL(3) // nodeid
+	w.WriteBL(3) // nodeid
 }
 
 // gap2WriteBlockElement 写 AcDbBlockElement_fields（evalexpr + name +
 // be_major/be_minor + eed1071）。
-func gap2WriteBlockElement(w *encWriter, code int64) {
+func gap2WriteBlockElement(w *bitstream.EncWriter, code int64) {
 	gap2WriteEvalExpr(w, code)
-	w.writeTV("blkel")
-	w.writeBL(1)
-	w.writeBL(0)
-	w.writeBL(0)
+	w.WriteTV("blkel")
+	w.WriteBL(1)
+	w.WriteBL(0)
+	w.WriteBL(0)
 }
 
 // gap2WritePropInfo 写 BlockParam_PropInfo（num_connections=0）。
-func gap2WritePropInfo(w *encWriter) {
-	w.writeBL(0)
+func gap2WritePropInfo(w *bitstream.EncWriter) {
+	w.WriteBL(0)
 }
 
 // gap2WriteValueSet 写 AcDbBlockParamValueSet_fields（desc/flags/min/max/
 // inc + num_valuelist + valuelist×N）。
-func gap2WriteValueSet(w *encWriter) {
-	w.writeTV("vs")
-	w.writeBL(0)
-	w.writeBD(0)
-	w.writeBD(10)
-	w.writeBD(1)
-	w.writeBS(1)
-	w.writeBD(5)
+func gap2WriteValueSet(w *bitstream.EncWriter) {
+	w.WriteTV("vs")
+	w.WriteBL(0)
+	w.WriteBD(0)
+	w.WriteBD(10)
+	w.WriteBD(1)
+	w.WriteBS(1)
+	w.WriteBD(5)
 }
 
 // gap2Write1PtParameter 写 AcDbBlock1PtParameter_fields（参数公共体 +
 // def_pt + prop1/prop2 + num_propinfos）。
-func gap2Write1PtParameter(w *encWriter) {
+func gap2Write1PtParameter(w *bitstream.EncWriter) {
 	gap2WriteBlockElement(w, 70)
-	w.writeB(false)
-	w.writeB(false)
-	w.writeBD(1)
-	w.writeBD(2)
-	w.writeBD(0)
+	w.WriteB(false)
+	w.WriteB(false)
+	w.WriteBD(1)
+	w.WriteBD(2)
+	w.WriteBD(0)
 	gap2WritePropInfo(w)
 	gap2WritePropInfo(w)
-	w.writeBL(0)
+	w.WriteBL(0)
 }
 
 // gap2Write2PtParameter 写 AcDbBlock2PtParameter_fields（参数公共体 +
 // def_basept/def_endpt + prop1..4 + prop_states×4 + base_location）。
-func gap2Write2PtParameter(w *encWriter) {
+func gap2Write2PtParameter(w *bitstream.EncWriter) {
 	gap2WriteBlockElement(w, 70)
-	w.writeB(false)
-	w.writeB(false)
-	w.writeBD(0)
-	w.writeBD(0)
-	w.writeBD(0)
-	w.writeBD(10)
-	w.writeBD(0)
-	w.writeBD(0)
+	w.WriteB(false)
+	w.WriteB(false)
+	w.WriteBD(0)
+	w.WriteBD(0)
+	w.WriteBD(0)
+	w.WriteBD(10)
+	w.WriteBD(0)
+	w.WriteBD(0)
 	for i := 0; i < 4; i++ {
 		gap2WritePropInfo(w)
 	}
 	for i := 0; i < 4; i++ {
-		w.writeBL(0)
+		w.WriteBL(0)
 	}
-	w.writeBS(0)
+	w.WriteBS(0)
 }
 
 // gap2WriteHistoryNode 写 AcDbShHistoryNode_fields（major/minor + trans
 // 16×BD + CMC + step_id）。
-func gap2WriteHistoryNode(w *encWriter) {
-	w.writeBL(1)
-	w.writeBL(0)
+func gap2WriteHistoryNode(w *bitstream.EncWriter) {
+	w.WriteBL(1)
+	w.WriteBL(0)
 	for i := 0; i < 16; i++ {
-		w.writeBD(0)
+		w.WriteBD(0)
 	}
-	w.writeBS(256) // CMC index
-	w.writeBL(0xc2000000)
-	w.writeRC(0)
-	w.writeBL(0) // step_id
+	w.WriteBS(256) // CMC index
+	w.WriteBL(0xc2000000)
+	w.WriteRC(0)
+	w.WriteBL(0) // step_id
 }
 
 // gap2Write3BD 写三个 BD（Point3 读取）。
-func gap2Write3BD(w *encWriter) {
-	w.writeBD(1)
-	w.writeBD(2)
-	w.writeBD(3)
+func gap2Write3BD(w *bitstream.EncWriter) {
+	w.WriteBD(1)
+	w.WriteBD(2)
+	w.WriteBD(3)
 }
 
 // gap2WriteWire 写一条 WIRESTRUCT_fields（tp 决定 transform 段有无）。
-func gap2WriteWire(w *encWriter, tp bool) {
-	w.writeRC(1)    // type
-	w.writeBL(0)    // selection_marker
-	w.writeBS(0)    // color
-	w.writeBL(0)    // acis_index
-	w.writeBL(1)    // num_points
+func gap2WriteWire(w *bitstream.EncWriter, tp bool) {
+	w.WriteRC(1)    // type
+	w.WriteBL(0)    // selection_marker
+	w.WriteBS(0)    // color
+	w.WriteBL(0)    // acis_index
+	w.WriteBL(1)    // num_points
 	gap2Write3BD(w) // 点
-	w.writeB(tp)    // transform present
+	w.WriteB(tp)    // transform present
 	if tp {
 		for i := 0; i < 5; i++ {
 			gap2Write3BD(w)
 		}
 		for i := 0; i < 3; i++ {
-			w.writeB(false)
+			w.WriteB(false)
 		}
 	}
 }
 
 // gap2WriteWireframe 写 COMMON_3DSOLID 线框段全链（point + isolines +
 // wires + surfs（hw 带子 wire）），结尾写 acis_empty_bit。
-func gap2WriteWireframe(w *encWriter) {
-	w.writeB(true) // wireframe_data_present
-	w.writeB(true) // point_present
+func gap2WriteWireframe(w *bitstream.EncWriter) {
+	w.WriteB(true) // wireframe_data_present
+	w.WriteB(true) // point_present
 	gap2Write3BD(w)
-	w.writeBL(0)   // isolines
-	w.writeB(true) // isoline_present
-	w.writeBL(1)   // num_wires
+	w.WriteBL(0)   // isolines
+	w.WriteB(true) // isoline_present
+	w.WriteBL(1)   // num_wires
 	gap2WriteWire(w, true)
-	w.writeBL(1) // num_silhouettes
-	w.writeBL(0) // vp_id
+	w.WriteBL(1) // num_silhouettes
+	w.WriteBL(0) // vp_id
 	for i := 0; i < 3; i++ {
 		gap2Write3BD(w)
 	}
-	w.writeB(false) // persp
-	w.writeB(true)  // has_hw
-	w.writeBL(1)    // num_hw_wires
+	w.WriteB(false) // persp
+	w.WriteB(true)  // has_hw
+	w.WriteBL(1)    // num_hw_wires
 	gap2WriteWire(w, false)
-	w.writeB(true) // acis_empty_bit
+	w.WriteB(true) // acis_empty_bit
 }
 
 // gap2SATMarker End-of-ACIS-data 标记（SAB 分支搜索用）。
@@ -207,23 +208,23 @@ var gap2SATMarker = []byte("\x0e\x03End\x0e\x02of\x0e\x04ACIS\r\x04data")
 func TestSynthRenderSettings(t *testing.T) {
 	// RENDERSETTINGS：公共字段 + R2013 的 has_predefined（class_version
 	// 位流 +1 存储）
-	buildSettings := func(r13 bool) func(w *encWriter) {
-		return func(w *encWriter) {
+	buildSettings := func(r13 bool) func(w *bitstream.EncWriter) {
+		return func(w *bitstream.EncWriter) {
 			if r13 {
-				w.writeBL(1)
+				w.WriteBL(1)
 			} else {
-				w.writeBL(0)
+				w.WriteBL(0)
 			}
-			w.writeTV("preset")
-			w.writeB(true)
-			w.writeB(false)
-			w.writeB(false)
-			w.writeB(true)
-			w.writeTV("env.png")
-			w.writeTV("desc")
-			w.writeBL(2)
+			w.WriteTV("preset")
+			w.WriteB(true)
+			w.WriteB(false)
+			w.WriteB(false)
+			w.WriteB(true)
+			w.WriteTV("env.png")
+			w.WriteTV("desc")
+			w.WriteBL(2)
 			if r13 {
-				w.writeB(false)
+				w.WriteB(false)
 			}
 		}
 	}
@@ -238,29 +239,29 @@ func TestSynthRenderSettings(t *testing.T) {
 
 	// RAPIDRTRENDERSETTINGS：8 个专有字段；pre-R2013 尾部多 has_predefined。
 	// R2013+ 的 gfRead.T 走字符串流（dat 不占位），合成流去掉全部 TV。
-	buildRapid := func(r13 bool) func(w *encWriter) {
-		return func(w *encWriter) {
+	buildRapid := func(r13 bool) func(w *bitstream.EncWriter) {
+		return func(w *bitstream.EncWriter) {
 			if r13 {
-				w.writeBL(1) // class_version（+1 存储）
-				w.writeB(false)
-				w.writeB(false)
-				w.writeB(false)
-				w.writeB(false)
-				w.writeBL(2)    // display_index
-				w.writeB(false) // has_predefined
+				w.WriteBL(1) // class_version（+1 存储）
+				w.WriteB(false)
+				w.WriteB(false)
+				w.WriteB(false)
+				w.WriteB(false)
+				w.WriteBL(2)    // display_index
+				w.WriteB(false) // has_predefined
 			} else {
 				buildSettings(false)(w)
 			}
-			w.writeBL(1) // rapidrt_version
-			w.writeBL(0) // render_target
-			w.writeBL(2) // render_level
-			w.writeBL(0) // render_time
-			w.writeBL(1) // lighting_model
-			w.writeBL(0) // filter_type
-			w.writeBD(1.5)
-			w.writeBD(2.5)
+			w.WriteBL(1) // rapidrt_version
+			w.WriteBL(0) // render_target
+			w.WriteBL(2) // render_level
+			w.WriteBL(0) // render_time
+			w.WriteBL(1) // lighting_model
+			w.WriteBL(0) // filter_type
+			w.WriteBD(1.5)
+			w.WriteBD(2.5)
 			if !r13 {
-				w.writeB(true)
+				w.WriteB(true)
 			}
 		}
 	}
@@ -271,19 +272,19 @@ func TestSynthRenderSettings(t *testing.T) {
 	}
 
 	// RENDERENTRY：18 字段（start 组 6 个 BS）
-	buildEntry := func(w *encWriter) {
-		w.writeBL(1)
-		w.writeTV("img.png")
-		w.writeTV("preset")
-		w.writeTV("view")
-		w.writeBL(640)
-		w.writeBL(480)
+	buildEntry := func(w *bitstream.EncWriter) {
+		w.WriteBL(1)
+		w.WriteTV("img.png")
+		w.WriteTV("preset")
+		w.WriteTV("view")
+		w.WriteBL(640)
+		w.WriteBL(480)
 		for i := 0; i < 6; i++ {
-			w.writeBS(uint16(2020 + i))
+			w.WriteBS(uint16(2020 + i))
 		}
-		w.writeBD(3.25)
+		w.WriteBD(3.25)
 		for i := 0; i < 5; i++ {
-			w.writeBL(uint32(i + 1))
+			w.WriteBL(uint32(i + 1))
 		}
 	}
 	g = execClassDecoder(t, "RENDERENTRY", verR2004, buildEntry, nil)
@@ -292,16 +293,16 @@ func TestSynthRenderSettings(t *testing.T) {
 	}
 
 	// RENDERGLOBAL：9 字段
-	buildGlobal := func(w *encWriter) {
-		w.writeBL(2)
-		w.writeBL(1)
-		w.writeBL(0)
-		w.writeB(true)
-		w.writeTV("out.png")
-		w.writeBL(800)
-		w.writeBL(600)
-		w.writeB(false)
-		w.writeB(true)
+	buildGlobal := func(w *bitstream.EncWriter) {
+		w.WriteBL(2)
+		w.WriteBL(1)
+		w.WriteBL(0)
+		w.WriteB(true)
+		w.WriteTV("out.png")
+		w.WriteBL(800)
+		w.WriteBL(600)
+		w.WriteB(false)
+		w.WriteB(true)
 	}
 	g = execClassDecoder(t, "RENDERGLOBAL", verR2004, buildGlobal, nil)
 	if v, _ := g.Field("image_width").(int64); v != 800 {
@@ -311,57 +312,57 @@ func TestSynthRenderSettings(t *testing.T) {
 
 // TestSynthMentalRaySettings MENTALRAYRENDERSETTINGS 41 专有字段全序。
 func TestSynthMentalRaySettings(t *testing.T) {
-	build := func(w *encWriter) {
-		w.writeBL(0) // class_version（pre-R2013 不偏移）
-		w.writeTV("mr")
-		w.writeB(false)
-		w.writeB(false)
-		w.writeB(false)
-		w.writeB(false)
-		w.writeTV("")
-		w.writeTV("d")
-		w.writeBL(0) // display_index
-		w.writeBL(1) // mr_version
-		w.writeBL(2)
-		w.writeBL(3) // sampling1/2
-		w.writeBS(0) // sampling_mr_filter
+	build := func(w *bitstream.EncWriter) {
+		w.WriteBL(0) // class_version（pre-R2013 不偏移）
+		w.WriteTV("mr")
+		w.WriteB(false)
+		w.WriteB(false)
+		w.WriteB(false)
+		w.WriteB(false)
+		w.WriteTV("")
+		w.WriteTV("d")
+		w.WriteBL(0) // display_index
+		w.WriteBL(1) // mr_version
+		w.WriteBL(2)
+		w.WriteBL(3) // sampling1/2
+		w.WriteBS(0) // sampling_mr_filter
 		for i := 0; i < 6; i++ {
-			w.writeBD(0.5) // sampling_filter/contrast_color
+			w.WriteBD(0.5) // sampling_filter/contrast_color
 		}
-		w.writeBS(1) // shadow_mode
-		w.writeB(true)
-		w.writeB(true) // shadow_maps/ray_tracing
+		w.WriteBS(1) // shadow_mode
+		w.WriteB(true)
+		w.WriteB(true) // shadow_maps/ray_tracing
 		for i := 0; i < 3; i++ {
-			w.writeBL(1) // ray_trace_depth
+			w.WriteBL(1) // ray_trace_depth
 		}
-		w.writeB(false) // global_illumination
-		w.writeBL(100)  // gi_sample_count
-		w.writeB(false) // gi_sample_radius_enabled
-		w.writeBD(0)    // gi_sample_radius
-		w.writeBL(1000) // gi_photons_per_light
+		w.WriteB(false) // global_illumination
+		w.WriteBL(100)  // gi_sample_count
+		w.WriteB(false) // gi_sample_radius_enabled
+		w.WriteBD(0)    // gi_sample_radius
+		w.WriteBL(1000) // gi_photons_per_light
 		for i := 0; i < 3; i++ {
-			w.writeBL(1) // photon_trace_depth
+			w.WriteBL(1) // photon_trace_depth
 		}
-		w.writeB(true) // final_gathering
-		w.writeBL(200) // fg_ray_count
+		w.WriteB(true) // final_gathering
+		w.WriteBL(200) // fg_ray_count
 		for i := 0; i < 3; i++ {
-			w.writeB(false) // fg_sample_radius_state
+			w.WriteB(false) // fg_sample_radius_state
 		}
-		w.writeBD(1)
-		w.writeBD(2)
-		w.writeBD(3)    // fg_sample_radius1/2 + light_luminance_scale
-		w.writeBS(0)    // diagnostics_mode
-		w.writeBS(0)    // diagnostics_grid_mode
-		w.writeBD(0)    // diagnostics_grid_float
-		w.writeBS(0)    // diagnostics_photon_mode
-		w.writeBS(0)    // diagnostics_bsp_mode
-		w.writeB(false) // export_mi_enabled
-		w.writeTV("mi")
-		w.writeBL(64)   // tile_size
-		w.writeBS(0)    // tile_order
-		w.writeBL(0)    // memory_limit
-		w.writeB(false) // diagnostics_samples_mode
-		w.writeBD(1)    // energy_multiplier
+		w.WriteBD(1)
+		w.WriteBD(2)
+		w.WriteBD(3)    // fg_sample_radius1/2 + light_luminance_scale
+		w.WriteBS(0)    // diagnostics_mode
+		w.WriteBS(0)    // diagnostics_grid_mode
+		w.WriteBD(0)    // diagnostics_grid_float
+		w.WriteBS(0)    // diagnostics_photon_mode
+		w.WriteBS(0)    // diagnostics_bsp_mode
+		w.WriteB(false) // export_mi_enabled
+		w.WriteTV("mi")
+		w.WriteBL(64)   // tile_size
+		w.WriteBS(0)    // tile_order
+		w.WriteBL(0)    // memory_limit
+		w.WriteB(false) // diagnostics_samples_mode
+		w.WriteBD(1)    // energy_multiplier
 	}
 	g := execClassDecoder(t, "MENTALRAYRENDERSETTINGS", verR2004, build, nil)
 	if v, _ := g.Field("tile_size").(int64); v != 64 {
@@ -373,15 +374,15 @@ func TestSynthMentalRaySettings(t *testing.T) {
 // primitive）经类表调度。
 func TestSynthAcshPrimitives(t *testing.T) {
 	// value_code=91：handle 流占 value + material 两个引用
-	buildSphere := func(w *encWriter) {
+	buildSphere := func(w *bitstream.EncWriter) {
 		gap2WriteEvalExpr(w, 91)
 		gap2WriteHistoryNode(w)
-		w.writeBL(1) // major
-		w.writeBL(0) // minor
-		w.writeBD(5) // radius
+		w.WriteBL(1) // major
+		w.WriteBL(0) // minor
+		w.WriteBD(5) // radius
 	}
 	g := execClassDecoder(t, "ACSH_SPHERE_CLASS", verR2004, buildSphere,
-		func(w *encWriter) { gap2WriteHandles(w, 2) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 2) })
 	if v, _ := g.Field("radius").(float64); v != 5 {
 		t.Errorf("radius = %v", g.Field("radius"))
 	}
@@ -389,18 +390,18 @@ func TestSynthAcshPrimitives(t *testing.T) {
 		t.Errorf("SPHERE hdl 数 = %d", len(g.Handles))
 	}
 
-	buildPyramid := func(w *encWriter) {
+	buildPyramid := func(w *bitstream.EncWriter) {
 		gap2WriteEvalExpr(w, 70)
 		gap2WriteHistoryNode(w)
-		w.writeBL(1)
-		w.writeBL(0)
-		w.writeBD(8) // height
-		w.writeBL(6) // sides
-		w.writeBD(3) // radius
-		w.writeBD(1) // topradius
+		w.WriteBL(1)
+		w.WriteBL(0)
+		w.WriteBD(8) // height
+		w.WriteBL(6) // sides
+		w.WriteBD(3) // radius
+		w.WriteBD(1) // topradius
 	}
 	g = execClassDecoder(t, "ACSH_PYRAMID_CLASS", verR2004, buildPyramid,
-		func(w *encWriter) { gap2WriteHandles(w, 1) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("topradius").(float64); v != 1 {
 		t.Errorf("topradius = %v", g.Field("topradius"))
 	}
@@ -410,58 +411,58 @@ func TestSynthAcshPrimitives(t *testing.T) {
 // COMMON_3DSOLID 线框段全链（经类表 acshWithCommon 公共前导）。
 func TestSynthAcshBrep(t *testing.T) {
 	// acis_empty=1：无 unknown/version，线框段关闭
-	buildEmpty := func(w *encWriter) {
+	buildEmpty := func(w *bitstream.EncWriter) {
 		gap2WriteEvalExpr(w, 70)
 		gap2WriteHistoryNode(w)
-		w.writeBL(1)
-		w.writeBL(0)
-		w.writeB(true)  // acis_empty
-		w.writeB(false) // wireframe
-		w.writeB(true)  // acis_empty_bit
+		w.WriteBL(1)
+		w.WriteBL(0)
+		w.WriteB(true)  // acis_empty
+		w.WriteB(false) // wireframe
+		w.WriteB(true)  // acis_empty_bit
 	}
 	g := execClassDecoder(t, "ACSH_BREP_CLASS", verR2004, buildEmpty,
-		func(w *encWriter) { gap2WriteHandles(w, 1) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("version").(int64); v != 0 {
 		t.Errorf("empty version = %v", g.Field("version"))
 	}
 
 	// version=1 SAT：块循环（4 字节块 + 0 块终止）
-	buildSAT := func(w *encWriter) {
+	buildSAT := func(w *bitstream.EncWriter) {
 		gap2WriteEvalExpr(w, 70)
 		gap2WriteHistoryNode(w)
-		w.writeBL(1)
-		w.writeBL(0)
-		w.writeB(false) // acis_empty
-		w.writeB(true)  // unknown
-		w.writeBS(1)    // version
-		w.writeBL(4)    // 块长
-		w.writeTF([]byte("SAT1"))
-		w.writeBL(0) // 终止块
+		w.WriteBL(1)
+		w.WriteBL(0)
+		w.WriteB(false) // acis_empty
+		w.WriteB(true)  // unknown
+		w.WriteBS(1)    // version
+		w.WriteBL(4)    // 块长
+		w.WriteTF([]byte("SAT1"))
+		w.WriteBL(0) // 终止块
 		gap2WriteWireframe(w)
 	}
 	g = execClassDecoder(t, "ACSH_BREP_CLASS", verR2004, buildSAT,
-		func(w *encWriter) { gap2WriteHandles(w, 1) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("version").(int64); v != 1 {
 		t.Errorf("SAT version = %v", g.Field("version"))
 	}
 
 	// version=2 SAB（R2007+）：标记定位 + 线框 + num_materials
-	body := newEncWriter()
+	body := bitstream.NewEncWriter()
 	gap2WriteWireframe(body)
-	body.writeBL(2) // num_materials（version>1 且 R2007+）
-	sab := append(append([]byte{}, gap2SATMarker...), body.bytes()...)
-	buildSAB := func(w *encWriter) {
+	body.WriteBL(2) // num_materials（version>1 且 R2007+）
+	sab := append(append([]byte{}, gap2SATMarker...), body.Bytes()...)
+	buildSAB := func(w *bitstream.EncWriter) {
 		gap2WriteEvalExpr(w, 70)
 		gap2WriteHistoryNode(w)
-		w.writeBL(1)
-		w.writeBL(0)
-		w.writeB(false)
-		w.writeB(true)
-		w.writeBS(2) // version
-		w.writeTF(sab)
+		w.WriteBL(1)
+		w.WriteBL(0)
+		w.WriteB(false)
+		w.WriteB(true)
+		w.WriteBS(2) // version
+		w.WriteTF(sab)
 	}
 	g = execClassDecoder(t, "ACSH_BREP_CLASS", verR2007, buildSAB,
-		func(w *encWriter) { gap2WriteHandles(w, 4) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 4) })
 	if v, _ := g.Field("num_materials").(int64); v != 2 {
 		t.Errorf("SAB num_materials = %v", g.Field("num_materials"))
 	}
@@ -476,9 +477,9 @@ func TestSynthAcshHdl(t *testing.T) {
 	// 非 BREP + value91：2 个引用
 	g := &objGeneric{Name: "ACSH_BOX_CLASS", Handle: gap2BaseHandle}
 	g.valueHandle91 = true
-	w := newEncWriter()
+	w := bitstream.NewEncWriter()
 	gap2WriteHandles(w, 2)
-	fr := &gfRead{r: newBitStream(w.bytes()), ver: verR2004}
+	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: verR2004}
 	if err := decodeGenericACSH_HDL(fr.r, verR2004, fr, g); err != nil {
 		t.Fatalf("hdl: %v", err)
 	}
@@ -489,9 +490,9 @@ func TestSynthAcshHdl(t *testing.T) {
 	// BREP version>1（R2007+）：material×num_materials + history_id
 	g2 := &objGeneric{Name: "ACSH_BREP_CLASS", Handle: gap2BaseHandle}
 	g2.Fields = []objField{{"version", int64(2)}, {"num_materials", int64(2)}}
-	w2 := newEncWriter()
+	w2 := bitstream.NewEncWriter()
 	gap2WriteHandles(w2, 3)
-	fr2 := &gfRead{r: newBitStream(w2.bytes()), ver: verR2007}
+	fr2 := &gfRead{r: bitstream.NewBitStream(w2.Bytes()), ver: verR2007}
 	if err := decodeGenericACSH_HDL(fr2.r, verR2007, fr2, g2); err != nil {
 		t.Fatalf("BREP hdl: %v", err)
 	}
@@ -502,9 +503,9 @@ func TestSynthAcshHdl(t *testing.T) {
 	// BREP version<=1：仅 material
 	g3 := &objGeneric{Name: "ACSH_BREP_CLASS", Handle: gap2BaseHandle}
 	g3.Fields = []objField{{"version", int64(1)}}
-	w3 := newEncWriter()
+	w3 := bitstream.NewEncWriter()
 	gap2WriteHandles(w3, 1)
-	fr3 := &gfRead{r: newBitStream(w3.bytes()), ver: verR2004}
+	fr3 := &gfRead{r: bitstream.NewBitStream(w3.Bytes()), ver: verR2004}
 	if err := decodeGenericACSH_HDL(fr3.r, verR2004, fr3, g3); err != nil {
 		t.Fatalf("BREP v1 hdl: %v", err)
 	}
@@ -516,12 +517,12 @@ func TestSynthAcshHdl(t *testing.T) {
 // TestSynthDynBlockParameters 动态块参数族 Polar/Point/XY/Lookup/User。
 func TestSynthDynBlockParameters(t *testing.T) {
 	// POLAR：2Pt + 4 个名称 T + offset BD + 两个 ParamValueSet
-	buildPolar := func(w *encWriter) {
+	buildPolar := func(w *bitstream.EncWriter) {
 		gap2Write2PtParameter(w)
 		for i := 0; i < 4; i++ {
-			w.writeTV("n")
+			w.WriteTV("n")
 		}
-		w.writeBD(2) // offset
+		w.WriteBD(2) // offset
 		gap2WriteValueSet(w)
 		gap2WriteValueSet(w)
 	}
@@ -531,10 +532,10 @@ func TestSynthDynBlockParameters(t *testing.T) {
 	}
 
 	// POINT：1Pt + position_name/desc + def_label_pt
-	buildPoint := func(w *encWriter) {
+	buildPoint := func(w *bitstream.EncWriter) {
 		gap2Write1PtParameter(w)
-		w.writeTV("pn")
-		w.writeTV("pd")
+		w.WriteTV("pn")
+		w.WriteTV("pd")
 		gap2Write3BD(w)
 	}
 	g = execClassDecoder(t, "BLOCKPOINTPARAMETER", verR2004, buildPoint, nil)
@@ -543,13 +544,13 @@ func TestSynthDynBlockParameters(t *testing.T) {
 	}
 
 	// XY：2Pt + 4 标签 + x/y 值 + 两个 ValueSet
-	buildXY := func(w *encWriter) {
+	buildXY := func(w *bitstream.EncWriter) {
 		gap2Write2PtParameter(w)
 		for i := 0; i < 4; i++ {
-			w.writeTV("l")
+			w.WriteTV("l")
 		}
-		w.writeBD(3)
-		w.writeBD(4)
+		w.WriteBD(3)
+		w.WriteBD(4)
 		gap2WriteValueSet(w)
 		gap2WriteValueSet(w)
 	}
@@ -559,12 +560,12 @@ func TestSynthDynBlockParameters(t *testing.T) {
 	}
 
 	// LOOKUP：1Pt + index BL + 3 个 T
-	buildLookup := func(w *encWriter) {
+	buildLookup := func(w *bitstream.EncWriter) {
 		gap2Write1PtParameter(w)
-		w.writeBL(2)
-		w.writeTV("ln")
-		w.writeTV("ld")
-		w.writeTV("u")
+		w.WriteBL(2)
+		w.WriteTV("ln")
+		w.WriteTV("ld")
+		w.WriteTV("u")
 	}
 	g = execClassDecoder(t, "BLOCKLOOKUPPARAMETER", verR2004, buildLookup, nil)
 	if v, _ := g.Field("index").(int64); v != 2 {
@@ -573,14 +574,14 @@ func TestSynthDynBlockParameters(t *testing.T) {
 
 	// USER：1Pt + flag BS + EvalVariant（HANDLE 型 code=390 → 句柄占位）
 	// + type BS；hdl 读 assocvariable + value 两个引用
-	buildUser := func(w *encWriter) {
+	buildUser := func(w *bitstream.EncWriter) {
 		gap2Write1PtParameter(w)
-		w.writeBS(0) // flag
-		w.writeBS(390)
-		w.writeBS(1) // type
+		w.WriteBS(0) // flag
+		w.WriteBS(390)
+		w.WriteBS(1) // type
 	}
 	g = execClassDecoder(t, "BLOCKUSERPARAMETER", verR2004, buildUser,
-		func(w *encWriter) { gap2WriteHandles(w, 2) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 2) })
 	if v, _ := g.Field("type").(int64); v != 1 {
 		t.Errorf("type = %v", g.Field("type"))
 	}
@@ -593,25 +594,25 @@ func TestSynthDynBlockParameters(t *testing.T) {
 // ROTATE（ActionWithBasePt 补齐尾段）。
 func TestSynthDynBlockActions(t *testing.T) {
 	// BlockAction 公共体（BlockElement + display_location + deps/actions）
-	writeActionHead := func(w *encWriter) {
+	writeActionHead := func(w *bitstream.EncWriter) {
 		gap2WriteBlockElement(w, 0)
 		gap2Write3BD(w) // display_location
-		w.writeBL(1)    // num_deps
-		w.writeBL(0)    // num_actions
+		w.WriteBL(1)    // num_deps
+		w.WriteBL(0)    // num_actions
 	}
 
 	// ARRAY：makeBlockAction 包装 + 4 连接点 + 两偏移
-	buildArray := func(w *encWriter) {
+	buildArray := func(w *bitstream.EncWriter) {
 		writeActionHead(w)
 		for i := 0; i < 4; i++ {
-			w.writeBL(uint32(i + 1)) // code
-			w.writeTV("cp")          // name
+			w.WriteBL(uint32(i + 1)) // code
+			w.WriteTV("cp")          // name
 		}
-		w.writeBD(5)
-		w.writeBD(6)
+		w.WriteBD(5)
+		w.WriteBD(6)
 	}
 	g := execClassDecoder(t, "BLOCKARRAYACTION", verR2004, buildArray,
-		func(w *encWriter) { gap2WriteHandles(w, 1) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("row_offset").(float64); v != 6 {
 		t.Errorf("row_offset = %v", g.Field("row_offset"))
 	}
@@ -620,20 +621,20 @@ func TestSynthDynBlockActions(t *testing.T) {
 	}
 
 	// ROTATE：WithBasePt（offset/base_pt）+ 尾部 1 连接点
-	buildRotate := func(w *encWriter) {
+	buildRotate := func(w *bitstream.EncWriter) {
 		writeActionHead(w)
 		gap2Write3BD(w) // offset
 		for i := 0; i < 2; i++ {
-			w.writeBL(1)
-			w.writeTV("cp")
+			w.WriteBL(1)
+			w.WriteTV("cp")
 		}
-		w.writeB(true)  // dependent
+		w.WriteB(true)  // dependent
 		gap2Write3BD(w) // base_pt
-		w.writeBL(9)
-		w.writeTV("cp3")
+		w.WriteBL(9)
+		w.WriteTV("cp3")
 	}
 	g = execClassDecoder(t, "BLOCKROTATEACTION", verR2004, buildRotate,
-		func(w *encWriter) { gap2WriteHandles(w, 1) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("base_pt").([]float64); len(v) != 3 || v[0] != 1 {
 		t.Errorf("base_pt = %v", g.Field("base_pt"))
 	}
@@ -642,13 +643,13 @@ func TestSynthDynBlockActions(t *testing.T) {
 // TestSynthBlockGripLocationComponent BLOCKGRIPLOCATIONCOMPONENT：
 // evalexpr(value91) + grip_type + grip_expr + handle 流。
 func TestSynthBlockGripLocationComponent(t *testing.T) {
-	build := func(w *encWriter) {
+	build := func(w *bitstream.EncWriter) {
 		gap2WriteEvalExpr(w, 91)
-		w.writeBL(3)   // grip_type
-		w.writeTV("e") // grip_expr
+		w.WriteBL(3)   // grip_type
+		w.WriteTV("e") // grip_expr
 	}
 	g := execClassDecoder(t, "BLOCKGRIPLOCATIONCOMPONENT", verR2004, build,
-		func(w *encWriter) { gap2WriteHandles(w, 1) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("grip_type").(int64); v != 3 {
 		t.Errorf("grip_type = %v", g.Field("grip_type"))
 	}
@@ -690,35 +691,35 @@ func TestDwgResbufValueType(t *testing.T) {
 // TestSynthAssoc2DConstraintGroup ASSOC2DCONSTRAINTGROUP pre/post R2013
 // 两种 status 位置 + handle 流。
 func TestSynthAssoc2DConstraintGroup(t *testing.T) {
-	build := func(r2013 bool) func(w *encWriter) {
-		return func(w *encWriter) {
-			w.writeBS(1)   // class_version
-			w.writeBL(0)   // geometry_status
-			w.writeBL(0)   // action_index
-			w.writeBL(0)   // max_assoc_dep_index
-			w.writeBL(1)   // num_deps
-			w.writeB(true) // deps[0].is_owned
+	build := func(r2013 bool) func(w *bitstream.EncWriter) {
+		return func(w *bitstream.EncWriter) {
+			w.WriteBS(1)   // class_version
+			w.WriteBL(0)   // geometry_status
+			w.WriteBL(0)   // action_index
+			w.WriteBL(0)   // max_assoc_dep_index
+			w.WriteBL(1)   // num_deps
+			w.WriteB(true) // deps[0].is_owned
 			if r2013 {
-				w.writeBS(0) // assoc_unknown_bs1（R2010+）
-				w.writeBL(0) // num_owned_params
-				w.writeBS(0) // assoc_unknown_bs2
-				w.writeBL(0) // num_values
+				w.WriteBS(0) // assoc_unknown_bs1（R2010+）
+				w.WriteBL(0) // num_owned_params
+				w.WriteBS(0) // assoc_unknown_bs2
+				w.WriteBL(0) // num_values
 			}
-			w.writeBL(1)   // version
-			w.writeB(true) // b1
+			w.WriteBL(1)   // version
+			w.WriteB(true) // b1
 			for i := 0; i < 3; i++ {
 				gap2Write3BD(w) // workplane
 			}
-			w.writeBL(1) // num_actions
-			w.writeBL(1) // num_nodes
-			w.writeBL(7) // nodeid
+			w.WriteBL(1) // num_actions
+			w.WriteBL(1) // num_nodes
+			w.WriteBL(7) // nodeid
 			if !r2013 {
-				w.writeRC(2) // status 前置（pre-R2013）
+				w.WriteRC(2) // status 前置（pre-R2013）
 			}
-			w.writeBL(1) // num_connections
-			w.writeBL(4) // connections[0]
+			w.WriteBL(1) // num_connections
+			w.WriteBL(4) // connections[0]
 			if r2013 {
-				w.writeRC(2) // status 后置
+				w.WriteRC(2) // status 后置
 			}
 		}
 	}
@@ -728,7 +729,7 @@ func TestSynthAssoc2DConstraintGroup(t *testing.T) {
 			ver = verR2013
 		}
 		g := execClassDecoder(t, "ASSOC2DCONSTRAINTGROUP", ver, build(r2013),
-			func(w *encWriter) { gap2WriteHandles(w, 5) })
+			func(w *bitstream.EncWriter) { gap2WriteHandles(w, 5) })
 		if v, _ := g.Field("nodes[0].nodeid").(int64); v != 7 {
 			t.Errorf("r2013=%v nodeid = %v", r2013, g.Field("nodes[0].nodeid"))
 		}
@@ -742,24 +743,24 @@ func TestSynthAssoc2DConstraintGroup(t *testing.T) {
 // TestSynthAssocVariable ASSOCVARIABLE 主体（EvalVariant HANDLE 型）+
 // handle 流（assocvariable + value）。
 func TestSynthAssocVariable(t *testing.T) {
-	build := func(w *encWriter) {
-		w.writeBS(1) // class_version
-		w.writeBL(0) // geometry_status
-		w.writeBL(0) // action_index
-		w.writeBL(0) // max_assoc_dep_index
-		w.writeBL(0) // num_deps
-		w.writeBL(1) // av_class_version
-		w.writeTV("v1")
-		w.writeTV("58")
-		w.writeTV("AcDbEval")
-		w.writeTV("desc")
-		w.writeBS(390) // variant code = HANDLE
-		w.writeB(true) // has_t78
-		w.writeTV("t78")
-		w.writeB(false) // b290
+	build := func(w *bitstream.EncWriter) {
+		w.WriteBS(1) // class_version
+		w.WriteBL(0) // geometry_status
+		w.WriteBL(0) // action_index
+		w.WriteBL(0) // max_assoc_dep_index
+		w.WriteBL(0) // num_deps
+		w.WriteBL(1) // av_class_version
+		w.WriteTV("v1")
+		w.WriteTV("58")
+		w.WriteTV("AcDbEval")
+		w.WriteTV("desc")
+		w.WriteBS(390) // variant code = HANDLE
+		w.WriteB(true) // has_t78
+		w.WriteTV("t78")
+		w.WriteB(false) // b290
 	}
 	g := execClassDecoder(t, "ASSOCVARIABLE", verR2004, build,
-		func(w *encWriter) { gap2WriteHandles(w, 3) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 3) })
 	if v, _ := g.Field("t78").(string); v != "t78" {
 		t.Errorf("t78 = %v", g.Field("t78"))
 	}
@@ -772,30 +773,30 @@ func TestSynthAssocVariable(t *testing.T) {
 // 段与 R2013+ 精简段，各尾部变体（EXTEND/OFFSET/TRIM/BLEND/类版本）。
 func TestSynthSurfaceActionBody(t *testing.T) {
 	// pre-R2013 段（num_values=0 → l5）+ surface 体 + status + 尾部
-	buildPre := func(tail func(w *encWriter)) func(w *encWriter) {
-		return func(w *encWriter) {
-			w.writeBL(1)    // aab_version
-			w.writeBL(1)    // pab.version
-			w.writeBL(0)    // pab.minor
-			w.writeBL(2)    // pab.num_deps
-			w.writeBL(0)    // pab.l4
-			w.writeBL(0)    // pab.num_values
-			w.writeBL(0)    // pab.l5
-			w.writeBL(1)    // sab.version
-			w.writeB(true)  // sab.is_semi_assoc
-			w.writeBL(0)    // sab.l2
-			w.writeB(false) // sab.is_semi_ovr
-			w.writeBS(0)    // sab.grip_status
-			w.writeBL(0)    // pbsab_status
+	buildPre := func(tail func(w *bitstream.EncWriter)) func(w *bitstream.EncWriter) {
+		return func(w *bitstream.EncWriter) {
+			w.WriteBL(1)    // aab_version
+			w.WriteBL(1)    // pab.version
+			w.WriteBL(0)    // pab.minor
+			w.WriteBL(2)    // pab.num_deps
+			w.WriteBL(0)    // pab.l4
+			w.WriteBL(0)    // pab.num_values
+			w.WriteBL(0)    // pab.l5
+			w.WriteBL(1)    // sab.version
+			w.WriteB(true)  // sab.is_semi_assoc
+			w.WriteBL(0)    // sab.l2
+			w.WriteB(false) // sab.is_semi_ovr
+			w.WriteBS(0)    // sab.grip_status
+			w.WriteBL(0)    // pbsab_status
 			tail(w)
 		}
 	}
 	// EXTEND：class_version + option RC
 	g := execClassDecoder(t, "ASSOCEXTENDSURFACEACTIONBODY", verR2004,
-		buildPre(func(w *encWriter) {
-			w.writeBL(1)
-			w.writeRC(3)
-		}), func(w *encWriter) { gap2WriteHandles(w, 4) })
+		buildPre(func(w *bitstream.EncWriter) {
+			w.WriteBL(1)
+			w.WriteRC(3)
+		}), func(w *bitstream.EncWriter) { gap2WriteHandles(w, 4) })
 	if v, _ := g.Field("option").(int64); v != 3 {
 		t.Errorf("EXTEND option = %v", g.Field("option"))
 	}
@@ -806,55 +807,55 @@ func TestSynthSurfaceActionBody(t *testing.T) {
 
 	// OFFSET：class_version + b1
 	g = execClassDecoder(t, "ASSOCOFFSETSURFACEACTIONBODY", verR2004,
-		buildPre(func(w *encWriter) {
-			w.writeBL(1)
-			w.writeB(true)
-		}), func(w *encWriter) { gap2WriteHandles(w, 4) })
+		buildPre(func(w *bitstream.EncWriter) {
+			w.WriteBL(1)
+			w.WriteB(true)
+		}), func(w *bitstream.EncWriter) { gap2WriteHandles(w, 4) })
 	if v, _ := g.Field("b1").(bool); !v {
 		t.Errorf("OFFSET b1 = %v", g.Field("b1"))
 	}
 
 	// TRIM：class_version + b1/b2 + distance
 	g = execClassDecoder(t, "ASSOCTRIMSURFACEACTIONBODY", verR2004,
-		buildPre(func(w *encWriter) {
-			w.writeBL(1)
-			w.writeB(true)
-			w.writeB(false)
-			w.writeBD(1.5)
-		}), func(w *encWriter) { gap2WriteHandles(w, 4) })
+		buildPre(func(w *bitstream.EncWriter) {
+			w.WriteBL(1)
+			w.WriteB(true)
+			w.WriteB(false)
+			w.WriteBD(1.5)
+		}), func(w *bitstream.EncWriter) { gap2WriteHandles(w, 4) })
 	if v, _ := g.Field("distance").(float64); v != 1.5 {
 		t.Errorf("TRIM distance = %v", g.Field("distance"))
 	}
 
 	// BLEND：class_version + b1/b2/b3 + blend_options + b4/b5 + bs2
 	g = execClassDecoder(t, "ASSOCBLENDSURFACEACTIONBODY", verR2004,
-		buildPre(func(w *encWriter) {
-			w.writeBL(1)
-			w.writeB(true)
-			w.writeB(true)
-			w.writeB(false)
-			w.writeBS(2)
-			w.writeB(true)
-			w.writeB(false)
-			w.writeBS(1)
-		}), func(w *encWriter) { gap2WriteHandles(w, 4) })
+		buildPre(func(w *bitstream.EncWriter) {
+			w.WriteBL(1)
+			w.WriteB(true)
+			w.WriteB(true)
+			w.WriteB(false)
+			w.WriteBS(2)
+			w.WriteB(true)
+			w.WriteB(false)
+			w.WriteBS(1)
+		}), func(w *bitstream.EncWriter) { gap2WriteHandles(w, 4) })
 	if v, _ := g.Field("blend_options").(int64); v != 2 {
 		t.Errorf("BLEND blend_options = %v", g.Field("blend_options"))
 	}
 
 	// R2013+：无 ParamBased 段，仅 sab + status + class_version（cvTail）
-	build2013 := func(w *encWriter) {
-		w.writeBL(1) // aab_version
-		w.writeBL(1) // sab.version
-		w.writeB(true)
-		w.writeBL(0)
-		w.writeB(false)
-		w.writeBS(1)
-		w.writeBL(0) // pbsab_status
-		w.writeBL(2) // class_version（cvTail）
+	build2013 := func(w *bitstream.EncWriter) {
+		w.WriteBL(1) // aab_version
+		w.WriteBL(1) // sab.version
+		w.WriteB(true)
+		w.WriteBL(0)
+		w.WriteB(false)
+		w.WriteBS(1)
+		w.WriteBL(0) // pbsab_status
+		w.WriteBL(2) // class_version（cvTail）
 	}
 	g = execClassDecoder(t, "ASSOCPLANESURFACEACTIONBODY", verR2013, build2013,
-		func(w *encWriter) { gap2WriteHandles(w, 1) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("class_version").(int64); v != 2 {
 		t.Errorf("PLANE class_version = %v", g.Field("class_version"))
 	}
@@ -865,20 +866,20 @@ func TestSynthSurfaceActionBody(t *testing.T) {
 
 // TestSynthBrepSATBlockLimit ACSH_BREP SAT 块循环的长度越界退出分支。
 func TestSynthBrepSATBlockLimit(t *testing.T) {
-	build := func(w *encWriter) {
+	build := func(w *bitstream.EncWriter) {
 		gap2WriteEvalExpr(w, 70)
 		gap2WriteHistoryNode(w)
-		w.writeBL(1)
-		w.writeBL(0)
-		w.writeB(false)
-		w.writeB(true)
-		w.writeBS(1)
-		w.writeBL(0xFFFF) // 声明超长块 → break
-		w.writeB(false)   // wireframe
-		w.writeB(true)    // acis_empty_bit
+		w.WriteBL(1)
+		w.WriteBL(0)
+		w.WriteB(false)
+		w.WriteB(true)
+		w.WriteBS(1)
+		w.WriteBL(0xFFFF) // 声明超长块 → break
+		w.WriteB(false)   // wireframe
+		w.WriteB(true)    // acis_empty_bit
 	}
 	g := execClassDecoder(t, "ACSH_BREP_CLASS", verR2004, build,
-		func(w *encWriter) { gap2WriteHandles(w, 1) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("version").(int64); v != 1 {
 		t.Errorf("version = %v", g.Field("version"))
 	}
@@ -887,20 +888,20 @@ func TestSynthBrepSATBlockLimit(t *testing.T) {
 // TestSynthSABNoMarker ACSH_BREP SAB 分支无标记时按整段消费。
 func TestSynthSABNoMarker(t *testing.T) {
 	sab := bytes.Repeat([]byte{0x41}, 8) // 无 End 标记
-	build := func(w *encWriter) {
+	build := func(w *bitstream.EncWriter) {
 		gap2WriteEvalExpr(w, 70)
 		gap2WriteHistoryNode(w)
-		w.writeBL(1)
-		w.writeBL(0)
-		w.writeB(false)
-		w.writeB(true)
-		w.writeBS(2)
-		w.writeTF(sab)
-		w.writeB(false) // wireframe
-		w.writeB(true)  // acis_empty_bit
+		w.WriteBL(1)
+		w.WriteBL(0)
+		w.WriteB(false)
+		w.WriteB(true)
+		w.WriteBS(2)
+		w.WriteTF(sab)
+		w.WriteB(false) // wireframe
+		w.WriteB(true)  // acis_empty_bit
 	}
 	g := execClassDecoder(t, "ACSH_BREP_CLASS", verR2004, build,
-		func(w *encWriter) { gap2WriteHandles(w, 1) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("version").(int64); v != 2 {
 		t.Errorf("version = %v", g.Field("version"))
 	}
@@ -909,43 +910,43 @@ func TestSynthSABNoMarker(t *testing.T) {
 // ---- 批次 2：视图样式族 / GEODATA / 表几何 ----
 
 // gap2WriteCMC 写 R2004+ 结构的 CMC 颜色（BS index + BL rgb + RC flag）。
-func gap2WriteCMC(w *encWriter) {
-	w.writeBS(7)
-	w.writeBL(0xc3000000)
-	w.writeRC(0)
+func gap2WriteCMC(w *bitstream.EncWriter) {
+	w.WriteBS(7)
+	w.WriteBL(0xc3000000)
+	w.WriteRC(0)
 }
 
 // TestSynthDetailViewStyle DETAILVIEWSTYLE 全字段（R2004 与 R2018 头）。
 func TestSynthDetailViewStyle(t *testing.T) {
-	buildR2004 := func(w *encWriter) {
-		w.writeBS(1)     // mdoc_class_version
-		w.writeTV("dv")  // desc
-		w.writeB(false)  // is_modified_for_recompute
-		w.writeBS(2)     // class_version
-		w.writeBL(0)     // flags
+	buildR2004 := func(w *bitstream.EncWriter) {
+		w.WriteBS(1)     // mdoc_class_version
+		w.WriteTV("dv")  // desc
+		w.WriteB(false)  // is_modified_for_recompute
+		w.WriteBS(2)     // class_version
+		w.WriteBL(0)     // flags
 		gap2WriteCMC(w)  // identifier_color
-		w.writeBD(2.5)   // identifier_height
-		w.writeTV("A-C") // exclude_characters
-		w.writeBD(0.5)   // identifier_offset
-		w.writeRC(1)     // identifier_placement
+		w.WriteBD(2.5)   // identifier_height
+		w.WriteTV("A-C") // exclude_characters
+		w.WriteBD(0.5)   // identifier_offset
+		w.WriteRC(1)     // identifier_placement
 		gap2WriteCMC(w)  // arrow_symbol_color
-		w.writeBD(1)     // arrow_symbol_size
-		w.writeBL(9)     // boundary_linewt
+		w.WriteBD(1)     // arrow_symbol_size
+		w.WriteBL(9)     // boundary_linewt
 		gap2WriteCMC(w)  // boundary_line_color
 		gap2WriteCMC(w)  // viewlabel_text_color
-		w.writeBD(3)     // viewlabel_text_height
-		w.writeBL(1)     // viewlabel_attachment
-		w.writeBD(0.1)   // viewlabel_offset
-		w.writeBL(2)     // viewlabel_alignment
-		w.writeTV("<>")  // viewlabel_pattern
-		w.writeBL(0)     // connection_linewt
+		w.WriteBD(3)     // viewlabel_text_height
+		w.WriteBL(1)     // viewlabel_attachment
+		w.WriteBD(0.1)   // viewlabel_offset
+		w.WriteBL(2)     // viewlabel_alignment
+		w.WriteTV("<>")  // viewlabel_pattern
+		w.WriteBL(0)     // connection_linewt
 		gap2WriteCMC(w)  // connection_line_color
-		w.writeBL(9)     // borderline_linewt
+		w.WriteBL(9)     // borderline_linewt
 		gap2WriteCMC(w)  // borderline_color
-		w.writeRC(0)     // model_edge
+		w.WriteRC(0)     // model_edge
 	}
 	g := execClassDecoder(t, "DETAILVIEWSTYLE", verR2004, buildR2004,
-		func(w *encWriter) { gap2WriteHandles(w, 6) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 6) })
 	if v, _ := g.Field("identifier_height").(float64); v != 2.5 {
 		t.Errorf("identifier_height = %v", g.Field("identifier_height"))
 	}
@@ -955,78 +956,78 @@ func TestSynthDetailViewStyle(t *testing.T) {
 
 	// R2018 头：display_name T 与后续文字均走字符串流（dat 不占位），
 	// 仅 viewstyle_flags BL 与 class_version BS 占位
-	buildR2018 := func(w *encWriter) {
-		w.writeBS(1) // mdoc_class_version
-		w.writeB(false)
-		w.writeBL(0) // viewstyle_flags
-		w.writeBS(2) // class_version
-		w.writeBL(0)
+	buildR2018 := func(w *bitstream.EncWriter) {
+		w.WriteBS(1) // mdoc_class_version
+		w.WriteB(false)
+		w.WriteBL(0) // viewstyle_flags
+		w.WriteBS(2) // class_version
+		w.WriteBL(0)
 		gap2WriteCMC(w)
-		w.writeBD(2.5)
-		w.writeBD(0.5)
-		w.writeRC(1)
+		w.WriteBD(2.5)
+		w.WriteBD(0.5)
+		w.WriteRC(1)
 		gap2WriteCMC(w)
-		w.writeBD(1)
-		w.writeBL(9)
+		w.WriteBD(1)
+		w.WriteBL(9)
 		gap2WriteCMC(w)
 		gap2WriteCMC(w)
-		w.writeBD(3)
-		w.writeBL(1)
-		w.writeBD(0.1)
-		w.writeBL(2)
-		w.writeBL(0)
+		w.WriteBD(3)
+		w.WriteBL(1)
+		w.WriteBD(0.1)
+		w.WriteBL(2)
+		w.WriteBL(0)
 		gap2WriteCMC(w)
-		w.writeBL(9)
+		w.WriteBL(9)
 		gap2WriteCMC(w)
-		w.writeRC(0)
+		w.WriteRC(0)
 	}
 	execClassDecoder(t, "DETAILVIEWSTYLE", verR2018, buildR2018,
-		func(w *encWriter) { gap2WriteHandles(w, 6) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 6) })
 }
 
 // TestSynthSectionViewStyle SECTIONVIEWSTYLE 全字段（含 hatch_angles）。
 func TestSynthSectionViewStyle(t *testing.T) {
-	build := func(w *encWriter) {
-		w.writeBS(1)    // mdoc_class_version
-		w.writeTV("sv") // desc
-		w.writeB(false)
-		w.writeBS(2)        // class_version
-		w.writeBL(0)        // flags
+	build := func(w *bitstream.EncWriter) {
+		w.WriteBS(1)    // mdoc_class_version
+		w.WriteTV("sv") // desc
+		w.WriteB(false)
+		w.WriteBS(2)        // class_version
+		w.WriteBL(0)        // flags
 		gap2WriteCMC(w)     // identifier_color
-		w.writeBD(2)        // identifier_height
+		w.WriteBD(2)        // identifier_height
 		gap2WriteCMC(w)     // arrow_symbol_color
-		w.writeBD(1.5)      // arrow_symbol_size
-		w.writeTV("A-C")    // exclude_characters
-		w.writeBD(0.2)      // arrow_symbol_extension_length
-		w.writeBL(9)        // plane_linewt
+		w.WriteBD(1.5)      // arrow_symbol_size
+		w.WriteTV("A-C")    // exclude_characters
+		w.WriteBD(0.2)      // arrow_symbol_extension_length
+		w.WriteBL(9)        // plane_linewt
 		gap2WriteCMC(w)     // plane_line_color
-		w.writeBL(9)        // bend_linewt
+		w.WriteBL(9)        // bend_linewt
 		gap2WriteCMC(w)     // bend_line_color
-		w.writeBD(0.5)      // bend_line_length
-		w.writeBD(0.3)      // end_line_length
+		w.WriteBD(0.5)      // bend_line_length
+		w.WriteBD(0.3)      // end_line_length
 		gap2WriteCMC(w)     // viewlabel_text_color
-		w.writeBD(2.5)      // viewlabel_text_height
-		w.writeBL(3)        // viewlabel_attachment
-		w.writeBD(0.1)      // viewlabel_offset
-		w.writeBL(1)        // viewlabel_alignment
-		w.writeTV("S<>")    // viewlabel_pattern
+		w.WriteBD(2.5)      // viewlabel_text_height
+		w.WriteBL(3)        // viewlabel_attachment
+		w.WriteBD(0.1)      // viewlabel_offset
+		w.WriteBL(1)        // viewlabel_alignment
+		w.WriteTV("S<>")    // viewlabel_pattern
 		gap2WriteCMC(w)     // hatch_color
 		gap2WriteCMC(w)     // hatch_bg_color
-		w.writeTV("ANSI31") // hatch_pattern
-		w.writeBD(1)        // hatch_scale
-		w.writeBL(50)       // hatch_transparency
-		w.writeB(false)     // unknown_b1
-		w.writeB(false)     // unknown_b2
-		w.writeBL(1)        // identifier_position
-		w.writeBD(0.2)      // identifier_offset
-		w.writeBL(2)        // arrow_position
-		w.writeBD(0.15)     // end_line_overshoot
-		w.writeBL(2)        // num_hatch_angles
-		w.writeBD(0.5)
-		w.writeBD(1.0)
+		w.WriteTV("ANSI31") // hatch_pattern
+		w.WriteBD(1)        // hatch_scale
+		w.WriteBL(50)       // hatch_transparency
+		w.WriteB(false)     // unknown_b1
+		w.WriteB(false)     // unknown_b2
+		w.WriteBL(1)        // identifier_position
+		w.WriteBD(0.2)      // identifier_offset
+		w.WriteBL(2)        // arrow_position
+		w.WriteBD(0.15)     // end_line_overshoot
+		w.WriteBL(2)        // num_hatch_angles
+		w.WriteBD(0.5)
+		w.WriteBD(1.0)
 	}
 	g := execClassDecoder(t, "SECTIONVIEWSTYLE", verR2004, build,
-		func(w *encWriter) { gap2WriteHandles(w, 6) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 6) })
 	if v, _ := g.Field("end_line_overshoot").(float64); v != 0.15 {
 		t.Errorf("end_line_overshoot = %v", g.Field("end_line_overshoot"))
 	}
@@ -1037,49 +1038,49 @@ func TestSynthSectionViewStyle(t *testing.T) {
 
 // TestSynthMLeaderStyle MLEADERSTYLE R2010+（class_version=2 全字段）。
 func TestSynthMLeaderStyle(t *testing.T) {
-	build := func(w *encWriter) {
-		w.writeBS(2)    // class_version
-		w.writeBS(1)    // content_type
-		w.writeBS(0)    // mleader_order
-		w.writeBS(2)    // leader_order
-		w.writeBL(16)   // max_points
-		w.writeBD(0.3)  // first_seg_angle
-		w.writeBD(0.6)  // second_seg_angle
-		w.writeBS(0)    // type
+	build := func(w *bitstream.EncWriter) {
+		w.WriteBS(2)    // class_version
+		w.WriteBS(1)    // content_type
+		w.WriteBS(0)    // mleader_order
+		w.WriteBS(2)    // leader_order
+		w.WriteBL(16)   // max_points
+		w.WriteBD(0.3)  // first_seg_angle
+		w.WriteBD(0.6)  // second_seg_angle
+		w.WriteBS(0)    // type
 		gap2WriteCMC(w) // line_color
-		w.writeBL(25)   // linewt
-		w.writeB(true)  // has_landing
-		w.writeBD(0.2)  // landing_gap
-		w.writeB(true)  // has_dogleg
-		w.writeBD(0.8)  // landing_dist
-		w.writeBD(1)    // arrow_head_size
-		w.writeBS(0)    // attach_left
-		w.writeBS(0)    // attach_right
-		w.writeBS(1)    // text_angle_type（cv>=2）
-		w.writeBS(0)    // text_align_type
+		w.WriteBL(25)   // linewt
+		w.WriteB(true)  // has_landing
+		w.WriteBD(0.2)  // landing_gap
+		w.WriteB(true)  // has_dogleg
+		w.WriteBD(0.8)  // landing_dist
+		w.WriteBD(1)    // arrow_head_size
+		w.WriteBS(0)    // attach_left
+		w.WriteBS(0)    // attach_right
+		w.WriteBS(1)    // text_angle_type（cv>=2）
+		w.WriteBS(0)    // text_align_type
 		gap2WriteCMC(w) // text_color
-		w.writeBD(2)    // text_height
-		w.writeB(false) // has_text_frame
-		w.writeB(true)  // text_always_left（cv>=2）
-		w.writeBD(1)    // align_space
+		w.WriteBD(2)    // text_height
+		w.WriteB(false) // has_text_frame
+		w.WriteB(true)  // text_always_left（cv>=2）
+		w.WriteBD(1)    // align_space
 		gap2WriteCMC(w) // block_color
-		w.writeBD(1)
-		w.writeBD(1)
-		w.writeBD(1)    // block_scale
-		w.writeB(false) // use_block_scale
-		w.writeBD(0)    // block_rotation
-		w.writeB(true)  // use_block_rotation
-		w.writeBS(0)    // block_connection
-		w.writeBD(1)    // scale
-		w.writeB(false) // is_changed
-		w.writeB(false) // is_annotative
-		w.writeBD(0.5)  // break_size
-		w.writeBS(0)    // attach_dir
-		w.writeBS(0)    // attach_top
-		w.writeBS(0)    // attach_bottom
+		w.WriteBD(1)
+		w.WriteBD(1)
+		w.WriteBD(1)    // block_scale
+		w.WriteB(false) // use_block_scale
+		w.WriteBD(0)    // block_rotation
+		w.WriteB(true)  // use_block_rotation
+		w.WriteBS(0)    // block_connection
+		w.WriteBD(1)    // scale
+		w.WriteB(false) // is_changed
+		w.WriteB(false) // is_annotative
+		w.WriteBD(0.5)  // break_size
+		w.WriteBS(0)    // attach_dir
+		w.WriteBS(0)    // attach_top
+		w.WriteBS(0)    // attach_bottom
 	}
 	g := execClassDecoder(t, "MLEADERSTYLE", verR2010, build,
-		func(w *encWriter) { gap2WriteHandles(w, 4) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 4) })
 	if v, _ := g.Field("landing_dist").(float64); v != 0.8 {
 		t.Errorf("landing_dist = %v", g.Field("landing_dist"))
 	}
@@ -1090,30 +1091,30 @@ func TestSynthMLeaderStyle(t *testing.T) {
 
 // TestSynthSunAndHistory SUN 与 ACSH_HISTORY_CLASS 完整 dat 流。
 func TestSynthSunAndHistory(t *testing.T) {
-	buildSun := func(w *encWriter) {
-		w.writeBL(1)        // class_version
-		w.writeB(true)      // is_on
+	buildSun := func(w *bitstream.EncWriter) {
+		w.WriteBL(1)        // class_version
+		w.WriteB(true)      // is_on
 		gap2WriteCMC(w)     // color
-		w.writeBD(1)        // intensity（writeBD 1.0 走 BB01）
-		w.writeB(true)      // has_shadow
-		w.writeBL(2451545)  // julian_day
-		w.writeBL(43200000) // msecs
-		w.writeB(false)     // is_dst
-		w.writeBL(1)        // shadow_type
-		w.writeBS(512)      // shadow_mapsize
-		w.writeRC(3)        // shadow_softness
+		w.WriteBD(1)        // intensity（writeBD 1.0 走 BB01）
+		w.WriteB(true)      // has_shadow
+		w.WriteBL(2451545)  // julian_day
+		w.WriteBL(43200000) // msecs
+		w.WriteB(false)     // is_dst
+		w.WriteBL(1)        // shadow_type
+		w.WriteBS(512)      // shadow_mapsize
+		w.WriteRC(3)        // shadow_softness
 	}
 	g := execClassDecoder(t, "SUN", verR2004, buildSun, nil)
 	if v, _ := g.Field("shadow_softness").(int64); v != 3 {
 		t.Errorf("shadow_softness = %v", g.Field("shadow_softness"))
 	}
 
-	buildHistory := func(w *encWriter) {
-		w.writeBL(1)    // major
-		w.writeBL(0)    // minor
-		w.writeBL(7)    // h_nodeid
-		w.writeB(true)  // show_history
-		w.writeB(false) // record_history
+	buildHistory := func(w *bitstream.EncWriter) {
+		w.WriteBL(1)    // major
+		w.WriteBL(0)    // minor
+		w.WriteBL(7)    // h_nodeid
+		w.WriteB(true)  // show_history
+		w.WriteB(false) // record_history
 	}
 	g = execClassDecoder(t, "ACSH_HISTORY_CLASS", verR2004, buildHistory, nil)
 	if v, _ := g.Field("h_nodeid").(int64); v != 7 {
@@ -1123,21 +1124,21 @@ func TestSynthSunAndHistory(t *testing.T) {
 
 // TestSynthTableGeometry TABLEGEOMETRY cells 全链（含 geometry 组）。
 func TestSynthTableGeometry(t *testing.T) {
-	build := func(w *encWriter) {
-		w.writeBL(2) // numrows
-		w.writeBL(3) // numcols
-		w.writeBL(2) // num_cells
+	build := func(w *bitstream.EncWriter) {
+		w.WriteBL(2) // numrows
+		w.WriteBL(3) // numcols
+		w.WriteBL(2) // num_cells
 		for i := 0; i < 2; i++ {
-			w.writeBL(1)    // geom_data_flag
-			w.writeBD(10.5) // width_w_gap
-			w.writeBD(20.5) // height_w_gap
-			w.writeBL(1)    // num_geometry
+			w.WriteBL(1)    // geom_data_flag
+			w.WriteBD(10.5) // width_w_gap
+			w.WriteBD(20.5) // height_w_gap
+			w.WriteBL(1)    // num_geometry
 			gap2Write3BD(w) // dist_top_left
 			gap2Write3BD(w) // dist_center
 			for k := 0; k < 4; k++ {
-				w.writeBD(float64(k + 1)) // content_width/height/width/height
+				w.WriteBD(float64(k + 1)) // content_width/height/width/height
 			}
-			w.writeBL(0) // unknown
+			w.WriteBL(0) // unknown
 		}
 	}
 	g := execClassDecoder(t, "TABLEGEOMETRY", verR2004, build, nil)
@@ -1152,29 +1153,29 @@ func TestSynthTableGeometry(t *testing.T) {
 // TestSynthTableStylePre2010 TABLESTYLE R2007 及更早布局（3 组 rowstyles
 // + 6 边框）。
 func TestSynthTableStylePre2010(t *testing.T) {
-	build := func(w *encWriter) {
-		w.writeTV("tbl") // name
-		w.writeBS(1)     // flow_direction
-		w.writeBS(0)     // flags
-		w.writeBD(1.5)   // horiz_cell_margin
-		w.writeBD(1.5)   // vert_cell_margin
-		w.writeB(false)  // is_title_suppressed
-		w.writeB(false)  // is_header_suppressed
+	build := func(w *bitstream.EncWriter) {
+		w.WriteTV("tbl") // name
+		w.WriteBS(1)     // flow_direction
+		w.WriteBS(0)     // flags
+		w.WriteBD(1.5)   // horiz_cell_margin
+		w.WriteBD(1.5)   // vert_cell_margin
+		w.WriteB(false)  // is_title_suppressed
+		w.WriteB(false)  // is_header_suppressed
 		for i := 0; i < 3; i++ {
-			w.writeBD(2)    // text_height
-			w.writeBS(1)    // text_alignment
+			w.WriteBD(2)    // text_height
+			w.WriteBS(1)    // text_alignment
 			gap2WriteCMC(w) // text_color
 			gap2WriteCMC(w) // fill_color
-			w.writeB(true)  // has_bgcolor
+			w.WriteB(true)  // has_bgcolor
 			for b := 0; b < 6; b++ {
-				w.writeBS(9)    // linewt
-				w.writeB(true)  // visible
+				w.WriteBS(9)    // linewt
+				w.WriteB(true)  // visible
 				gap2WriteCMC(w) // color
 			}
 		}
 	}
 	g := execClassDecoder(t, "TABLESTYLE", verR2004, build,
-		func(w *encWriter) { gap2WriteHandles(w, 3) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 3) })
 	if v, _ := g.Field("rowstyles[2].text_height").(float64); v != 2 {
 		t.Errorf("rowstyles[2].text_height = %v", g.Field("rowstyles[2].text_height"))
 	}
@@ -1185,37 +1186,37 @@ func TestSynthTableStylePre2010(t *testing.T) {
 
 // TestSynthGeoData GEODATA 全字段（R2010+ 布局：字符串走流不占位）。
 func TestSynthGeoData(t *testing.T) {
-	build := func(w *encWriter) {
-		w.writeBL(1)    // class_version
-		w.writeBS(2)    // coord_type
+	build := func(w *bitstream.EncWriter) {
+		w.WriteBL(1)    // class_version
+		w.WriteBS(2)    // coord_type
 		gap2Write3BD(w) // design_pt
 		gap2Write3BD(w) // ref_pt
-		w.writeBD(1)    // unit_scale_horiz
-		w.writeBL(1)    // units_value_horiz
-		w.writeBD(1)    // unit_scale_vert
-		w.writeBL(1)    // units_value_vert
+		w.WriteBD(1)    // unit_scale_horiz
+		w.WriteBL(1)    // units_value_horiz
+		w.WriteBD(1)    // unit_scale_vert
+		w.WriteBL(1)    // units_value_vert
 		gap2Write3BD(w) // up_dir
-		w.writeRD(0)    // north_dir
-		w.writeRD(1)
-		w.writeBL(1)    // scale_est
-		w.writeBD(1)    // user_scale_factor
-		w.writeB(false) // do_sea_level_corr
-		w.writeBD(0)    // sea_level_elev
-		w.writeBD(100)  // coord_proj_radius
+		w.WriteRD(0)    // north_dir
+		w.WriteRD(1)
+		w.WriteBL(1)    // scale_est
+		w.WriteBD(1)    // user_scale_factor
+		w.WriteB(false) // do_sea_level_corr
+		w.WriteBD(0)    // sea_level_elev
+		w.WriteBD(100)  // coord_proj_radius
 		// coord_system_def/geo_rss_tag/observation_from/to/coverage_tag
 		// 均为 T：R2010+ 走字符串流，dat 不占位
-		w.writeBL(1) // num_geomesh_pts
-		w.writeRD(1)
-		w.writeRD(2) // pts[0].source_pt
-		w.writeRD(3)
-		w.writeRD(4) // pts[0].dest_pt
-		w.writeBL(1) // num_geomesh_faces
-		w.writeBL(0) // face1
-		w.writeBL(1) // face2
-		w.writeBL(2) // face3
+		w.WriteBL(1) // num_geomesh_pts
+		w.WriteRD(1)
+		w.WriteRD(2) // pts[0].source_pt
+		w.WriteRD(3)
+		w.WriteRD(4) // pts[0].dest_pt
+		w.WriteBL(1) // num_geomesh_faces
+		w.WriteBL(0) // face1
+		w.WriteBL(1) // face2
+		w.WriteBL(2) // face3
 	}
 	g := execClassDecoder(t, "GEODATA", verR2010, build,
-		func(w *encWriter) { gap2WriteHandles(w, 1) })
+		func(w *bitstream.EncWriter) { gap2WriteHandles(w, 1) })
 	if v, _ := g.Field("geomesh_faces[0].face3").(int64); v != 2 {
 		t.Errorf("face3 = %v", g.Field("geomesh_faces[0].face3"))
 	}
@@ -1776,7 +1777,7 @@ func TestSynthMalformedObjectStreams(t *testing.T) {
 						}
 					}()
 					g := &objGeneric{Name: className, Handle: 0x30}
-					fr := &gfRead{r: newBitStream(buf), ver: ver}
+					fr := &gfRead{r: bitstream.NewBitStream(buf), ver: ver}
 					_ = spec.decode(fr.r, ver, fr, g)
 					if spec.hdl != nil {
 						hb := make([]byte, 6)
@@ -1786,7 +1787,7 @@ func TestSynthMalformedObjectStreams(t *testing.T) {
 						g2 := &objGeneric{Name: className, Handle: 0x30, Fields: g.Fields}
 						g2.hdlCount = g.hdlCount
 						g2.valueHandle91 = g.valueHandle91
-						hfr := &gfRead{r: newBitStream(hb), ver: ver}
+						hfr := &gfRead{r: bitstream.NewBitStream(hb), ver: ver}
 						_ = spec.hdl(hfr.r, ver, hfr, g2)
 					}
 				}()
@@ -1813,12 +1814,12 @@ func TestSynthMalformedEntityBits(t *testing.T) {
 					t.Errorf("实体位流 #%d panic: %v", i, r)
 				}
 			}()
-			r := newBitStream(buf)
+			r := bitstream.NewBitStream(buf)
 			// 公共头候选解析（R13 位流）：截断流应报错而非崩溃
-			_, _ = r.readB()
-			_, _ = r.readRS()
-			_, _, _, _ = r.read3BD()
-			_, _ = r.readTV(0)
+			_, _ = r.ReadB()
+			_, _ = r.ReadRS()
+			_, _, _, _ = r.Read3BD()
+			_, _ = r.ReadTV(0)
 		}()
 	}
 }
@@ -1827,54 +1828,54 @@ func TestSynthMalformedEntityBits(t *testing.T) {
 
 // gap2WriteR2013BHead 写 parseCommonEntityHeadR2013B 的合成位流。
 // colorMode: -1=noLinks 短格式；0=详细 colorMode=0；1=详细 colorMode=1。
-func gap2WriteR2013BHead(w *encWriter, picSize int, colorMode int8, flags uint16, second bool) {
-	w.writeH(0x00, 1, 0x2B) // handle
-	w.writeBS(0)            // EED 链空（extSize=0）
-	w.writeB(picSize > 0)   // picFlag
+func gap2WriteR2013BHead(w *bitstream.EncWriter, picSize int, colorMode int8, flags uint16, second bool) {
+	w.WriteH(0x00, 1, 0x2B) // handle
+	w.WriteBS(0)            // EED 链空（extSize=0）
+	w.WriteB(picSize > 0)   // picFlag
 	if picSize > 0 {
-		w.writeBLLv(uint64(picSize))
-		w.writeTF(make([]byte, picSize))
+		w.WriteBLLv(uint64(picSize))
+		w.WriteTF(make([]byte, picSize))
 	}
-	w.writeBB(2)            // entityMode
-	w.writeBL(0)            // reactors
-	w.writeB(false)         // xdicMissing
-	w.writeB(false)         // hasDsBinary
-	w.writeB(colorMode < 0) // noLinks：1 = 短格式颜色
+	w.WriteBB(2)            // entityMode
+	w.WriteBL(0)            // reactors
+	w.WriteB(false)         // xdicMissing
+	w.WriteB(false)         // hasDsBinary
+	w.WriteB(colorMode < 0) // noLinks：1 = 短格式颜色
 	if colorMode < 0 {
 		// 短格式：second 1=ByLayer(256) 0=ByBlock(0)
-		w.writeB(second)
+		w.WriteB(second)
 	} else {
-		w.writeB(colorMode == 1)
+		w.WriteB(colorMode == 1)
 		if colorMode == 1 {
-			w.writeRC(3) // ACI 索引（无 second 位）
+			w.WriteRC(3) // ACI 索引（无 second 位）
 		} else {
-			w.writeRS(flags)
+			w.WriteRS(flags)
 			if flags&0x8000 != 0 {
-				w.writeBL(0xFF0000)
+				w.WriteBL(0xFF0000)
 			}
 			if flags&0x2000 != 0 {
-				w.writeBL(0x40000080)
+				w.WriteBL(0x40000080)
 			}
 		}
 	}
-	w.writeBD(1)    // ltypeScale
-	w.writeBB(0)    // ltypeFlags
-	w.writeBB(0)    // plotstyle
-	w.writeBB(0)    // material
-	w.writeB(false) // 3×B（变体 B 无 shadow）
-	w.writeB(false)
-	w.writeB(false)
-	w.writeBS(0)
-	w.writeRC(0)
+	w.WriteBD(1)    // ltypeScale
+	w.WriteBB(0)    // ltypeFlags
+	w.WriteBB(0)    // plotstyle
+	w.WriteBB(0)    // material
+	w.WriteB(false) // 3×B（变体 B 无 shadow）
+	w.WriteB(false)
+	w.WriteB(false)
+	w.WriteBS(0)
+	w.WriteRC(0)
 }
 
 // TestSynthR2013BHead R2013B 实体公共头全颜色分支与 preview。
 func TestSynthR2013BHead(t *testing.T) {
 	end := uint64(0)
 	// 短格式 ByLayer
-	w := newEncWriter()
+	w := bitstream.NewEncWriter()
 	gap2WriteR2013BHead(w, 0, -1, 0, true)
-	head, err := parseCommonEntityHeadR2013B(newBitStream(w.bytes()), end)
+	head, err := parseCommonEntityHeadR2013B(bitstream.NewBitStream(w.Bytes()), end)
 	if err != nil {
 		t.Fatalf("短格式: %v", err)
 	}
@@ -1882,21 +1883,21 @@ func TestSynthR2013BHead(t *testing.T) {
 		t.Errorf("ByLayer index/flag = %d/%d", head.color.index, head.color.flag)
 	}
 	// 短格式 ByBlock
-	w = newEncWriter()
+	w = bitstream.NewEncWriter()
 	gap2WriteR2013BHead(w, 0, -1, 0, false)
-	if head, err = parseCommonEntityHeadR2013B(newBitStream(w.bytes()), end); err != nil || head.color.index != 0 {
+	if head, err = parseCommonEntityHeadR2013B(bitstream.NewBitStream(w.Bytes()), end); err != nil || head.color.index != 0 {
 		t.Errorf("ByBlock: %v index=%d", err, head.color.index)
 	}
 	// 详细 ACI
-	w = newEncWriter()
+	w = bitstream.NewEncWriter()
 	gap2WriteR2013BHead(w, 0, 1, 0, false)
-	if head, err = parseCommonEntityHeadR2013B(newBitStream(w.bytes()), end); err != nil || head.color.index != 3 {
+	if head, err = parseCommonEntityHeadR2013B(bitstream.NewBitStream(w.Bytes()), end); err != nil || head.color.index != 3 {
 		t.Errorf("ACI: %v index=%d", err, head.color.index)
 	}
 	// 详细真彩 + alpha + preview 图像
-	w = newEncWriter()
+	w = bitstream.NewEncWriter()
 	gap2WriteR2013BHead(w, 4, 0, 0x8000|0x2000, false)
-	if head, err = parseCommonEntityHeadR2013B(newBitStream(w.bytes()), end); err != nil {
+	if head, err = parseCommonEntityHeadR2013B(bitstream.NewBitStream(w.Bytes()), end); err != nil {
 		t.Fatalf("真彩: %v", err)
 	}
 	if !head.color.hasTrue || !head.color.hasAlpha {
@@ -1910,106 +1911,106 @@ func TestSynthR2013BHead(t *testing.T) {
 // TestSynthTableContentFull TABLECONTENT 全嵌套流（cols/rows/cells/
 // contents/attrs/format overrides/geom data/merged cells）。
 func TestSynthTableContentFull(t *testing.T) {
-	w := newEncWriter()
+	w := bitstream.NewEncWriter()
 	// AcDbLinkedData
-	w.writeTV("ldata") // ldata.name
-	w.writeTV("desc")  // ldata.description
+	w.WriteTV("ldata") // ldata.name
+	w.WriteTV("desc")  // ldata.description
 	// cols
-	w.writeBL(1)      // num_cols
-	w.writeTV("col0") // cols[0].name
-	w.writeBL(0)      // cols[0].custom_data
+	w.WriteBL(1)      // num_cols
+	w.WriteTV("col0") // cols[0].name
+	w.WriteBL(0)      // cols[0].custom_data
 	// cols[0].cellstyle：data_flags=1 全量（含 content_format + margins + border）
-	w.writeBL(0)    // type
-	w.writeBS(1)    // data_flags
-	w.writeBL(0)    // property_override_flags
-	w.writeBL(0)    // merge_flags
+	w.WriteBL(0)    // type
+	w.WriteBS(1)    // data_flags
+	w.WriteBL(0)    // property_override_flags
+	w.WriteBL(0)    // merge_flags
 	gap2WriteCMC(w) // bg_color
-	w.writeBL(0)    // content_layout
+	w.WriteBL(0)    // content_layout
 	// content_format
-	w.writeBL(0)    // property_override_flags
-	w.writeBL(0)    // property_flags
-	w.writeBL(2)    // value_data_type
-	w.writeBL(0)    // value_unit_type
-	w.writeTV("F")  // value_format_string
-	w.writeBD(0)    // rotation
-	w.writeBD(1)    // block_scale
-	w.writeBL(1)    // cell_alignment
+	w.WriteBL(0)    // property_override_flags
+	w.WriteBL(0)    // property_flags
+	w.WriteBL(2)    // value_data_type
+	w.WriteBL(0)    // value_unit_type
+	w.WriteTV("F")  // value_format_string
+	w.WriteBD(0)    // rotation
+	w.WriteBD(1)    // block_scale
+	w.WriteBL(1)    // cell_alignment
 	gap2WriteCMC(w) // content_color
-	w.writeBD(2)    // text_height
-	w.writeBS(0)    // margin_override_flags=0
-	w.writeBL(1)    // num_borders
-	w.writeBL(1)    // borders[0].index_mask（≠0）
-	w.writeBL(0)    // border_overrides
-	w.writeBL(0)    // border_type
+	w.WriteBD(2)    // text_height
+	w.WriteBS(0)    // margin_override_flags=0
+	w.WriteBL(1)    // num_borders
+	w.WriteBL(1)    // borders[0].index_mask（≠0）
+	w.WriteBL(0)    // border_overrides
+	w.WriteBL(0)    // border_type
 	gap2WriteCMC(w) // color
-	w.writeBL(9)    // linewt（BLd）
-	w.writeBL(1)    // visible
-	w.writeBD(0)    // double_line_spacing
+	w.WriteBL(9)    // linewt（BLd）
+	w.WriteBL(1)    // visible
+	w.WriteBD(0)    // double_line_spacing
 	// rows → cells
-	w.writeBL(1) // num_rows
-	w.writeBL(1) // rows[0].num_cells
+	w.WriteBL(1) // num_rows
+	w.WriteBL(1) // rows[0].num_cells
 	// cells[0]
-	w.writeBL(1)        // flag
-	w.writeTV("tip")    // tooltip
-	w.writeBL(1)        // customdata（走 customdata_items）
-	w.writeBL(1)        // num_customdata_items
-	w.writeTV("cdname") // customdata_items[0].name
-	w.writeBL(2)        // value.data_type=kDouble
-	w.writeBD(3.5)      // value.data_double
-	w.writeBL(1)        // has_linked_data（读行列数）
-	w.writeBL(2)        // num_rows
-	w.writeBL(3)        // num_cols
-	w.writeBL(0)        // unknown
+	w.WriteBL(1)        // flag
+	w.WriteTV("tip")    // tooltip
+	w.WriteBL(1)        // customdata（走 customdata_items）
+	w.WriteBL(1)        // num_customdata_items
+	w.WriteTV("cdname") // customdata_items[0].name
+	w.WriteBL(2)        // value.data_type=kDouble
+	w.WriteBD(3.5)      // value.data_double
+	w.WriteBL(1)        // has_linked_data（读行列数）
+	w.WriteBL(2)        // num_rows
+	w.WriteBL(3)        // num_cols
+	w.WriteBL(0)        // unknown
 	// cell_contents[0]：Value 字符串 + 1 attr + content_format overrides
-	w.writeBL(1)           // num_cell_contents
-	w.writeBL(1)           // type=Value
-	w.writeBL(4)           // value.data_type=kString
-	w.writeTV("cell text") // value.data_string
-	w.writeBL(1)           // num_attrs
-	w.writeTV("attrval")   // attrs[0].value
-	w.writeBL(7)           // attrs[0].index
-	w.writeBS(1)           // has_content_format_overrides
-	w.writeBL(0)           // content_format.property_override_flags
-	w.writeBL(0)           // property_flags
-	w.writeBL(0)           // value_data_type
-	w.writeBL(0)           // value_unit_type
-	w.writeTV("")          // value_format_string
-	w.writeBD(0)           // rotation
-	w.writeBD(1)           // block_scale
-	w.writeBL(0)           // cell_alignment
+	w.WriteBL(1)           // num_cell_contents
+	w.WriteBL(1)           // type=Value
+	w.WriteBL(4)           // value.data_type=kString
+	w.WriteTV("cell text") // value.data_string
+	w.WriteBL(1)           // num_attrs
+	w.WriteTV("attrval")   // attrs[0].value
+	w.WriteBL(7)           // attrs[0].index
+	w.WriteBS(1)           // has_content_format_overrides
+	w.WriteBL(0)           // content_format.property_override_flags
+	w.WriteBL(0)           // property_flags
+	w.WriteBL(0)           // value_data_type
+	w.WriteBL(0)           // value_unit_type
+	w.WriteTV("")          // value_format_string
+	w.WriteBD(0)           // rotation
+	w.WriteBD(1)           // block_scale
+	w.WriteBL(0)           // cell_alignment
 	gap2WriteCMC(w)        // content_color
-	w.writeBD(1.5)         // text_height
+	w.WriteBD(1.5)         // text_height
 	// cells[0] 尾：style_id + has_geom_data（带 geometry 组）
-	w.writeBL(0)    // style_id
-	w.writeBL(1)    // has_geom_data
-	w.writeBL(1)    // geom_data_flag
-	w.writeBD(11)   // width_w_gap
-	w.writeBD(12)   // height_w_gap
-	w.writeBL(1)    // num_geometry
+	w.WriteBL(0)    // style_id
+	w.WriteBL(1)    // has_geom_data
+	w.WriteBL(1)    // geom_data_flag
+	w.WriteBD(11)   // width_w_gap
+	w.WriteBD(12)   // height_w_gap
+	w.WriteBL(1)    // num_geometry
 	gap2Write3BD(w) // dist_top_left
 	gap2Write3BD(w) // dist_center
-	w.writeBD(13)   // content_width
-	w.writeBD(14)   // content_height
-	w.writeBD(15)   // width
-	w.writeBD(16)   // height
-	w.writeBL(0)    // unknown
+	w.WriteBD(13)   // content_width
+	w.WriteBD(14)   // content_height
+	w.WriteBD(15)   // width
+	w.WriteBD(16)   // height
+	w.WriteBL(0)    // unknown
 	// row 级：custom_data + items + cellstyle（data_flags=0 短路径）+ style_id + height
-	w.writeBL(0) // custom_data
-	w.writeBL(0) // num_customdata_items
-	w.writeBL(0) // cellstyle.type
-	w.writeBS(0) // cellstyle.data_flags（0 → 短路径）
-	w.writeBL(0) // style_id
-	w.writeBD(8) // height
+	w.WriteBL(0) // custom_data
+	w.WriteBL(0) // num_customdata_items
+	w.WriteBL(0) // cellstyle.type
+	w.WriteBS(0) // cellstyle.data_flags（0 → 短路径）
+	w.WriteBL(0) // style_id
+	w.WriteBD(8) // height
 	// field_refs / merged_cells
-	w.writeBL(0) // num_field_refs
-	w.writeBL(1) // num_merged_cells
-	w.writeBL(0) // top_row
-	w.writeBL(0) // left_col
-	w.writeBL(1) // bottom_row
-	w.writeBL(1) // right_col
+	w.WriteBL(0) // num_field_refs
+	w.WriteBL(1) // num_merged_cells
+	w.WriteBL(0) // top_row
+	w.WriteBL(0) // left_col
+	w.WriteBL(1) // bottom_row
+	w.WriteBL(1) // right_col
 
 	g := &objGeneric{Name: "TABLECONTENT", Handle: 0x30}
-	fr := &gfRead{r: newBitStream(w.bytes()), ver: verR2004}
+	fr := &gfRead{r: bitstream.NewBitStream(w.Bytes()), ver: verR2004}
 	if err := decodeGenericTABLECONTENT(fr.r, verR2004, fr, g); err != nil {
 		t.Fatalf("TABLECONTENT decode: %v", err)
 	}
@@ -2046,57 +2047,57 @@ func TestDxfStateHandles(t *testing.T) {
 // TestSynthMLeaderContextFull MLEADER_CONTEXT_DATA 全路径（txt 尾段 +
 // blk 变体 + base 三点）。
 func TestSynthMLeaderContextFull(t *testing.T) {
-	buildTxtTail := func(w *encWriter) {
-		w.writeB(false) // isHeightAuto
-		w.writeBD(5)    // colWidth
-		w.writeBD(1)    // colGutter
-		w.writeB(false) // isColFlowReversed
-		w.writeBL(1)    // numColSizes
-		w.writeBD(9)    // colSizes[0]
-		w.writeB(false) // wordBreak
-		w.writeB(false) // unknown
+	buildTxtTail := func(w *bitstream.EncWriter) {
+		w.WriteB(false) // isHeightAuto
+		w.WriteBD(5)    // colWidth
+		w.WriteBD(1)    // colGutter
+		w.WriteB(false) // isColFlowReversed
+		w.WriteBL(1)    // numColSizes
+		w.WriteBD(9)    // colSizes[0]
+		w.WriteB(false) // wordBreak
+		w.WriteB(false) // unknown
 	}
 	// 变体 1：txt 内容（含全部文字样式尾段）
-	w := newEncWriter()
-	w.writeBD(1)       // scaleFactor
+	w := bitstream.NewEncWriter()
+	w.WriteBD(1)       // scaleFactor
 	gap2Write3BD(w)    // contentBase
-	w.writeBD(2)       // textHeight
-	w.writeBD(3)       // arrowSize
-	w.writeBD(4)       // landingGap
-	w.writeBS(0)       // textLeft
-	w.writeBS(0)       // textRight
-	w.writeBS(0)       // textAngletype
-	w.writeBS(0)       // textAlignment
-	w.writeB(true)     // hasContentTxt
-	w.writeTV("hello") // defaultText（pre-R2007 内联）
+	w.WriteBD(2)       // textHeight
+	w.WriteBD(3)       // arrowSize
+	w.WriteBD(4)       // landingGap
+	w.WriteBS(0)       // textLeft
+	w.WriteBS(0)       // textRight
+	w.WriteBS(0)       // textAngletype
+	w.WriteBS(0)       // textAlignment
+	w.WriteB(true)     // hasContentTxt
+	w.WriteTV("hello") // defaultText（pre-R2007 内联）
 	gap2Write3BD(w)    // normal
 	gap2Write3BD(w)    // location
 	gap2Write3BD(w)    // direction
-	w.writeBD(0)       // rotation
-	w.writeBD(10)      // width
-	w.writeBD(2)       // height
-	w.writeBD(1)       // lineSpacingFactor
-	w.writeBS(1)       // lineSpacingStyle
-	w.writeBS(7)       // color CMC index
-	w.writeBL(0xc3000000)
-	w.writeRC(0)
-	w.writeBS(0) // alignment
-	w.writeBS(0) // flow
-	w.writeBS(7) // bgColor index
-	w.writeBL(0xc3000000)
-	w.writeRC(0)
-	w.writeBD(0)    // bgScale
-	w.writeBL(0)    // bgTransparency
-	w.writeB(false) // isBgFill
-	w.writeB(false) // isBgMaskFill
-	w.writeBS(0)    // colType
+	w.WriteBD(0)       // rotation
+	w.WriteBD(10)      // width
+	w.WriteBD(2)       // height
+	w.WriteBD(1)       // lineSpacingFactor
+	w.WriteBS(1)       // lineSpacingStyle
+	w.WriteBS(7)       // color CMC index
+	w.WriteBL(0xc3000000)
+	w.WriteRC(0)
+	w.WriteBS(0) // alignment
+	w.WriteBS(0) // flow
+	w.WriteBS(7) // bgColor index
+	w.WriteBL(0xc3000000)
+	w.WriteRC(0)
+	w.WriteBD(0)    // bgScale
+	w.WriteBL(0)    // bgTransparency
+	w.WriteB(false) // isBgFill
+	w.WriteB(false) // isBgMaskFill
+	w.WriteBS(0)    // colType
 	buildTxtTail(w)
 	gap2Write3BD(w) // base
 	gap2Write3BD(w) // baseDir
 	gap2Write3BD(w) // baseVert
-	w.writeB(true)  // isNormalReversed
+	w.WriteB(true)  // isNormalReversed
 	m := &entMLeader{}
-	if err := decodeMLeaderContext(newBitStream(w.bytes()), m, verR2004, 0, nil); err != nil {
+	if err := decodeMLeaderContext(bitstream.NewBitStream(w.Bytes()), m, verR2004, 0, nil); err != nil {
 		t.Fatalf("txt ctx: %v", err)
 	}
 	if m.ctx.txt.defaultText != "hello" {
@@ -2110,34 +2111,34 @@ func TestSynthMLeaderContextFull(t *testing.T) {
 	}
 
 	// 变体 2：blk 内容（transform 16×BD）
-	w = newEncWriter()
-	w.writeBD(1)
+	w = bitstream.NewEncWriter()
+	w.WriteBD(1)
 	gap2Write3BD(w)
-	w.writeBD(2)
-	w.writeBD(3)
-	w.writeBD(4)
-	w.writeBS(0)
-	w.writeBS(0)
-	w.writeBS(0)
-	w.writeBS(0)
-	w.writeB(false) // hasContentTxt=false
-	w.writeB(true)  // hasContentBlk
+	w.WriteBD(2)
+	w.WriteBD(3)
+	w.WriteBD(4)
+	w.WriteBS(0)
+	w.WriteBS(0)
+	w.WriteBS(0)
+	w.WriteBS(0)
+	w.WriteB(false) // hasContentTxt=false
+	w.WriteB(true)  // hasContentBlk
 	gap2Write3BD(w) // blk.normal
 	gap2Write3BD(w) // blk.location
 	gap2Write3BD(w) // blk.scale
-	w.writeBD(0.5)  // blk.rotation
-	w.writeBS(7)    // blk.color index
-	w.writeBL(0xc3000000)
-	w.writeRC(0)
+	w.WriteBD(0.5)  // blk.rotation
+	w.WriteBS(7)    // blk.color index
+	w.WriteBL(0xc3000000)
+	w.WriteRC(0)
 	for i := 0; i < 16; i++ {
-		w.writeBD(float64(i)) // transform
+		w.WriteBD(float64(i)) // transform
 	}
 	gap2Write3BD(w)
 	gap2Write3BD(w)
 	gap2Write3BD(w)
-	w.writeB(false)
+	w.WriteB(false)
 	m = &entMLeader{}
-	if err := decodeMLeaderContext(newBitStream(w.bytes()), m, verR2004, 0, nil); err != nil {
+	if err := decodeMLeaderContext(bitstream.NewBitStream(w.Bytes()), m, verR2004, 0, nil); err != nil {
 		t.Fatalf("blk ctx: %v", err)
 	}
 	if !m.ctx.hasContentBlk || m.ctx.blk.rotation != 0.5 {
@@ -2150,24 +2151,24 @@ func TestSynthMLeaderContextFull(t *testing.T) {
 func TestDecodeSolidTolerantPaths(t *testing.T) {
 	head := &commonEntityHead{handle: 0x2B, objSizeBit: 1 << 30}
 	build := func(xs ...float64) []byte {
-		w := newEncWriter()
-		w.writeB(false) // thickness flag（0 → 后跟 BD）
-		w.writeBD(0)    // thickness
-		w.writeBD(0)    // elevation
+		w := bitstream.NewEncWriter()
+		w.WriteB(false) // thickness flag（0 → 后跟 BD）
+		w.WriteBD(0)    // thickness
+		w.WriteBD(0)    // elevation
 		vals := []float64{1, 2, 3, 4, 5, 6, 7, 8}
 		for i, want := range xs {
 			vals[i] = want
 		}
 		for _, v := range vals {
-			w.writeRD(v)
+			w.WriteRD(v)
 		}
-		w.writeB(true) // extrusion flag（1 → (0,0,1)）
-		w.writeRL(0)   // owner/layer 垫字节（decodeOwnerLayer 用 objSizeBit 定位）
-		w.writeRL(0)
-		return w.bytes()
+		w.WriteB(true) // extrusion flag（1 → (0,0,1)）
+		w.WriteRL(0)   // owner/layer 垫字节（decodeOwnerLayer 用 objSizeBit 定位）
+		w.WriteRL(0)
+		return w.Bytes()
 	}
 	// 首遍 sane：正常坐标直接返回
-	r := newBitStream(build())
+	r := bitstream.NewBitStream(build())
 	ent, err := decodeSolidTolerant(r, head, false)
 	if err != nil {
 		t.Fatalf("sane: %v", err)
@@ -2176,7 +2177,7 @@ func TestDecodeSolidTolerantPaths(t *testing.T) {
 		t.Errorf("sane 结果 = %T/%v", ent, ent)
 	}
 	// 首遍 denormal（p1.x=1e-40 非 0 且 <1e-30）→ 回退 1 位重试
-	r = newBitStream(build(1e-40))
+	r = bitstream.NewBitStream(build(1e-40))
 	ent, err = decodeSolidTolerant(r, head, false)
 	if err != nil {
 		t.Fatalf("回退: %v", err)
@@ -2186,7 +2187,7 @@ func TestDecodeSolidTolerantPaths(t *testing.T) {
 	}
 	// 起点在位 0：decodeSolidTolerant 直接返回首遍结果
 	data := build()
-	r2 := newBitStream(data)
+	r2 := bitstream.NewBitStream(data)
 	// 人为把读取器推进到字节 0 位 0 等价起点（newBitStream 本身即 0/0）
 	ent2, err := decodeSolidTolerant(r2, head, false)
 	if err != nil {

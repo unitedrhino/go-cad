@@ -4,6 +4,7 @@ package cad
 
 import (
 	"bytes"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"path/filepath"
@@ -76,7 +77,7 @@ func TestPlaceHolderRoundTrip(t *testing.T) {
 			f.Key == "object" || f.Key == "dxfname" {
 			continue // body 级与表示级差异，单独校验
 		}
-		if !anyRoundTripEqual(f.Val, v2) && !anyEqual(f.Val, v2) {
+		if !testsupport.AnyRoundTripEqual(f.Val, v2) && !anyEqual(f.Val, v2) {
 			t.Errorf("字段 %s: %v != %v", f.Key, f.Val, v2)
 			if os.Getenv("CAD_AUDIT_DIFF") != "" {
 				t.Logf("[dRD] %s: got %v want %v", f.Key, v2, f.Val)
@@ -93,11 +94,11 @@ func TestXrecordRoundTripSynthetic(t *testing.T) {
 	// 构造原始位流（R2000 语义）：RL bitsize + H + EED 终止 BS +
 	// BL num_reactors + BL xdata_size + xdata items + cloning BS +
 	// handle 流（num_objid_handles 非流字段，由 handle 流推导）
-	w := newEncWriter()
-	w.writeRL(0) // bitsize 占位
-	w.writeH(0, 1, 0x64)
-	w.writeBS(0) // EED 终止
-	w.writeBL(0) // num_reactors = 0
+	w := bitstream.NewEncWriter()
+	w.WriteRL(0) // bitsize 占位
+	w.WriteH(0, 1, 0x64)
+	w.WriteBS(0) // EED 终止
+	w.WriteBL(0) // num_reactors = 0
 	// xdata：4 个 item（INT16 1 / INT16 2 / RC 码页字符串 / POINT 退化为忽略）
 	items := []xdataItem{
 		{Code: 270, Kind: xdataInt16, Int: 1},
@@ -105,26 +106,26 @@ func TestXrecordRoundTripSynthetic(t *testing.T) {
 		{Code: 300, Kind: xdataString, Str: "abc"},
 		{Code: 40, Kind: xdataReal, Float: 2.5},
 	}
-	xd := newEncWriter()
+	xd := bitstream.NewEncWriter()
 	if err := encodeXdataItems(xd, items, false); err != nil {
 		t.Fatal(err)
 	}
-	xdBytes := xd.bytes()
-	w.writeBL(uint32(len(xdBytes)))
-	w.writeTF(xdBytes)
-	w.writeBS(1) // cloning
+	xdBytes := xd.Bytes()
+	w.WriteBL(uint32(len(xdBytes)))
+	w.WriteTF(xdBytes)
+	w.WriteBS(1) // cloning
 	// dat 结束位：handle 流起点（回填 bitsize 用）
-	datEnd := w.tellBits()
+	datEnd := w.TellBits()
 	if os.Getenv("CAD_RT_DEBUG") != "" {
 		t.Logf("[构造] xdata_size BL 后 datEnd=%d xdBytes=%d", datEnd, len(xdBytes))
 	}
-	w.writeH(4, 1, 10) // owner
-	w.writeH(4, 1, 11) // reactor 占位（真实值需源句柄，不影响位级）
-	w.writeH(3, 0, 0)  // xdic
-	for w.bit != 0 {
-		w.writeBitsMsb(0, 1)
+	w.WriteH(4, 1, 10) // owner
+	w.WriteH(4, 1, 11) // reactor 占位（真实值需源句柄，不影响位级）
+	w.WriteH(3, 0, 0)  // xdic
+	for w.Bit != 0 {
+		w.WriteBitsMsb(0, 1)
 	}
-	original := w.bytes()
+	original := w.Bytes()
 	if os.Getenv("CAD_RT_DEBUG") != "" {
 		t.Logf("合成流 %d 字节: % X datEnd=%d", len(original), original, datEnd)
 	}

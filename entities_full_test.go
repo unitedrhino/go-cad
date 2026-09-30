@@ -3,6 +3,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"testing"
@@ -53,9 +54,9 @@ func TestDecodeLineFromBits(t *testing.T) {
 	h := objHeader{rec: &objectRecord{size: uint32(len(w.Bytes())), r2010Plus: true,
 		handleSizeFieldBits: 8, handleStreamSizeBits: 8, body: w.Bytes()}}
 	_ = h
-	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)
@@ -83,9 +84,9 @@ func TestDecodeCircleFromBits(t *testing.T) {
 	w.BD(5.0)           // radius
 	w.BT(0)
 	w.BE(0, 0, 1)
-	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)
@@ -107,11 +108,11 @@ func TestDecodeArcFromBits(t *testing.T) {
 	w.BD(10.0)
 	w.BT(0)
 	w.BE(0, 0, 1)
-	w.BD(0.0)                    // angle start
-	w.BD(math.Pi / 2)            // angle end
-	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	w.BD(0.0)                              // angle start
+	w.BD(math.Pi / 2)                      // angle end
+	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	ent, err := decodeArc(r, &head)
 	if err != nil {
@@ -129,10 +130,10 @@ func TestDecodePointFromBits(t *testing.T) {
 	w.B3BD(3.0, 4.0, 5.0)
 	w.BT(0) // thickness（BT：1 位标志）
 	w.BE(0, 0, 1)
-	w.BD(0)                      // angle
-	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	w.BD(0)                                // angle
+	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	ent, err := decodePoint(r, &head)
 	if err != nil {
@@ -154,9 +155,9 @@ func TestDecodeEllipseFromBits(t *testing.T) {
 	w.BD(0)         // start
 	w.BD(math.Pi)   // end
 	// ELLIPSE 无尾部 thickness/extrusion 读取
-	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	ent, err := decodeEllipse(r, &head)
 	if err != nil {
@@ -180,9 +181,9 @@ func TestDecodeLwPolylineFromBits(t *testing.T) {
 	w.DD(10, 10)
 	w.DD(10, 0)
 	// 无 bulges/ids/widths
-	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	ent, err := decodeLwPolyline(r, &head, 30, true)
 	if err != nil {
@@ -211,9 +212,9 @@ func TestDecodeLwPolylineClosedWithBulges(t *testing.T) {
 	w.BD(0.5)
 	w.BD(-0.5)
 	w.BD(0)
-	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	ent, err := decodeLwPolyline(r, &head, 30, true)
 	if err != nil {
@@ -250,9 +251,9 @@ func TestDecodeTextFromBits(t *testing.T) {
 	// 无 width
 	// R21 文本尾：无 gen/halign/valign 位 → 直接 TU 串
 	w.TU("Hello")
-	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	ent, err := decodeText(r, &head, 30)
 	if err != nil {
@@ -282,12 +283,12 @@ func TestDecodeInsertFromBits(t *testing.T) {
 	if w.Bit > 0 {
 		dataEndBit = uint64((len(w.Data)-1)*8 + w.Bit)
 	}
-	w.H(0x05, 901)               // xdic
-	w.H(0x05, 902)               // layer
-	w.H(0x05, 77)                // 块头句柄
-	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	w.H(0x05, 901)                         // xdic
+	w.H(0x05, 902)                         // layer
+	w.H(0x05, 77)                          // 块头句柄
+	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, dataEndBit, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)
@@ -321,7 +322,7 @@ func TestReadHandleReferenceAllCodes(t *testing.T) {
 		{0x04, 9, 100, 9},   // 默认绝对
 	}
 	for _, c := range cases {
-		r := newBitStream(testsupport.NewBitWriter().H(c.code, c.val).Bytes())
+		r := bitstream.NewBitStream(testsupport.NewBitWriter().H(c.code, c.val).Bytes())
 		got, err := readHandleReference(r, c.base)
 		if err != nil {
 			t.Fatalf("code=%#x: %v", c.code, err)
@@ -331,7 +332,7 @@ func TestReadHandleReferenceAllCodes(t *testing.T) {
 		}
 	}
 	// base=0 时 -1 钳位到 0
-	r := newBitStream(testsupport.NewBitWriter().H(0x08, 0).Bytes())
+	r := bitstream.NewBitStream(testsupport.NewBitWriter().H(0x08, 0).Bytes())
 	if got, _ := readHandleReference(r, 0); got != 0 {
 		t.Fatalf("base=0 -1 应钳位 0，得到 %d", got)
 	}

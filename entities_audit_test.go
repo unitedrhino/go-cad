@@ -198,63 +198,63 @@ func TestEntityScanDebug(t *testing.T) {
 		fmt.Printf("type=%d dataStartBit=%d size=%d bodyLen=%d dataEnd=%d codepage=%d\n",
 			h.typeCode, h.dataStartBit, rec.size, len(rec.body)*8, rec.dataEndBit(), doc.codepage)
 		r := rec.bodyBitStream()
-		r.setBitPos(h.dataStartBit)
+		r.SetBitPos(h.dataStartBit)
 		head, err := parseCommonEntityHeadR14(r, rec.dataEndBit())
 		if err != nil {
 			t.Fatalf("head: %v", err)
 		}
 		fmt.Printf("head ok: handle=%d objSizeBit=%d entmode=%d color=%d scale=%g bitsEnd=%d\n",
-			head.handle, head.objSizeBit, head.entityMode, head.color.index, head.ltypeScale, r.tellBits())
+			head.handle, head.objSizeBit, head.entityMode, head.color.index, head.ltypeScale, r.TellBits())
 		// 手动逐字段读 MTEXT 主体
 		rd := func(name string, v float64, e error) {
 			if e != nil {
 				fmt.Printf("  %s ERR %v\n", name, e)
 				panic(e)
 			}
-			fmt.Printf("  %s = %g (@%d)\n", name, v, r.tellBits())
+			fmt.Printf("  %s = %g (@%d)\n", name, v, r.TellBits())
 		}
-		ix, iy, iz, e1 := r.read3BD()
+		ix, iy, iz, e1 := r.Read3BD()
 		if e1 != nil {
 			t.Fatalf("ins 3BD: %v", e1)
 		}
-		fmt.Printf("  ins = %g,%g,%g (@%d)\n", ix, iy, iz, r.tellBits())
-		ex, ey, ez, e2 := r.read3BD()
+		fmt.Printf("  ins = %g,%g,%g (@%d)\n", ix, iy, iz, r.TellBits())
+		ex, ey, ez, e2 := r.Read3BD()
 		if e2 != nil {
 			t.Fatalf("extr 3BD: %v", e2)
 		}
-		fmt.Printf("  extr = %g,%g,%g (@%d)\n", ex, ey, ez, r.tellBits())
-		xx, xy, xz, e3 := r.read3BD()
+		fmt.Printf("  extr = %g,%g,%g (@%d)\n", ex, ey, ez, r.TellBits())
+		xx, xy, xz, e3 := r.Read3BD()
 		if e3 != nil {
 			t.Fatalf("xdir 3BD: %v", e3)
 		}
-		fmt.Printf("  xdir = %g,%g,%g (@%d)\n", xx, xy, xz, r.tellBits())
-		rw, e4 := r.readBD()
+		fmt.Printf("  xdir = %g,%g,%g (@%d)\n", xx, xy, xz, r.TellBits())
+		rw, e4 := r.ReadBD()
 		rd("rect_width", rw, e4)
-		th, e5 := r.readBD()
+		th, e5 := r.ReadBD()
 		rd("text_height", th, e5)
-		att, e6 := r.readBS()
+		att, e6 := r.ReadBS()
 		if e6 != nil {
 			t.Fatalf("attachment: %v", e6)
 		}
-		fmt.Printf("  attachment = %d (@%d)\n", att, r.tellBits())
-		fd, e7 := r.readBS()
+		fmt.Printf("  attachment = %d (@%d)\n", att, r.TellBits())
+		fd, e7 := r.ReadBS()
 		if e7 != nil {
 			t.Fatalf("flow: %v", e7)
 		}
-		fmt.Printf("  flow_dir = %d (@%d)\n", fd, r.tellBits())
-		eh, e8 := r.readBD()
+		fmt.Printf("  flow_dir = %d (@%d)\n", fd, r.TellBits())
+		eh, e8 := r.ReadBD()
 		rd("extents_h", eh, e8)
-		ew, e9 := r.readBD()
+		ew, e9 := r.ReadBD()
 		rd("extents_w", ew, e9)
-		tv, e10 := r.readTV(doc.codepage)
+		tv, e10 := r.ReadTV(doc.codepage)
 		if e10 != nil {
 			t.Fatalf("text: %v", e10)
 		}
-		fmt.Printf("  text = %q (@%d)\n", tv, r.tellBits())
-		ls, e11 := r.readBS()
+		fmt.Printf("  text = %q (@%d)\n", tv, r.TellBits())
+		ls, e11 := r.ReadBS()
 		if e11 != nil {
 			t.Fatalf("ls style: %v", e11)
 		}
-		fmt.Printf("  linespace_style = %d (@%d)\n", ls, r.tellBits())
+		fmt.Printf("  linespace_style = %d (@%d)\n", ls, r.TellBits())
 	}
 }

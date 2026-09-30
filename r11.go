@@ -10,6 +10,7 @@ package cad
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"math"
 )
 
@@ -1615,7 +1616,7 @@ func decodePreR13Text(r *preR13Reader, h preR13EntHead, codepage uint16) *entTex
 	n := int(r.rs())
 	if n > 0 && r.pos+n <= len(r.data) {
 		// pre-R2000 字符串尾可能带 \0 填充，截断
-		e.text = decodeCodepage(preR13TruncNul(r.bytes(n)), codepage)
+		e.text = bitstream.DecodeCodepage(preR13TruncNul(r.bytes(n)), codepage)
 	} else {
 		r.skip(n)
 	}
@@ -1660,7 +1661,7 @@ func preR13TV(r *preR13Reader, codepage uint16) string {
 		r.skip(n)
 		return ""
 	}
-	return decodeCodepage(preR13TruncNul(r.bytes(n)), codepage)
+	return bitstream.DecodeCodepage(preR13TruncNul(r.bytes(n)), codepage)
 }
 
 // decodePreR13Attrib ATTRIB/ATTDEF（dwg.spec PRE(R_13b1) 分支）：插入点 2RD +

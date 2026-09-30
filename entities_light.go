@@ -4,6 +4,10 @@
 // IES 光域网模型 22 字段）。
 package cad
 
+import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
+)
+
 // entLight 光源实体：基线字段 + light_color CMC 的版本双形态。
 // hasCMCTrue 标记 R2004+ 结构（BS index + BL rgb + RC flag），其余
 // 版本 light_color 仅 BS 索引；rgb 原值保留供审计导出（gold 的
@@ -61,33 +65,33 @@ type entLight struct {
 // isPhotometric（NOD 字典 LIGHTINGUNITS=="2"，由 Document 预扫描探测）为真时
 // 继续读 IES 光度子段（has_photometric_data 位展开的 22 字段）；
 // COMMON_ENTITY_HANDLE_DATA 尾部 handle 流由 decodeOwnerLayer 处理。
-func decodeLight(r *bitStream, head *commonEntityHead, ver dwgVersion, codepage uint16, isPhotometric bool) (any, error) {
+func decodeLight(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion, codepage uint16, isPhotometric bool) (any, error) {
 	l := &entLight{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	var err error
-	if l.classVersion, err = r.readBL(); err != nil {
+	if l.classVersion, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
 	// VALUEOUTOFBOUNDS(class_version, 10)：越界视为布局错位（扫描框架按候选淘汰）
 	if l.classVersion > 10 {
-		return nil, errUnexpectedEOF
+		return nil, bitstream.ErrUnexpectedEOF
 	}
 	if ver >= verR2007 {
 		// R2007+ 的 name 存于记录尾字符串区（obj_string_stream 机制），
 		// dat 流不占位；字符串区不可读时回退 dat 流内联读取
 		if strs := readStringAreaStrings(r, head, 1); len(strs) > 0 {
 			l.name = strs[0]
-		} else if l.name, err = r.readTU(); err != nil {
+		} else if l.name, err = r.ReadTU(); err != nil {
 			return nil, err
 		}
 	} else {
-		if l.name, err = r.readTV(codepage); err != nil {
+		if l.name, err = r.ReadTV(codepage); err != nil {
 			return nil, err
 		}
 	}
-	if l.lightType, err = r.readBL(); err != nil {
+	if l.lightType, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
-	if sb, e := r.readB(); e != nil {
+	if sb, e := r.ReadB(); e != nil {
 		return nil, e
 	} else {
 		l.status = sb == 1
@@ -96,17 +100,17 @@ func decodeLight(r *bitStream, head *commonEntityHead, ver dwgVersion, codepage 
 	// 更早版本仅 BS 索引（对齐 LibreDWG bit_read_CMC）
 	if ver >= verR2004 {
 		l.hasLightColorTrue = true
-		idx, e := r.readBS()
+		idx, e := r.ReadBS()
 		if e != nil {
 			return nil, e
 		}
 		l.lightColorIndex = idx
-		rgb, e := r.readBL()
+		rgb, e := r.ReadBL()
 		if e != nil {
 			return nil, e
 		}
 		l.lightColorRGB = rgb
-		fb, e := r.readRC()
+		fb, e := r.ReadRC()
 		if e != nil {
 			return nil, e
 		}
@@ -122,61 +126,61 @@ func decodeLight(r *bitStream, head *commonEntityHead, ver dwgVersion, codepage 
 		}
 		l.lightColorIndex = uint16(dwgFindColorIndex(l.lightColorRGB))
 	} else {
-		idx, e := r.readBS()
+		idx, e := r.ReadBS()
 		if e != nil {
 			return nil, e
 		}
 		l.lightColorIndex = idx
 	}
-	if pb, e := r.readB(); e != nil {
+	if pb, e := r.ReadB(); e != nil {
 		return nil, e
 	} else {
 		l.plotGlyph = pb == 1
 	}
-	if l.intensity, err = r.readBD(); err != nil {
+	if l.intensity, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	x, y, z, e := r.read3BD()
+	x, y, z, e := r.Read3BD()
 	if e != nil {
 		return nil, e
 	}
 	l.position = point3{x, y, z}
-	if x, y, z, e = r.read3BD(); e != nil {
+	if x, y, z, e = r.Read3BD(); e != nil {
 		return nil, e
 	}
 	l.target = point3{x, y, z}
-	if l.attenuationType, err = r.readBL(); err != nil {
+	if l.attenuationType, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
-	if ub, e := r.readB(); e != nil {
+	if ub, e := r.ReadB(); e != nil {
 		return nil, e
 	} else {
 		l.useAttenuationLimits = ub == 1
 	}
-	if l.attenuationStart, err = r.readBD(); err != nil {
+	if l.attenuationStart, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if l.attenuationEnd, err = r.readBD(); err != nil {
+	if l.attenuationEnd, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if l.hotspotAngle, err = r.readBD(); err != nil {
+	if l.hotspotAngle, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if l.falloffAngle, err = r.readBD(); err != nil {
+	if l.falloffAngle, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
-	if cb, e := r.readB(); e != nil {
+	if cb, e := r.ReadB(); e != nil {
 		return nil, e
 	} else {
 		l.castShadows = cb == 1
 	}
-	if l.shadowType, err = r.readBL(); err != nil {
+	if l.shadowType, err = r.ReadBL(); err != nil {
 		return nil, err
 	}
-	if l.shadowMapSize, err = r.readBS(); err != nil {
+	if l.shadowMapSize, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	sm, e := r.readRC()
+	sm, e := r.ReadRC()
 	if e != nil {
 		return nil, e
 	}
@@ -185,13 +189,13 @@ func decodeLight(r *bitStream, head *commonEntityHead, ver dwgVersion, codepage 
 	// 子段存在性由位流 has_photometric_data 位决定
 	l.isPhotometric = isPhotometric
 	if isPhotometric {
-		if hb, e := r.readB(); e != nil {
+		if hb, e := r.ReadB(); e != nil {
 			return nil, e
 		} else {
 			l.hasPhotometricImg = hb == 1
 		}
 		if l.hasPhotometricImg {
-			if hb, e := r.readB(); e != nil {
+			if hb, e := r.ReadB(); e != nil {
 				return nil, e
 			} else {
 				l.hasWebfile = hb == 1
@@ -200,67 +204,67 @@ func decodeLight(r *bitStream, head *commonEntityHead, ver dwgVersion, codepage 
 			if ver >= verR2007 {
 				if strs := readStringAreaStrings(r, head, 1); len(strs) > 0 {
 					l.webfile = strs[0]
-				} else if l.webfile, e = r.readTU(); e != nil {
+				} else if l.webfile, e = r.ReadTU(); e != nil {
 					return nil, e
 				}
-			} else if l.webfile, e = r.readTV(codepage); e != nil {
+			} else if l.webfile, e = r.ReadTV(codepage); e != nil {
 				return nil, e
 			}
-			if l.physIntensityMthd, err = r.readBS(); err != nil {
+			if l.physIntensityMthd, err = r.ReadBS(); err != nil {
 				return nil, err
 			}
-			if l.physIntensity, err = r.readBD(); err != nil {
+			if l.physIntensity, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
-			if l.illuminanceDist, err = r.readBD(); err != nil {
+			if l.illuminanceDist, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
-			if l.lampColorType, err = r.readBS(); err != nil {
+			if l.lampColorType, err = r.ReadBS(); err != nil {
 				return nil, err
 			}
-			if l.lampColorTemp, err = r.readBD(); err != nil {
+			if l.lampColorTemp, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
-			if l.lampColorPreset, err = r.readBS(); err != nil {
+			if l.lampColorPreset, err = r.ReadBS(); err != nil {
 				return nil, err
 			}
-			wx, wy, wz, e := r.read3BD()
+			wx, wy, wz, e := r.Read3BD()
 			if e != nil {
 				return nil, e
 			}
 			l.webRotation = point3{wx, wy, wz}
-			if l.extlightShape, err = r.readBS(); err != nil {
+			if l.extlightShape, err = r.ReadBS(); err != nil {
 				return nil, err
 			}
-			if l.extlightLength, err = r.readBD(); err != nil {
+			if l.extlightLength, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
-			if l.extlightWidth, err = r.readBD(); err != nil {
+			if l.extlightWidth, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
-			if l.extlightRadius, err = r.readBD(); err != nil {
+			if l.extlightRadius, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
-			if l.webfileType, err = r.readBS(); err != nil {
+			if l.webfileType, err = r.ReadBS(); err != nil {
 				return nil, err
 			}
-			if l.webSymetry, err = r.readBS(); err != nil {
+			if l.webSymetry, err = r.ReadBS(); err != nil {
 				return nil, err
 			}
-			if l.hasTargetGrip, err = r.readBS(); err != nil {
+			if l.hasTargetGrip, err = r.ReadBS(); err != nil {
 				return nil, err
 			}
-			if l.webFlux, err = r.readBD(); err != nil {
+			if l.webFlux, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
 			for i := 0; i < 5; i++ {
 				var a float64
-				if a, err = r.readBD(); err != nil {
+				if a, err = r.ReadBD(); err != nil {
 					return nil, err
 				}
 				l.webAngles = append(l.webAngles, a)
 			}
-			if l.glyphDisplayType, err = r.readBS(); err != nil {
+			if l.glyphDisplayType, err = r.ReadBS(); err != nil {
 				return nil, err
 			}
 		}

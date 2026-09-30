@@ -4,5 +4,4 @@
 // 误删导致测试静默跳过。
 package cad
 
-import (
-)
+import ()

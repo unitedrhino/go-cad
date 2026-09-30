@@ -9,6 +9,7 @@ package cad
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 )
 
 // R2007 容器布局常量（ODA 5.4）。
@@ -427,7 +428,7 @@ func decodeUTF16LE(b []byte) string {
 	for i := 0; i+1 < len(b); i += 2 {
 		u = append(u, binary.LittleEndian.Uint16(b[i:]))
 	}
-	return string(utf16Decode(u))
+	return string(bitstream.Utf16Decode(u))
 }
 
 // indexByteStr 字符串内查找字节（NUL 截断用）。

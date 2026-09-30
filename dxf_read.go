@@ -22,6 +22,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"math"
 	"strconv"
 	"strings"
@@ -2585,7 +2586,7 @@ func (l *dxfLexer) decodeText(raw string) string {
 	if l.cp == 0 {
 		return raw
 	}
-	return decodeCodepage([]byte(raw), l.cp)
+	return bitstream.DecodeCodepage([]byte(raw), l.cp)
 }
 
 // dxfUnquote 还原写出端转义：^J → 换行、^M → 回车。

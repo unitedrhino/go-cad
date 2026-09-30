@@ -7,7 +7,10 @@
 
 package cad
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
+)
 
 // underlayFields UNDERLAY 引用实体的专有字段（UNDERLAY_fields）与
 // 公共头提取结果。
@@ -31,8 +34,8 @@ type underlayFields struct {
 
 // decodeUnderlayEntity 解析 UNDERLAY 引用实体并转为 objGeneric。
 // r 已定位到类型码之后（body 局部坐标）；rec/ver 用于实体头布局选择。
-func decodeUnderlayEntity(r *bitStream, rec *objectRecord, ver dwgVersion, typeCode uint16, className string) (*objGeneric, error) {
-	base := r.tellBits()
+func decodeUnderlayEntity(r *bitstream.BitStream, rec *objectRecord, ver dwgVersion, typeCode uint16, className string) (*objGeneric, error) {
+	base := r.TellBits()
 	dataEnd := rec.dataEndBit()
 	// 实体头布局：typecode 后先有流内 RL objSize（R2010+ 除外）再有
 	// 主句柄（H），与对象头顺序不同。逐布局探出主句柄供
@@ -40,22 +43,22 @@ func decodeUnderlayEntity(r *bitStream, rec *objectRecord, ver dwgVersion, typeC
 	parsers := headParsersForVersion(ver)
 	var objHandle uint64
 	for _, p := range parsers {
-		r.setBitPos(base)
+		r.SetBitPos(base)
 		if !p.externalSize {
-			if _, err := r.readRL(); err != nil {
+			if _, err := r.ReadRL(); err != nil {
 				continue
 			}
 		}
-		h, err := r.readH()
-		if err == nil && h.value != 0 {
-			objHandle = h.value
+		h, err := r.ReadH()
+		if err == nil && h.Value != 0 {
+			objHandle = h.Value
 			break
 		}
 	}
-	r.setBitPos(base)
+	r.SetBitPos(base)
 	res, _, ferr := scanEntityBest(r, base, dataEnd, uint64(rec.handleSizeFieldBits),
 		parsers, objHandle, rec.size, className, typeCode,
-		func(r *bitStream, head *commonEntityHead) (any, error) {
+		func(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
 			return readUnderlayFields(r, head)
 		})
 	if ferr != nil {
@@ -124,9 +127,9 @@ func decodeUnderlayEntity(r *bitStream, rec *objectRecord, ver dwgVersion, typeC
 	// RawHandleBits 覆盖 handle 流起点至记录尾
 	g.hdOffsetBits = base - rec.bodyBitOffset
 	if uf.objSizeBit > base {
-		g.headRawBits = collectBits(r, base, uf.objSizeBit)
+		g.headRawBits = bitstream.CollectBits(r, base, uf.objSizeBit)
 	}
-	g.RawHandleBits = collectBits(r, uf.objSizeBit, uint64(len(r.src))*8)
+	g.RawHandleBits = bitstream.CollectBits(r, uf.objSizeBit, uint64(len(r.Src))*8)
 	return g, nil
 }
 
@@ -137,22 +140,22 @@ func decodeUnderlayEntity(r *bitStream, rec *objectRecord, ver dwgVersion, typeC
 // 之后紧跟 definition_id；dat 流 = extrusion → ins_pt → angle → scale →
 // flag → contrast → fade → num_clip_verts → clip_verts →（flag&16）
 // clip_inverts。
-func readUnderlayFields(r *bitStream, head *commonEntityHead) (any, error) {
+func readUnderlayFields(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
 	uf := &underlayFields{}
 	// hdl 流：公共实体句柄 + definition_id（硬引用 *_DEFINITION 对象）
-	savedByte, savedBit := r.cursor()
-	r.setBitPos(head.objSizeBit)
+	savedByte, savedBit := r.Cursor()
+	r.SetBitPos(head.objSizeBit)
 	owner, layer, err := parseCommonEntityHandles(r, head)
 	if err != nil {
-		r.restore(savedByte, savedBit)
+		r.Restore(savedByte, savedBit)
 		return nil, err
 	}
 	defID, err := readHandleReference(r, head.handle)
 	if err != nil {
-		r.restore(savedByte, savedBit)
+		r.Restore(savedByte, savedBit)
 		return nil, err
 	}
-	r.restore(savedByte, savedBit)
+	r.Restore(savedByte, savedBit)
 	uf.owner = owner
 	uf.layer = layer
 	uf.definitionID = defID
@@ -163,22 +166,22 @@ func readUnderlayFields(r *bitStream, head *commonEntityHead) (any, error) {
 	if uf.insPt, err = readBD3(r); err != nil {
 		return nil, err
 	}
-	if uf.angle, err = r.readBD(); err != nil {
+	if uf.angle, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
 	if uf.scale, err = readBD3(r); err != nil {
 		return nil, err
 	}
-	if uf.flag, err = r.readRC(); err != nil {
+	if uf.flag, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
-	if uf.contrast, err = r.readRC(); err != nil {
+	if uf.contrast, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
-	if uf.fade, err = r.readRC(); err != nil {
+	if uf.fade, err = r.ReadRC(); err != nil {
 		return nil, err
 	}
-	numClip, err := r.readBL()
+	numClip, err := r.ReadBL()
 	if err != nil {
 		return nil, err
 	}
@@ -187,11 +190,11 @@ func readUnderlayFields(r *bitStream, head *commonEntityHead) (any, error) {
 		return nil, fmt.Errorf("cad: UNDERLAY num_clip_verts 越界 %d", numClip)
 	}
 	for i := uint32(0); i < numClip; i++ {
-		x, e := r.readRD()
+		x, e := r.ReadRD()
 		if e != nil {
 			return nil, e
 		}
-		y, e := r.readRD()
+		y, e := r.ReadRD()
 		if e != nil {
 			return nil, e
 		}
@@ -202,14 +205,14 @@ func readUnderlayFields(r *bitStream, head *commonEntityHead) (any, error) {
 		// LibreDWG 在此处已越出 bitsize 读出垃圾计数（68/7880）且 gold
 		// 输出为空数组——对齐其宽容行为：计数非法或空间不足时留空，
 		// 不作为解码失败
-		numInv, e := r.readBS()
+		numInv, e := r.ReadBS()
 		if e == nil && numInv <= 5000 && numInv > 0 {
 			for i := uint16(0); i < numInv; i++ {
-				x, e := r.readRD()
+				x, e := r.ReadRD()
 				if e != nil {
 					break
 				}
-				y, e := r.readRD()
+				y, e := r.ReadRD()
 				if e != nil {
 					break
 				}
@@ -225,16 +228,16 @@ func readUnderlayFields(r *bitStream, head *commonEntityHead) (any, error) {
 
 // readBD3 读三个 BD（FIELD_3BD / FIELD_3DPOINT / FIELD_3BD_1 的解码端
 // 均为三个 BD，DD 差分语义由 readBD 内建）。
-func readBD3(r *bitStream) ([]float64, error) {
-	x, err := r.readBD()
+func readBD3(r *bitstream.BitStream) ([]float64, error) {
+	x, err := r.ReadBD()
 	if err != nil {
 		return nil, err
 	}
-	y, err := r.readBD()
+	y, err := r.ReadBD()
 	if err != nil {
 		return nil, err
 	}
-	z, err := r.readBD()
+	z, err := r.ReadBD()
 	if err != nil {
 		return nil, err
 	}

@@ -3,6 +3,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"testing"
@@ -29,9 +30,9 @@ func TestDecodeMTextR2004FromBits(t *testing.T) {
 	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x2C)
 	writeCommonHead(w, 21, 2)
 	writeMTextR2004Body(w, "Hello MText")
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	ent, err := decodeMTextVer(r, &head, 30, false, false, verR2000)
 	if err != nil {
@@ -62,9 +63,9 @@ func TestDecodeMTextR2018FromBits(t *testing.T) {
 	w.BD(1) // linespacing factor
 	w.B(0)  // unknown bit
 	w.BL(0) // background flags = 0
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	ent, err := decodeMText(r, &head, 30, verR2007)
 	if err != nil {
@@ -91,9 +92,9 @@ func TestDecodeAttribFromBits(t *testing.T) {
 	w.RD(1.5) // height
 	w.TU("ATTR-VALUE")
 	w.TV("TAG-NAME") // tag
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	ent, err := decodeAttribVer(r, &head, 30, true, verR2018, false)
 	if err != nil {
@@ -128,9 +129,9 @@ func TestDecodeInsertWithHandleStream(t *testing.T) {
 		body: body, size: uint32(len(body)),
 		r2010Plus: true, handleSizeFieldBits: 8, handleStreamSizeBits: uint32(len(body)*8 - int(dataEndBit)),
 	}
-	r := newBitStream(body)
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(body)
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, herr := parseEntityHead(r, dataEndBit, featMaterialFlags|featVisualStyles|featDSBinary)
 	if herr != nil {
 		t.Fatal(herr)
@@ -257,9 +258,9 @@ func TestParseCommonEntityHeadLayoutVariants(t *testing.T) {
 	w.DD(3, 3)
 	w.BT(0)
 	w.BE(0, 0, 1)
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	// 第一个候选布局应成功且字段正确
 	parsers := headParsersForVersion(verR2018)
 	if len(parsers) == 0 {

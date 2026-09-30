@@ -5,6 +5,7 @@ package cad
 
 import (
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"math"
 	"strconv"
 )
@@ -113,7 +114,7 @@ type hatchSeg struct {
 
 // decodeHatch HATCH：R2004+ 解析渐变段；R2007+ 图案名内联 TU。
 // 同位流多候选（TV/TU）解析按路径数评分取最优，容忍版本差异。
-func decodeHatch(r *bitStream, head *commonEntityHead, ver dwgVersion, codepage uint16) (any, error) {
+func decodeHatch(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion, codepage uint16) (any, error) {
 	unicodeText := ver >= verR2007
 	var modes []hatchStringMode
 	switch {
@@ -127,14 +128,14 @@ func decodeHatch(r *bitStream, head *commonEntityHead, ver dwgVersion, codepage 
 	default:
 		modes = []hatchStringMode{hatchStrInlineTv}
 	}
-	pos := r.tellBits()
+	pos := r.TellBits()
 	var best *entHatch
 	bestScore := uint64(0)
 	var lastErr error
 	streamName := ver >= verR2007 // R2007+ 图案名/渐变名存于对象字符串区
 	hasGradient := ver >= verR2004
 	for _, mode := range modes {
-		r.setBitPos(pos)
+		r.SetBitPos(pos)
 		ent, err := decodeHatchBody(r, head, hatchBodyOpts{strMode: mode, fitPoints: ver >= verR2010, gradient: ver >= verR2004, streamName: streamName, codepage: codepage})
 		if err != nil {
 			lastErr = err
@@ -177,7 +178,7 @@ type hatchBodyOpts struct {
 
 // decodeHatchBody 解析 HATCH 主体：[渐变段] 高程/挤出/名称/实体填充/关联标志/
 // 路径数组/图案定义段/种子点段，全部字段解析保存（不再盲跳）。
-func decodeHatchBody(r *bitStream, head *commonEntityHead, opt hatchBodyOpts) (*entHatch, error) {
+func decodeHatchBody(r *bitstream.BitStream, head *commonEntityHead, opt hatchBodyOpts) (*entHatch, error) {
 	h := &entHatch{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}, codepage: opt.codepage}
 	var err error
 	if opt.gradient {
@@ -186,7 +187,7 @@ func decodeHatchBody(r *bitStream, head *commonEntityHead, opt hatchBodyOpts) (*
 			return nil, err
 		}
 	}
-	if h.elevation, err = r.readBD(); err != nil {
+	if h.elevation, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
 	if h.extrusion, err = read3pt(r); err != nil {
@@ -198,11 +199,11 @@ func decodeHatchBody(r *bitStream, head *commonEntityHead, opt hatchBodyOpts) (*
 		}
 	}
 	var v uint8
-	if v, err = r.readB(); err != nil {
+	if v, err = r.ReadB(); err != nil {
 		return nil, err
 	}
 	h.solidFill = v != 0
-	if v, err = r.readB(); err != nil {
+	if v, err = r.ReadB(); err != nil {
 		return nil, err
 	}
 	h.associative = v != 0
@@ -212,20 +213,20 @@ func decodeHatchBody(r *bitStream, head *commonEntityHead, opt hatchBodyOpts) (*
 	}
 
 	// 图案样式/定义线段
-	if h.style, err = r.readBS(); err != nil {
+	if h.style, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if h.patternType, err = r.readBS(); err != nil {
+	if h.patternType, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
 	if !h.solidFill {
-		if h.angle, err = r.readBD(); err != nil {
+		if h.angle, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
-		if h.scaleSpacing, err = r.readBD(); err != nil {
+		if h.scaleSpacing, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
-		if v, err = r.readB(); err != nil {
+		if v, err = r.ReadB(); err != nil {
 			return nil, err
 		}
 		h.doubleFlag = v != 0
@@ -237,8 +238,8 @@ func decodeHatchBody(r *bitStream, head *commonEntityHead, opt hatchBodyOpts) (*
 }
 
 // readHatchDefLines 读取图案定义线数组（计数 + 逐条 角度/原点/偏移/划线表）。
-func readHatchDefLines(r *bitStream) ([]hatchDefLine, error) {
-	numDefLines, err := r.readBS()
+func readHatchDefLines(r *bitstream.BitStream) ([]hatchDefLine, error) {
+	numDefLines, err := r.ReadBS()
 	if err != nil {
 		return nil, err
 	}
@@ -257,25 +258,25 @@ func readHatchDefLines(r *bitStream) ([]hatchDefLine, error) {
 }
 
 // readHatchDefLine 读取单条图案定义线。
-func readHatchDefLine(r *bitStream) (hatchDefLine, error) {
+func readHatchDefLine(r *bitstream.BitStream) (hatchDefLine, error) {
 	var dl hatchDefLine
 	var err error
-	if dl.angle, err = r.readBD(); err != nil {
+	if dl.angle, err = r.ReadBD(); err != nil {
 		return dl, err
 	}
-	if dl.pt0.x, err = r.readBD(); err != nil {
+	if dl.pt0.x, err = r.ReadBD(); err != nil {
 		return dl, err
 	}
-	if dl.pt0.y, err = r.readBD(); err != nil {
+	if dl.pt0.y, err = r.ReadBD(); err != nil {
 		return dl, err
 	}
-	if dl.offset.x, err = r.readBD(); err != nil {
+	if dl.offset.x, err = r.ReadBD(); err != nil {
 		return dl, err
 	}
-	if dl.offset.y, err = r.readBD(); err != nil {
+	if dl.offset.y, err = r.ReadBD(); err != nil {
 		return dl, err
 	}
-	numDashes, err := r.readBS()
+	numDashes, err := r.ReadBS()
 	if err != nil {
 		return dl, err
 	}
@@ -283,7 +284,7 @@ func readHatchDefLine(r *bitStream) (hatchDefLine, error) {
 		return dl, fmt.Errorf("cad: HATCH 划线数异常 %d", numDashes)
 	}
 	for j := uint32(0); j < uint32(numDashes); j++ {
-		d, e := r.readBD()
+		d, e := r.ReadBD()
 		if e != nil {
 			return dl, e
 		}
@@ -294,15 +295,15 @@ func readHatchDefLine(r *bitStream) (hatchDefLine, error) {
 
 // finishHatchBody 收尾：has_derived 推导（路径 flag & 0x04）→ pixel_size +
 // 种子点段 + 边界句柄流（句柄按各 path 尾部计数顺序连续排列）。
-func finishHatchBody(r *bitStream, head *commonEntityHead, h *entHatch) (*entHatch, error) {
+func finishHatchBody(r *bitstream.BitStream, head *commonEntityHead, h *entHatch) (*entHatch, error) {
 	var err error
 	if h.hasDerived {
-		if h.pixelSize, err = r.readBD(); err != nil {
+		if h.pixelSize, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
 	}
 
-	numSeeds, err := r.readBL()
+	numSeeds, err := r.ReadBL()
 	if err != nil {
 		return nil, err
 	}
@@ -310,17 +311,17 @@ func finishHatchBody(r *bitStream, head *commonEntityHead, h *entHatch) (*entHat
 		return nil, fmt.Errorf("cad: HATCH 种子点数异常 %d", numSeeds)
 	}
 	for i := uint32(0); i < numSeeds; i++ {
-		sx, e := r.readRD()
+		sx, e := r.ReadRD()
 		if e != nil {
 			return nil, e
 		}
-		sy, e := r.readRD()
+		sy, e := r.ReadRD()
 		if e != nil {
 			return nil, e
 		}
 		h.seeds = append(h.seeds, point2{sx, sy}) // gold seeds 键导出
 	}
-	r.setBitPos(head.objSizeBit)
+	r.SetBitPos(head.objSizeBit)
 	if _, layer, e := parseCommonEntityHandles(r, head); e == nil {
 		h.layer = layer
 	}
@@ -344,8 +345,8 @@ func finishHatchBody(r *bitStream, head *commonEntityHead, h *entHatch) (*entHat
 // 句柄数（句柄本体存于 handle 流，此处仅占位跳过）。
 // splineFitPoints 为 R2010+ 样条边拟合点段标志；hasDerived 由路径
 // flag bit4 推导（HATCH 主体 pixel_size 段的读取条件，MPOLYGON 不使用）。
-func decodeHatchPaths(r *bitStream, splineFitPoints bool) (paths []hatchPath, hasDerived bool, err error) {
-	numPaths, err := r.readBL()
+func decodeHatchPaths(r *bitstream.BitStream, splineFitPoints bool) (paths []hatchPath, hasDerived bool, err error) {
+	numPaths, err := r.ReadBL()
 	if err != nil {
 		return nil, false, err
 	}
@@ -353,7 +354,7 @@ func decodeHatchPaths(r *bitStream, splineFitPoints bool) (paths []hatchPath, ha
 		return nil, false, fmt.Errorf("cad: HATCH 路径数异常 %d", numPaths)
 	}
 	for i := uint32(0); i < numPaths; i++ {
-		pathFlag, err := r.readBL()
+		pathFlag, err := r.ReadBL()
 		if err != nil {
 			return nil, false, err
 		}
@@ -364,7 +365,7 @@ func decodeHatchPaths(r *bitStream, splineFitPoints bool) (paths []hatchPath, ha
 		if pathFlag&0x02 == 0 {
 			// 边集路径
 			p.isPolyline = false
-			numSegs, err := r.readBL()
+			numSegs, err := r.ReadBL()
 			if err != nil {
 				return nil, false, err
 			}
@@ -374,71 +375,71 @@ func decodeHatchPaths(r *bitStream, splineFitPoints bool) (paths []hatchPath, ha
 			p.numSegsOrPaths = numSegs
 			var pts []point2
 			for j := uint32(0); j < numSegs; j++ {
-				segType, err := r.readRC()
+				segType, err := r.ReadRC()
 				if err != nil {
 					return nil, false, err
 				}
 				seg := hatchSeg{curveType: segType}
 				switch segType {
 				case 1: // 直线边
-					if seg.first.x, err = r.readRD(); err != nil {
+					if seg.first.x, err = r.ReadRD(); err != nil {
 						return nil, false, err
 					}
-					if seg.first.y, err = r.readRD(); err != nil {
+					if seg.first.y, err = r.ReadRD(); err != nil {
 						return nil, false, err
 					}
-					if seg.second.x, err = r.readRD(); err != nil {
+					if seg.second.x, err = r.ReadRD(); err != nil {
 						return nil, false, err
 					}
-					if seg.second.y, err = r.readRD(); err != nil {
+					if seg.second.y, err = r.ReadRD(); err != nil {
 						return nil, false, err
 					}
 					pts = append(pts, seg.first, seg.second)
 				case 2: // 圆弧边
-					if seg.center.x, err = r.readRD(); err != nil {
+					if seg.center.x, err = r.ReadRD(); err != nil {
 						return nil, false, err
 					}
-					if seg.center.y, err = r.readRD(); err != nil {
+					if seg.center.y, err = r.ReadRD(); err != nil {
 						return nil, false, err
 					}
-					if seg.radius, err = r.readBD(); err != nil {
+					if seg.radius, err = r.ReadBD(); err != nil {
 						return nil, false, err
 					}
-					if seg.startAng, err = r.readBD(); err != nil {
+					if seg.startAng, err = r.ReadBD(); err != nil {
 						return nil, false, err
 					}
-					if seg.endAng, err = r.readBD(); err != nil {
+					if seg.endAng, err = r.ReadBD(); err != nil {
 						return nil, false, err
 					}
-					if ccw, e := r.readB(); e != nil {
+					if ccw, e := r.ReadB(); e != nil {
 						return nil, false, e
 					} else {
 						seg.ccw = ccw != 0
 					}
 					pts = appendArcPoints(pts, seg.center, seg.radius, seg.radius, seg.startAng, seg.endAng, seg.ccw, 64)
 				case 3: // 椭圆弧边
-					if seg.center.x, err = r.readRD(); err != nil {
+					if seg.center.x, err = r.ReadRD(); err != nil {
 						return nil, false, err
 					}
-					if seg.center.y, err = r.readRD(); err != nil {
+					if seg.center.y, err = r.ReadRD(); err != nil {
 						return nil, false, err
 					}
-					if seg.endpoint.x, err = r.readRD(); err != nil {
+					if seg.endpoint.x, err = r.ReadRD(); err != nil {
 						return nil, false, err
 					}
-					if seg.endpoint.y, err = r.readRD(); err != nil {
+					if seg.endpoint.y, err = r.ReadRD(); err != nil {
 						return nil, false, err
 					}
-					if seg.ratio, err = r.readBD(); err != nil {
+					if seg.ratio, err = r.ReadBD(); err != nil {
 						return nil, false, err
 					}
-					if seg.startAng, err = r.readBD(); err != nil {
+					if seg.startAng, err = r.ReadBD(); err != nil {
 						return nil, false, err
 					}
-					if seg.endAng, err = r.readBD(); err != nil {
+					if seg.endAng, err = r.ReadBD(); err != nil {
 						return nil, false, err
 					}
-					if ccw, e := r.readB(); e != nil {
+					if ccw, e := r.ReadB(); e != nil {
 						return nil, false, e
 					} else {
 						seg.ccw = ccw != 0
@@ -456,7 +457,7 @@ func decodeHatchPaths(r *bitStream, splineFitPoints bool) (paths []hatchPath, ha
 				}
 				p.segs = append(p.segs, seg)
 			}
-			if n, err := r.readBL(); err != nil { // 边界对象句柄数
+			if n, err := r.ReadBL(); err != nil { // 边界对象句柄数
 				return nil, false, err
 			} else {
 				p.numBoundaryHandles = n
@@ -466,17 +467,17 @@ func decodeHatchPaths(r *bitStream, splineFitPoints bool) (paths []hatchPath, ha
 		} else {
 			// 多段线路径
 			p.isPolyline = true
-			bulgesPresent, e := r.readB()
+			bulgesPresent, e := r.ReadB()
 			if e != nil {
 				return nil, false, e
 			}
-			closed, e := r.readB()
+			closed, e := r.ReadB()
 			if e != nil {
 				return nil, false, e
 			}
 			p.bulgesPresent = bulgesPresent != 0
 			p.closed = closed != 0
-			numVerts, err := r.readBL()
+			numVerts, err := r.ReadBL()
 			if err != nil {
 				return nil, false, err
 			}
@@ -488,14 +489,14 @@ func decodeHatchPaths(r *bitStream, splineFitPoints bool) (paths []hatchPath, ha
 			var bulges []float64
 			for j := uint32(0); j < numVerts; j++ {
 				pv := hatchPolyVert{}
-				if pv.p.x, err = r.readRD(); err != nil {
+				if pv.p.x, err = r.ReadRD(); err != nil {
 					return nil, false, err
 				}
-				if pv.p.y, err = r.readRD(); err != nil {
+				if pv.p.y, err = r.ReadRD(); err != nil {
 					return nil, false, err
 				}
 				if p.bulgesPresent {
-					if pv.bulge, err = r.readBD(); err != nil {
+					if pv.bulge, err = r.ReadBD(); err != nil {
 						return nil, false, err
 					}
 				}
@@ -503,7 +504,7 @@ func decodeHatchPaths(r *bitStream, splineFitPoints bool) (paths []hatchPath, ha
 				bulges = append(bulges, pv.bulge)
 				p.polyVerts = append(p.polyVerts, pv)
 			}
-			if n, err := r.readBL(); err != nil { // 边界对象句柄数
+			if n, err := r.ReadBL(); err != nil { // 边界对象句柄数
 				return nil, false, err
 			} else {
 				p.numBoundaryHandles = n
@@ -525,27 +526,27 @@ func decodeHatchPaths(r *bitStream, splineFitPoints bool) (paths []hatchPath, ha
 // decodeHatchGradient 解析 R2004+ 渐变填充段（dwg.spec _HATCH_gradientfill）：
 // is_gradient_fill/reserved/角度/偏移/单色标志/色 tint + 色数组（shift BD + CMC）
 // + 渐变名。
-func decodeHatchGradient(r *bitStream, h *entHatch, streamName, tu bool) error {
+func decodeHatchGradient(r *bitstream.BitStream, h *entHatch, streamName, tu bool) error {
 	var err error
-	if h.isGradientFill, err = r.readBL(); err != nil {
+	if h.isGradientFill, err = r.ReadBL(); err != nil {
 		return err
 	}
-	if h.reserved, err = r.readBL(); err != nil {
+	if h.reserved, err = r.ReadBL(); err != nil {
 		return err
 	}
-	if h.gradientAngle, err = r.readBD(); err != nil {
+	if h.gradientAngle, err = r.ReadBD(); err != nil {
 		return err
 	}
-	if h.gradientShift, err = r.readBD(); err != nil {
+	if h.gradientShift, err = r.ReadBD(); err != nil {
 		return err
 	}
-	if h.singleColorGradient, err = r.readBL(); err != nil {
+	if h.singleColorGradient, err = r.ReadBL(); err != nil {
 		return err
 	}
-	if h.gradientTint, err = r.readBD(); err != nil {
+	if h.gradientTint, err = r.ReadBD(); err != nil {
 		return err
 	}
-	numColors, err := r.readBL()
+	numColors, err := r.ReadBL()
 	if err != nil {
 		return err
 	}
@@ -554,7 +555,7 @@ func decodeHatchGradient(r *bitStream, h *entHatch, streamName, tu bool) error {
 	}
 	for i := uint32(0); i < numColors; i++ {
 		var gc hatchGradientColor
-		if gc.shiftValue, err = r.readBD(); err != nil { // shift value
+		if gc.shiftValue, err = r.ReadBD(); err != nil { // shift value
 			return err
 		}
 		c, e := readColorCMCR2004(r)
@@ -572,9 +573,9 @@ func decodeHatchGradient(r *bitStream, h *entHatch, streamName, tu bool) error {
 		return nil // R2013+ 渐变名在字符串区，主数据流零占位
 	}
 	if tu {
-		h.gradientName, err = r.readTU()
+		h.gradientName, err = r.ReadTU()
 	} else {
-		h.gradientName, err = r.readTV(h.codepage)
+		h.gradientName, err = r.ReadTV(h.codepage)
 	}
 	return err
 }
@@ -582,28 +583,28 @@ func decodeHatchGradient(r *bitStream, h *entHatch, streamName, tu bool) error {
 // readColorCMCR2004 读取 R2004+ CMC 颜色字段（BS index + BL rgb + RC
 // flag + [flag&1 TU 名 + flag&2 TU 书名]），返回 [index, rgb 字串]。
 // rgb 高字节 method 保留完整 32 位（对齐 gold 的 c200xxxx 口径）。
-func readColorCMCR2004(r *bitStream) ([2]string, error) {
+func readColorCMCR2004(r *bitstream.BitStream) ([2]string, error) {
 	var out [2]string
-	idx, err := r.readBS()
+	idx, err := r.ReadBS()
 	if err != nil {
 		return out, err
 	}
-	rgb, err := r.readBL()
+	rgb, err := r.ReadBL()
 	if err != nil {
 		return out, err
 	}
-	flag, err := r.readRC()
+	flag, err := r.ReadRC()
 	if err != nil {
 		return out, err
 	}
 	if flag < 4 {
 		if flag&1 != 0 {
-			if _, err := r.readTU(); err != nil {
+			if _, err := r.ReadTU(); err != nil {
 				return out, err
 			}
 		}
 		if flag&2 != 0 {
-			if _, err := r.readTU(); err != nil {
+			if _, err := r.ReadTU(); err != nil {
 				return out, err
 			}
 		}
@@ -615,18 +616,18 @@ func readColorCMCR2004(r *bitStream) ([2]string, error) {
 }
 
 // skipColorCMCR2004 读取并丢弃 R2004+ CMC 颜色字段。
-func skipColorCMCR2004(r *bitStream) error {
+func skipColorCMCR2004(r *bitstream.BitStream) error {
 	_, err := readColorCMCR2004(r)
 	return err
 }
 
 // readHatchString 按模式读取图案名。
-func readHatchString(r *bitStream, mode hatchStringMode, codepage uint16) (string, error) {
+func readHatchString(r *bitstream.BitStream, mode hatchStringMode, codepage uint16) (string, error) {
 	switch mode {
 	case hatchStrInlineTv:
-		return r.readTV(codepage)
+		return r.ReadTV(codepage)
 	case hatchStrInlineTu:
-		return r.readTU()
+		return r.ReadTU()
 	default: // StringStream：数据流内为空串
 		return "", nil
 	}
@@ -634,32 +635,32 @@ func readHatchString(r *bitStream, mode hatchStringMode, codepage uint16) (strin
 
 // decodeHatchSplineEdge 样条边全量解析（degree/标志/节点/控制点/R2010+ 拟合点），
 // 返回原始段参数与细分点列。
-func decodeHatchSplineEdge(r *bitStream, hasFitPoints bool) (*hatchSeg, []point2, error) {
+func decodeHatchSplineEdge(r *bitstream.BitStream, hasFitPoints bool) (*hatchSeg, []point2, error) {
 	seg := &hatchSeg{curveType: 4}
 	var err error
-	if seg.degree, err = r.readBL(); err != nil {
+	if seg.degree, err = r.ReadBL(); err != nil {
 		return nil, nil, err
 	}
 	if seg.degree > 25 {
 		return nil, nil, fmt.Errorf("cad: HATCH 样条度数异常 %d", seg.degree)
 	}
 	var rational, periodic uint8
-	if rational, err = r.readB(); err != nil {
+	if rational, err = r.ReadB(); err != nil {
 		return nil, nil, err
 	}
-	if periodic, err = r.readB(); err != nil {
+	if periodic, err = r.ReadB(); err != nil {
 		return nil, nil, err
 	}
 	seg.rational = rational != 0
 	seg.periodic = periodic != 0
-	numKnots, err := r.readBL()
+	numKnots, err := r.ReadBL()
 	if err != nil {
 		return nil, nil, err
 	}
 	if numKnots > 1_000_000 {
 		return nil, nil, fmt.Errorf("cad: HATCH 样条节点数异常 %d", numKnots)
 	}
-	numControl, err := r.readBL()
+	numControl, err := r.ReadBL()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -667,7 +668,7 @@ func decodeHatchSplineEdge(r *bitStream, hasFitPoints bool) (*hatchSeg, []point2
 		return nil, nil, fmt.Errorf("cad: HATCH 样条控制点数异常 %d", numControl)
 	}
 	for i := uint32(0); i < numKnots; i++ {
-		k, e := r.readBD()
+		k, e := r.ReadBD()
 		if e != nil {
 			return nil, nil, e
 		}
@@ -675,15 +676,15 @@ func decodeHatchSplineEdge(r *bitStream, hasFitPoints bool) (*hatchSeg, []point2
 	}
 	for i := uint32(0); i < numControl; i++ {
 		var c point2
-		if c.x, err = r.readRD(); err != nil {
+		if c.x, err = r.ReadRD(); err != nil {
 			return nil, nil, err
 		}
-		if c.y, err = r.readRD(); err != nil {
+		if c.y, err = r.ReadRD(); err != nil {
 			return nil, nil, err
 		}
 		seg.ctrl = append(seg.ctrl, c)
 		if seg.rational {
-			w, e := r.readBD()
+			w, e := r.ReadBD()
 			if e != nil {
 				return nil, nil, e
 			}
@@ -694,7 +695,7 @@ func decodeHatchSplineEdge(r *bitStream, hasFitPoints bool) (*hatchSeg, []point2
 	// 写入拟合点与首末端点切线；num_fitpts=0 时整段缺席，无条件读切线
 	// 会越位 256 位并丢失后续边界/路径（LibreDWG dwg.spec 同注）。
 	if hasFitPoints {
-		numFit, e := r.readBL()
+		numFit, e := r.ReadBL()
 		if e != nil {
 			return nil, nil, e
 		}
@@ -704,24 +705,24 @@ func decodeHatchSplineEdge(r *bitStream, hasFitPoints bool) (*hatchSeg, []point2
 		if numFit > 0 {
 			for i := uint32(0); i < numFit; i++ {
 				var f point2
-				if f.x, err = r.readRD(); err != nil {
+				if f.x, err = r.ReadRD(); err != nil {
 					return nil, nil, err
 				}
-				if f.y, err = r.readRD(); err != nil {
+				if f.y, err = r.ReadRD(); err != nil {
 					return nil, nil, err
 				}
 				seg.fitPts = append(seg.fitPts, f)
 			}
-			if seg.startTan.x, err = r.readRD(); err != nil {
+			if seg.startTan.x, err = r.ReadRD(); err != nil {
 				return nil, nil, err
 			}
-			if seg.startTan.y, err = r.readRD(); err != nil {
+			if seg.startTan.y, err = r.ReadRD(); err != nil {
 				return nil, nil, err
 			}
-			if seg.endTan.x, err = r.readRD(); err != nil {
+			if seg.endTan.x, err = r.ReadRD(); err != nil {
 				return nil, nil, err
 			}
-			if seg.endTan.y, err = r.readRD(); err != nil {
+			if seg.endTan.y, err = r.ReadRD(); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -854,20 +855,20 @@ func polylineWithBulges(verts []point2, bulges []float64, closed bool, segs int)
 // hatchStreamStrings 读取 R2013+ 对象字符串区的 TU 序列（区头 RS
 // dataSize @objSizeBit-17，扩展格式 hi_size @objSizeBit-33），从区起点
 // 顺序读取至多 max 个 TU。渐变 HATCH 的槽序：gradient_name、name。
-func hatchStreamStrings(r *bitStream, head *commonEntityHead, max int) []string {
+func hatchStreamStrings(r *bitstream.BitStream, head *commonEntityHead, max int) []string {
 	end := head.objSizeBit
 	if end < 40 {
 		return nil
 	}
 	r2 := *r
-	r2.setBitPos(end - 17)
-	ds, err := r2.readRS()
+	r2.SetBitPos(end - 17)
+	ds, err := r2.ReadRS()
 	if err != nil {
 		return nil
 	}
 	if ds&0x8000 != 0 {
-		r2.setBitPos(end - 33)
-		hi, e := r2.readRS()
+		r2.SetBitPos(end - 33)
+		hi, e := r2.ReadRS()
 		if e != nil {
 			return nil
 		}
@@ -880,10 +881,10 @@ func hatchStreamStrings(r *bitStream, head *commonEntityHead, max int) []string 
 	if start < 0 {
 		return nil
 	}
-	r2.setBitPos(uint64(start))
+	r2.SetBitPos(uint64(start))
 	out := make([]string, 0, max)
 	for i := 0; i < max; i++ {
-		s, e := r2.readTU()
+		s, e := r2.ReadTU()
 		if e != nil {
 			break
 		}
@@ -892,7 +893,7 @@ func hatchStreamStrings(r *bitStream, head *commonEntityHead, max int) []string 
 	return out
 }
 
-func streamAreaText(r *bitStream, head *commonEntityHead) string {
+func streamAreaText(r *bitstream.BitStream, head *commonEntityHead) string {
 	end := head.objSizeBit
 	if end < 40 {
 		return ""
@@ -903,8 +904,8 @@ func streamAreaText(r *bitStream, head *commonEntityHead) string {
 	}
 	for start := lo; start < int64(end)-20; start++ {
 		r3 := *r
-		r3.setBitPos(uint64(start))
-		s, err := r3.readTU()
+		r3.SetBitPos(uint64(start))
+		s, err := r3.ReadTU()
 		if err != nil || s == "" || len(s) > 64 || !printableText(s) {
 			continue
 		}

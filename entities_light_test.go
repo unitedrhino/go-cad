@@ -5,6 +5,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"testing"
 )
@@ -69,9 +70,9 @@ func writeLightPhotometric(w *testsupport.BitWriter) {
 // dataEndBit 须在写 handle 流之前计算（主体结束位 = handle 流起点）。
 func decodeLightFromBits(t *testing.T, body *testsupport.BitWriter, dataEndBit uint64, photometric bool, ver dwgVersion) *entLight {
 	t.Helper()
-	r := newBitStream(body.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(body.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, dataEndBit, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatalf("公共头解析失败: %v", err)

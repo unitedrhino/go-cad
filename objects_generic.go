@@ -7,6 +7,7 @@ package cad
 
 import (
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"os"
 	"strings"
 )
@@ -117,12 +118,12 @@ func (g *objGeneric) DebugFields() map[string]any {
 
 // internalObjectSpec 内部对象类型描述。
 type internalObjectSpec struct {
-	decode          func(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error // dat 流专有字段
-	hdl             func(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error // 自定义 handle 流（owner/reactors/xdic 之后调用）
-	extraHandles    int                                                                 // handle 流中 xdic 之后的固定引用数
-	handleVectorKey string                                                              // 引用数量字段名（如 GROUP 的 num_groups）：handle 流读该数量的引用
-	forceStrings    bool                                                                // SCALE 特例：has_strings 位恒 0 但 LibreDWG 强制按 1 处理（decode_r2007.c FIXME wrong bit）
-	jsonName        string                                                              // gold JSON object 名与类表 DXF 名不一致时覆盖（如 DYNAMICBLOCKPURGEPREVENTER）
+	decode          func(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error // dat 流专有字段
+	hdl             func(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error // 自定义 handle 流（owner/reactors/xdic 之后调用）
+	extraHandles    int                                                                           // handle 流中 xdic 之后的固定引用数
+	handleVectorKey string                                                                        // 引用数量字段名（如 GROUP 的 num_groups）：handle 流读该数量的引用
+	forceStrings    bool                                                                          // SCALE 特例：has_strings 位恒 0 但 LibreDWG 强制按 1 处理（decode_r2007.c FIXME wrong bit）
+	jsonName        string                                                                        // gold JSON object 名与类表 DXF 名不一致时覆盖（如 DYNAMICBLOCKPURGEPREVENTER）
 }
 
 // internalFixedDecoders 固定类型码的内部对象（键为位级类型码）。
@@ -231,7 +232,7 @@ func verUntilR2004(ver dwgVersion) bool {
 // R2007+ 且对象 has_strings=1 时，FIELD_T 从记录尾部的字符串区顺序取值
 // （dat 流不占位，LibreDWG FIELD_T 宏行为）；否则 R2007 前 TV 内联。
 type gfRead struct {
-	r        *bitStream
+	r        *bitstream.BitStream
 	ver      dwgVersion
 	strs     []string // 字符串区预读的 TU 序列（R2007+ 字符串流对象）
 	strIdx   int      // 下一个待取的字符串下标
@@ -241,7 +242,7 @@ type gfRead struct {
 // T 读文字字段。
 func (f *gfRead) T(key string, g *objGeneric) error {
 	if f.ver < verR2007 {
-		s, err := f.r.readTV(f.codepage)
+		s, err := f.r.ReadTV(f.codepage)
 		if err != nil {
 			return err
 		}
@@ -262,7 +263,7 @@ func (f *gfRead) T(key string, g *objGeneric) error {
 
 // BS 读 BS 字段。
 func (f gfRead) BS(key string, g *objGeneric) error {
-	v, err := f.r.readBS()
+	v, err := f.r.ReadBS()
 	if err != nil {
 		return err
 	}
@@ -272,7 +273,7 @@ func (f gfRead) BS(key string, g *objGeneric) error {
 
 // BD 读 BD 字段。
 func (f gfRead) BD(key string, g *objGeneric) error {
-	v, err := f.r.readBD()
+	v, err := f.r.ReadBD()
 	if err != nil {
 		return err
 	}
@@ -282,7 +283,7 @@ func (f gfRead) BD(key string, g *objGeneric) error {
 
 // RC 读 RC 字段。
 func (f gfRead) RC(key string, g *objGeneric) error {
-	v, err := f.r.readRC()
+	v, err := f.r.ReadRC()
 	if err != nil {
 		return err
 	}
@@ -292,7 +293,7 @@ func (f gfRead) RC(key string, g *objGeneric) error {
 
 // B 读位字段。
 func (f gfRead) B(key string, g *objGeneric) error {
-	v, err := f.r.readB()
+	v, err := f.r.ReadB()
 	if err != nil {
 		return err
 	}
@@ -302,11 +303,11 @@ func (f gfRead) B(key string, g *objGeneric) error {
 
 // RD2 读 2RD 坐标对（两个 RD），以 [x y] 数组记录（对齐 dwgread JSON 形状）。
 func (f gfRead) RD2(key string, g *objGeneric) error {
-	x, err := f.r.readRD()
+	x, err := f.r.ReadRD()
 	if err != nil {
 		return err
 	}
-	y, err := f.r.readRD()
+	y, err := f.r.ReadRD()
 	if err != nil {
 		return err
 	}
@@ -317,7 +318,7 @@ func (f gfRead) RD2(key string, g *objGeneric) error {
 // decodeGenericAPPID 解析 APPID（dwg.spec DWG_TABLE(APPID)）：
 // dat 流 = COMMON_TABLE_FLAGS（name T + xref 标志）+ RC unknown(71)；
 // handle 流 = owner + reactors + xdic + xref。
-func decodeGenericAPPID(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericAPPID(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 
 	if err := fr.T("name", g); err != nil {
 		return err
@@ -330,7 +331,7 @@ func decodeGenericAPPID(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric)
 
 // decodeGenericDICTIONARYVAR 解析 DICTIONARYVAR（dwg.spec）：
 // dat 流 = RCd schema(280) + T strvalue。
-func decodeGenericDICTIONARYVAR(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericDICTIONARYVAR(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 
 	if err := fr.RC("schema", g); err != nil {
 		return err
@@ -341,7 +342,7 @@ func decodeGenericDICTIONARYVAR(r *bitStream, ver dwgVersion, fr *gfRead, g *obj
 // decodeGenericSCALE 解析 SCALE（dwg2.spec DWG_OBJECT(SCALE)）：
 // dat 流 = BS flag(70) + T name(300) + BD paper_units(140) +
 // BD drawing_units(141) + B is_unit_scale(290)。
-func decodeGenericSCALE(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericSCALE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 
 	if err := fr.BS("flag", g); err != nil {
 		return err
@@ -360,7 +361,7 @@ func decodeGenericSCALE(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric)
 
 // decodeInternalObject 按类型码/类名查找并解码通用内部对象：
 // dat 流专有字段 → handle 流（owner + reactors + xdic + 附加引用）。
-func decodeInternalObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013Plus bool, typeCode uint16, className string, codepage uint16) (*objGeneric, error) {
+func decodeInternalObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVersion, r2013Plus bool, typeCode uint16, className string, codepage uint16) (*objGeneric, error) {
 	// UNDERLAY 引用实体：实体布局但经对象分发（此前 UNKNOWN_OBJ 兜底），
 	// 按实体头 + UNDERLAY_fields 解码（见 objects_underlay.go）
 	if className == "PDFUNDERLAY" || className == "DWFUNDERLAY" || className == "DGNUNDERLAY" {
@@ -370,7 +371,7 @@ func decodeInternalObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013
 	// 仅存储 unknown_bits，不解析字段）
 	if className == "UNKNOWN_OBJ" || className == "ACDBASSOCPERSSUBENTMANAGER" {
 		className = "UNKNOWN_OBJ"
-		unkStart := r.tellBits()
+		unkStart := r.TellBits()
 		ug := &objGeneric{Name: className}
 		bitsizePosU := dictBitsizePos(ver)
 		if bitsizePosU == bitsizePosHead {
@@ -388,24 +389,24 @@ func decodeInternalObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013
 		if bitsizePosU == bitsizePosTail {
 			ug.ObjSizeBit, _ = readInlineBitsize(r)
 		}
-		if nr, uerr := r.readBL(); uerr == nil && nr <= 4096 {
+		if nr, uerr := r.ReadBL(); uerr == nil && nr <= 4096 {
 			ug.NumReactors = int(nr)
 		}
 		if ver >= verR2004 {
-			if xd, e := r.readB(); e == nil {
+			if xd, e := r.ReadB(); e == nil {
 				ug.XdicMissing = xd == 1
 			}
 		}
 		if r2013Plus {
-			if _, e := r.readB(); e != nil {
+			if _, e := r.ReadB(); e != nil {
 				return ug, nil
 			}
 		}
 		if bitsizePosU == bitsizePosDerived {
 			ug.ObjSizeBit = rec.dataEndBit() - rec.bodyBitOffset - uint64(rec.handleSizeFieldBits)
-			r.setBitPos(rec.dataEndBit())
+			r.SetBitPos(rec.dataEndBit())
 		} else {
-			r.setBitPos(rec.bodyBitOffset + ug.ObjSizeBit)
+			r.SetBitPos(rec.bodyBitOffset + ug.ObjSizeBit)
 		}
 		ug.Fields = append(ug.Fields, objField{"is_xdic_missing", ug.XdicMissing})
 		ug.Fields = append(ug.Fields, objField{"bitsize", int64(ug.ObjSizeBit)})
@@ -419,22 +420,22 @@ func decodeInternalObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013
 			readHandleReference(r, ug.Handle)
 		}
 		// 回放收集：data 段与 handle 流的原始位串（同通用路径模式）
-		unkEnd := r.tellBits()
-		ug.headRawBits = collectBits(r, unkStart, unkEnd)
-		ug.RawHandleBits = collectBits(r, unkEnd, uint64(len(r.src))*8)
+		unkEnd := r.TellBits()
+		ug.headRawBits = bitstream.CollectBits(r, unkStart, unkEnd)
+		ug.RawHandleBits = bitstream.CollectBits(r, unkEnd, uint64(len(r.Src))*8)
 		ug.hdOffsetBits = unkStart - rec.bodyBitOffset
 		return ug, nil
 	}
 	// DICTIONARYWDFLT：DICTIONARY 布局 + hdl 尾 defaultid
 	if typeCode == 0x2B || className == "ACDBDICTIONARYWDFLT" || className == "DICTIONARYWDFLT" {
-		startPos := r.tellBits()
+		startPos := r.TellBits()
 		dd, e := decodeDictionaryObjectFull(r, rec, ver, r2013Plus, true)
 		if e != nil {
 			return nil, e
 		}
 		// 位串收集：data 段 + handle 流 + 元数据（与通用路径同构）
 		hdOff := startPos - rec.bodyBitOffset
-		headRaw := collectBits(r, startPos+32, rec.dataEndBit())
+		headRaw := bitstream.CollectBits(r, startPos+32, rec.dataEndBit())
 		flds := []objField{
 			{"object", "DICTIONARYWDFLT"},
 			{"type", int64(typeCode)},
@@ -477,7 +478,7 @@ func decodeInternalObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013
 		// 保留原始类名供统计与后续补齐解码器
 		origClass := className
 		className = "UNKNOWN_OBJ"
-		spec = internalObjectSpec{decode: func(r *bitStream, ver dwgVersion, fr *gfRead, gg *objGeneric) error {
+		spec = internalObjectSpec{decode: func(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, gg *objGeneric) error {
 			gg.Unknown = true
 			gg.OrigClass = origClass
 			return nil
@@ -492,7 +493,7 @@ func decodeInternalObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013
 	}
 	bitsizePos := dictBitsizePos(ver)
 	// dat 段前导位：RL bitsize 字段起点（body 内），重编码位长校验用
-	g.hdOffsetBits = r.tellBits() - rec.bodyBitOffset
+	g.hdOffsetBits = r.TellBits() - rec.bodyBitOffset
 	if bitsizePos == bitsizePosHead {
 		bs, e := readInlineBitsize(r)
 		if e != nil {
@@ -503,19 +504,19 @@ func decodeInternalObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013
 	var err error
 	_dbg := os.Getenv("CAD_DECODE_DBG") != ""
 	if _dbg {
-		fmt.Fprintf(os.Stderr, "[hdr] start@%d type=%X\n", r.tellBits(), typeCode)
+		fmt.Fprintf(os.Stderr, "[hdr] start@%d type=%X\n", r.TellBits(), typeCode)
 	}
 	if g.Handle, err = readHandleValue(r); err != nil {
-		return nil, fmt.Errorf("hdlv@%d: %w", r.tellBits(), err)
+		return nil, fmt.Errorf("hdlv@%d: %w", r.TellBits(), err)
 	}
 	if _dbg {
-		fmt.Fprintf(os.Stderr, "[hdr] handle done @%d\n", r.tellBits())
+		fmt.Fprintf(os.Stderr, "[hdr] handle done @%d\n", r.TellBits())
 	}
 	if err = parseEEDChain(r, ver, &g.Fields); err != nil {
-		return nil, fmt.Errorf("eed@%d: %w", r.tellBits(), err)
+		return nil, fmt.Errorf("eed@%d: %w", r.TellBits(), err)
 	}
 	if _dbg {
-		fmt.Fprintf(os.Stderr, "[hdr] eed done @%d\n", r.tellBits())
+		fmt.Fprintf(os.Stderr, "[hdr] eed done @%d\n", r.TellBits())
 	}
 	if bitsizePos == bitsizePosTail {
 		if g.ObjSizeBit, err = readInlineBitsize(r); err != nil {
@@ -523,25 +524,25 @@ func decodeInternalObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013
 		}
 	}
 	var numReactors uint32
-	if numReactors, err = r.readBL(); err != nil {
-		return nil, fmt.Errorf("nr@%d: %w", r.tellBits(), err)
+	if numReactors, err = r.ReadBL(); err != nil {
+		return nil, fmt.Errorf("nr@%d: %w", r.TellBits(), err)
 	}
 	if _dbg {
-		fmt.Fprintf(os.Stderr, "[hdr] reactors done @%d (n=%d)\n", r.tellBits(), numReactors)
+		fmt.Fprintf(os.Stderr, "[hdr] reactors done @%d (n=%d)\n", r.TellBits(), numReactors)
 	}
 	if numReactors > 4096 {
 		return nil, fmt.Errorf("cad: 内部对象 reactors 异常 %d", numReactors)
 	}
 	g.NumReactors = int(numReactors)
 	if ver >= verR2004 {
-		if xdic, e := r.readB(); e != nil {
+		if xdic, e := r.ReadB(); e != nil {
 			return nil, e
 		} else {
 			g.XdicMissing = xdic == 1
 		}
 	}
 	if r2013Plus {
-		if ds, e := r.readB(); e != nil { // has_ds_data
+		if ds, e := r.ReadB(); e != nil { // has_ds_data
 			return nil, e
 		} else {
 			g.HasDsData = ds == 1
@@ -561,16 +562,16 @@ func decodeInternalObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013
 			g.ObjSizeBit = bitsize
 		}
 		libreBase := uint64(rec.handleSizeFieldBits) + rec.bodyBitOffset
-		savedBits := r.tellBits()
-		r.setBitPos(libreBase + bitsize - 1)
-		b, e := r.readB()
+		savedBits := r.TellBits()
+		r.SetBitPos(libreBase + bitsize - 1)
+		b, e := r.ReadB()
 		if (e == nil && b == 1) || spec.forceStrings {
 			fr.strs = readStringAreaBitRange(r, libreBase+bitsize, 64, ver >= verR2013)
 		}
-		r.setBitPos(savedBits)
+		r.SetBitPos(savedBits)
 	}
 	if err = spec.decode(r, ver, fr, g); err != nil {
-		return nil, fmt.Errorf("decode@%d: %w", r.tellBits(), err)
+		return nil, fmt.Errorf("decode@%d: %w", r.TellBits(), err)
 	}
 	// 专有字段段原始位串：RL bitsize 之后至 handle 流起点（bitsize）。
 	// 按 objSizeBit 定界（而非当前位）：解码器内部可能跳过预览位串等
@@ -579,7 +580,7 @@ func decodeInternalObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013
 	// 终点为记录数据结束位（dataEndBit），并保存重建 rec 元数据。
 	if bitsizePos == bitsizePosHead {
 		if g.ObjSizeBit > g.hdOffsetBits+32 {
-			g.headRawBits = collectBits(r, rec.bodyBitOffset+g.hdOffsetBits+32, rec.bodyBitOffset+g.ObjSizeBit)
+			g.headRawBits = bitstream.CollectBits(r, rec.bodyBitOffset+g.hdOffsetBits+32, rec.bodyBitOffset+g.ObjSizeBit)
 		}
 	} else {
 		g.r2010Plus = true
@@ -587,34 +588,34 @@ func decodeInternalObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013
 		g.hSizeField = rec.handleSizeFieldBits
 		g.hssBits = rec.handleStreamSizeBits
 		g.bodyBitOff = rec.bodyBitOffset
-		g.preBits = collectBits(r, rec.bodyBitOffset, rec.bodyBitOffset+g.hdOffsetBits)
+		g.preBits = bitstream.CollectBits(r, rec.bodyBitOffset, rec.bodyBitOffset+g.hdOffsetBits)
 		// 注意：终点 dataEndBit 与 RawHandleBits 起点（bitsize）存在
 		// hSizeField 位重叠——R2010+ 首轮 handle 定位（setBitPos
 		// dataEndBit）能通过 gold 的机理未明，修正需连同首轮定位
 		// 一起统一，见任务文档 R2010+ 卡点记录
-		g.headRawBits = collectBits(r, rec.bodyBitOffset+g.hdOffsetBits, rec.dataEndBit())
+		g.headRawBits = bitstream.CollectBits(r, rec.bodyBitOffset+g.hdOffsetBits, rec.dataEndBit())
 	}
 	// handle 流
 	switch bitsizePos {
 	case bitsizePosDerived:
 		g.ObjSizeBit = rec.dataEndBit() - rec.bodyBitOffset - uint64(rec.handleSizeFieldBits)
-		r.setBitPos(rec.dataEndBit())
+		r.SetBitPos(rec.dataEndBit())
 	default:
-		r.setBitPos(rec.bodyBitOffset + g.ObjSizeBit)
+		r.SetBitPos(rec.bodyBitOffset + g.ObjSizeBit)
 	}
 	// handle 流原始位串：起点（bitsize）至 body 尾，供重编码原样写回
-	g.RawHandleBits = collectBits(r, r.tellBits(), uint64(len(r.src))*8)
+	g.RawHandleBits = bitstream.CollectBits(r, r.TellBits(), uint64(len(r.Src))*8)
 	if g.Owner, err = readOwnerHandle(r, g.Handle); err != nil {
-		return nil, fmt.Errorf("hdl.owner@%d: %w", r.tellBits(), err)
+		return nil, fmt.Errorf("hdl.owner@%d: %w", r.TellBits(), err)
 	}
 	for i := 0; i < g.NumReactors; i++ {
 		if _, err = readHandleReference(r, g.Handle); err != nil {
-			return nil, fmt.Errorf("hdl.reactor%d@%d: %w", i, r.tellBits(), err)
+			return nil, fmt.Errorf("hdl.reactor%d@%d: %w", i, r.TellBits(), err)
 		}
 	}
 	if !g.XdicMissing {
 		if _, err = readHandleReference(r, g.Handle); err != nil {
-			return nil, fmt.Errorf("hdl.xdic@%d: %w", r.tellBits(), err)
+			return nil, fmt.Errorf("hdl.xdic@%d: %w", r.TellBits(), err)
 		}
 	}
 	// 公共元数据字段（对照 dwgread JSON 的公共键，供导出与值级审计）
@@ -646,7 +647,7 @@ func decodeInternalObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013
 	for i := 0; i < n; i++ {
 		h, e := readHandleReference(r, g.Handle)
 		if e != nil {
-			return nil, fmt.Errorf("hdl.vec%d/%d@%d: %w", i, n, r.tellBits(), e)
+			return nil, fmt.Errorf("hdl.vec%d/%d@%d: %w", i, n, r.TellBits(), e)
 		}
 		g.Handles = append(g.Handles, h)
 	}
@@ -657,21 +658,21 @@ func decodeInternalObject(r *bitStream, rec *objectRecord, ver dwgVersion, r2013
 // max 个 TU 字符串：RS dataSize @ bitsize-17（0x8000 高位为扩展格式标志），
 // 区起点 = bitsize-17-dataSize，内容为顺序 TU。bitsize 为相对该读取器
 // 0 点（MS 字段之后）的位长。
-func readStringAreaBitRange(r *bitStream, bitsize uint64, max int, r2013Plus bool) []string {
+func readStringAreaBitRange(r *bitstream.BitStream, bitsize uint64, max int, r2013Plus bool) []string {
 	if bitsize < 34 {
 		return nil
 	}
 	pos := bitsize - 17
-	r.setBitPos(pos)
-	dataSize, err := r.readRS()
+	r.SetBitPos(pos)
+	dataSize, err := r.ReadRS()
 	if err != nil {
 		return nil
 	}
 	if dataSize&0x8000 != 0 {
 		// 扩展格式：hi_size RS 位于 bitsize-33，真实大小 =
 		// (data_size&0x7FFF) | (hi_size<<15)（对齐 obj_string_stream）
-		r.setBitPos(bitsize - 33)
-		hi, e := r.readRS()
+		r.SetBitPos(bitsize - 33)
+		hi, e := r.ReadRS()
 		if e != nil {
 			return nil
 		}
@@ -684,10 +685,10 @@ func readStringAreaBitRange(r *bitStream, bitsize uint64, max int, r2013Plus boo
 	if start >= bitsize {
 		return nil
 	}
-	r.setBitPos(start)
+	r.SetBitPos(start)
 	out := make([]string, 0, max)
 	for i := 0; i < max; i++ {
-		s, e := r.readTU()
+		s, e := r.ReadTU()
 		if e != nil {
 			break
 		}
@@ -698,7 +699,7 @@ func readStringAreaBitRange(r *bitStream, bitsize uint64, max int, r2013Plus boo
 
 // BL 读 BL 字段。
 func (f gfRead) BL(key string, g *objGeneric) error {
-	v, err := f.r.readBL()
+	v, err := f.r.ReadBL()
 	if err != nil {
 		return err
 	}
@@ -709,7 +710,7 @@ func (f gfRead) BL(key string, g *objGeneric) error {
 // BLd 读有符号 BL 字段（LibreDWG BLd：位流同 BL，输出按 int32 解释），
 // 如 EVALUATION_GRAPH out_edge 的 -1 表无、ASSOCDEPENDENCY order 的负序值。
 func (f gfRead) BLd(key string, g *objGeneric) error {
-	v, err := f.r.readBL()
+	v, err := f.r.ReadBL()
 	if err != nil {
 		return err
 	}
@@ -720,7 +721,7 @@ func (f gfRead) BLd(key string, g *objGeneric) error {
 // decodeGenericGROUP 解析 GROUP（dwg.spec DWG_OBJECT(GROUP)）：
 // dat 流 = T name(300) + BS unnamed(70) + BS selectable(71) + BL num_groups；
 // handle 流 = owner + reactors + xdic + groups×num_groups。
-func decodeGenericGROUP(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericGROUP(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.T("name", g); err != nil {
 		return err
 	}
@@ -735,7 +736,7 @@ func decodeGenericGROUP(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric)
 
 // decodeGenericWIPEOUTVARIABLES 解析 WIPEOUTVARIABLES（dwg2.spec）：
 // dat 流 = BS display_frame(70)。
-func decodeGenericWIPEOUTVARIABLES(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericWIPEOUTVARIABLES(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	return fr.BS("display_frame", g)
 }
 
@@ -744,8 +745,8 @@ func decodeGenericWIPEOUTVARIABLES(r *bitStream, ver dwgVersion, fr *gfRead, g *
 // sort_ents×num_ents —— 该句柄数组特殊地内联在 dat 流（spec 以
 // str_dat=hdl_dat; hdl_dat=dat 显式切换，code 0 绝对引用），
 // 先于公共 handle 流存储。
-func decodeGenericSORTENTSTABLE(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
-	num, err := r.readBL()
+func decodeGenericSORTENTSTABLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+	num, err := r.ReadBL()
 	if err != nil {
 		return err
 	}
@@ -768,7 +769,7 @@ func decodeGenericSORTENTSTABLE(r *bitStream, ver dwgVersion, fr *gfRead, g *obj
 // decodeGenericSORTENTSTABLE_HDL SORTENTSTABLE 的 handle 流附加引用：
 // block_owner（排序所属的 mspace/pspace BLOCK_HEADER，soft owner）+
 // ents×num_ents（排序前顺序的实体引用，与 sort_ents 按下标配对）。
-func decodeGenericSORTENTSTABLE_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericSORTENTSTABLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	h, e := readHandleReference(r, g.Handle)
 	if e != nil {
 		return e
@@ -792,7 +793,7 @@ func decodeGenericSORTENTSTABLE_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g 
 // T file_path + B is_loaded + RC resunits + 2RD pixel_size。位级字段
 // 顺序与 DXF 顺序不同（DXF 端 file_path 首位）；R2007+ 的 file_path
 // 走对象字符串流（gfRead.T）。
-func decodeGenericIMAGEDEF(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericIMAGEDEF(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BL("class_version", g); err != nil {
 		return err
 	}
@@ -818,7 +819,7 @@ func decodeGenericIMAGEDEF(r *bitStream, ver dwgVersion, fr *gfRead, g *objGener
 // decodeGenericIMAGEDEF_REACTOR 解析 IMAGEDEF_REACTOR（dwg.spec
 // DWG_OBJECT(IMAGEDEF_REACTOR)，AcDbRasterImageDefReactor）：dat 流仅
 // BL class_version(90)，其余为公共 handle 流（框架统一处理）。
-func decodeGenericIMAGEDEF_REACTOR(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericIMAGEDEF_REACTOR(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BL("class_version", g); err != nil {
 		return err
 	}
@@ -832,7 +833,7 @@ func decodeGenericIMAGEDEF_REACTOR(r *bitStream, ver dwgVersion, fr *gfRead, g *
 // decodeGenericRASTERVARIABLES 解析 RASTERVARIABLES（dwg2.spec
 // AcDbRasterVariables）：BL class_version（>10 越界放弃）+ BS
 // image_frame + BS image_quality + BS units。
-func decodeGenericRASTERVARIABLES(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericRASTERVARIABLES(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	cv, err := fr.BLv("class_version", g)
 	if err != nil {
 		return err
@@ -852,7 +853,7 @@ func decodeGenericRASTERVARIABLES(r *bitStream, ver dwgVersion, fr *gfRead, g *o
 // decodeGenericUNDERLAYDEFINITION 解析 UNDERLAY 定义对象（dwg2.spec
 // PDFDEFINITION/DGNDEFINITION/DWFDEFINITION，AcDbUnderlayDefinition）：
 // dat 流 = T filename(1) + T name(2)；三类同构共用，R2007+ 走字符串流。
-func decodeGenericUNDERLAYDEFINITION(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericUNDERLAYDEFINITION(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.T("filename", g); err != nil {
 		return err
 	}
@@ -867,7 +868,7 @@ func decodeGenericUNDERLAYDEFINITION(r *bitStream, ver dwgVersion, fr *gfRead, g
 // 返回与 dwgread JSON 同形的 map（{"index":..,"rgb":"..","name":..}）。
 func (f *gfRead) CMC(key string, g *objGeneric) error {
 	if f.ver < verR2004 {
-		idx, err := f.r.readBS()
+		idx, err := f.r.ReadBS()
 		if err != nil {
 			return err
 		}
@@ -888,26 +889,26 @@ func (f *gfRead) CMTC(key string, g *objGeneric) error {
 // （flag&1 → name T、flag&2 → book_name，从字符串流）。
 func (f *gfRead) readCMCR2004(key string, g *objGeneric) error {
 	dbgC := os.Getenv("CAD_CMTC_DBG") != "" && strings.Contains(key, "borders[0].color")
-	startPos := f.r.tellBits()
+	startPos := f.r.TellBits()
 	if dbgC {
-		fmt.Fprintf(os.Stderr, "[cmtcPRE] h=%d key=%s pos=%d-40..%s\n", g.Handle, key, startPos, collectBits(f.r, startPos-40, startPos+100))
+		fmt.Fprintf(os.Stderr, "[cmtcPRE] h=%d key=%s pos=%d-40..%s\n", g.Handle, key, startPos, bitstream.CollectBits(f.r, startPos-40, startPos+100))
 	}
-	idx, err := f.r.readBS()
+	idx, err := f.r.ReadBS()
 	if err != nil {
 		return err
 	}
-	rgb, err := f.r.readBL()
+	rgb, err := f.r.ReadBL()
 	if err != nil {
 		return err
 	}
 	method := rgb >> 24
-	flag, err := f.r.readRC()
+	flag, err := f.r.ReadRC()
 	if err != nil {
 		return err
 	}
 	if dbgC {
 		fmt.Fprintf(os.Stderr, "[cmtc2] h=%d key=%s start=%d end=%d idx=%d rgb=%08x flag=%d bits=%s\n",
-			g.Handle, key, startPos, f.r.tellBits(), idx, rgb, flag, collectBits(f.r, startPos, startPos+60))
+			g.Handle, key, startPos, f.r.TellBits(), idx, rgb, flag, bitstream.CollectBits(f.r, startPos, startPos+60))
 	}
 	cm := map[string]any{"index": int64(idx), "rgb": fmt.Sprintf("%08x", rgb)}
 	if flag < 4 {
@@ -1022,7 +1023,7 @@ func dwgFindColorIndex(rgb uint32) int64 {
 
 // Bv 读位字段并返回数值（条件字段如 has_name 用）。
 func (f *gfRead) Bv(key string, g *objGeneric) (bool, error) {
-	v, err := f.r.readB()
+	v, err := f.r.ReadB()
 	if err != nil {
 		return false, err
 	}

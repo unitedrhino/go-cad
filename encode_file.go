@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"hash/crc32"
 	"io"
 )
@@ -174,42 +175,42 @@ func writeR2000Sections(raw *r2000RawData) ([]byte, error) {
 	for _, p := range placements {
 		byNo[p.no] = p
 	}
-	w := newEncWriter()
-	w.writeTF(raw.header)
-	w.writeRL(uint32(len(raw.order)))
+	w := bitstream.NewEncWriter()
+	w.WriteTF(raw.header)
+	w.WriteRL(uint32(len(raw.order)))
 	for _, no := range raw.order {
 		if no == r2000SecObjectMap {
 			if hasMap {
-				w.writeRC(no)
-				w.writeRL(uint32(mapOffset))
-				w.writeRL(uint32(len(mapPayload)))
+				w.WriteRC(no)
+				w.WriteRL(uint32(mapOffset))
+				w.WriteRL(uint32(len(mapPayload)))
 			} else {
-				w.writeRC(no)
-				w.writeRL(0)
-				w.writeRL(0)
+				w.WriteRC(no)
+				w.WriteRL(0)
+				w.WriteRL(0)
 			}
 			continue
 		}
 		p, ok := byNo[no]
-		w.writeRC(no)
+		w.WriteRC(no)
 		if ok {
-			w.writeRL(p.offset)
-			w.writeRL(p.size)
+			w.WriteRL(p.offset)
+			w.WriteRL(p.size)
 		} else {
-			w.writeRL(0)
-			w.writeRL(0)
+			w.WriteRL(0)
+			w.WriteRL(0)
 		}
 	}
 	// 目录 CRC：与 LibreDWG 一致，覆盖从字节 0 到条目结束（非仅目录区）
-	w.writeCRCSeed(0, 0xC0C1)
-	w.writeTF(r2000LocatorSentinel[:])
+	w.WriteCRCSeed(0, 0xC0C1)
+	w.WriteTF(r2000LocatorSentinel[:])
 	// 段数据与对象区按定址顺序回放
 	for _, p := range placements {
-		w.writeTF(raw.sections[p.no])
+		w.WriteTF(raw.sections[p.no])
 	}
-	w.writeTF(raw.objBlob)
-	w.writeTF(mapPayload)
-	return w.bytes(), nil
+	w.WriteTF(raw.objBlob)
+	w.WriteTF(mapPayload)
+	return w.Bytes(), nil
 }
 
 // buildR2000ObjectMap 重建对象图流：条目为 (handle UMC 增量, offset MC 增量)
@@ -228,7 +229,7 @@ func buildR2000ObjectMap(refs []objectRef, baseDelta int64) []byte {
 	closeChunk := func() {
 		total := len(out) - chunkStart
 		binary.BigEndian.PutUint16(out[chunkStart:], uint16(total))
-		crc := crc16DWG(0xC0C1, out[chunkStart:chunkStart+total])
+		crc := bitstream.Crc16DWG(0xC0C1, out[chunkStart:chunkStart+total])
 		out = binary.BigEndian.AppendUint16(out, crc)
 	}
 	chunkStart = len(out)
@@ -250,7 +251,7 @@ func buildR2000ObjectMap(refs []objectRef, baseDelta int64) []byte {
 	// 终止块：size=2 + 覆盖自身的 BE CRC
 	termStart := len(out)
 	out = append(out, 0, 2)
-	crc := crc16DWG(0xC0C1, out[termStart:])
+	crc := bitstream.Crc16DWG(0xC0C1, out[termStart:])
 	out = binary.BigEndian.AppendUint16(out, crc)
 	return out
 }

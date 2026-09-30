@@ -4,6 +4,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
@@ -16,9 +17,9 @@ func TestDecodeVertexPfaceFromBits(t *testing.T) {
 	writeCommonHead(w, 1253, 0)
 	w.RC(0xc0)                // flag：MESH|PFACE_MESH 位
 	w.B3BD(10.5, -2.25, 0.75) // point
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)
@@ -42,9 +43,9 @@ func TestDecodeVertexPfaceFaceFromBits(t *testing.T) {
 	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x0E)
 	writeCommonHead(w, 1259, 0)
 	w.BS(2).BS(0).BS(0).BS(0) // vertind[0..3]
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)

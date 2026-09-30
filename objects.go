@@ -11,6 +11,7 @@ package cad
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"math"
 )
 
@@ -36,9 +37,9 @@ type objectRecord struct {
 }
 
 // bodyBitStream 返回定位到 MS 结束位的位读取游标。
-func (rec *objectRecord) bodyBitStream() *bitStream {
-	r := newBitStream(rec.body)
-	r.setBitPos(rec.bodyBitOffset)
+func (rec *objectRecord) bodyBitStream() *bitstream.BitStream {
+	r := bitstream.NewBitStream(rec.body)
+	r.SetBitPos(rec.bodyBitOffset)
 	return r
 }
 
@@ -66,10 +67,10 @@ func parseObjHeader(rec *objectRecord) (objHeader, error) {
 	h := objHeader{rec: rec}
 	r := rec.bodyBitStream()
 	if rec.r2010Plus {
-		if _, err := r.readUMC(); err != nil {
+		if _, err := r.ReadUMC(); err != nil {
 			return h, err
 		}
-		ot, err := r.readOT()
+		ot, err := r.ReadOT()
 		if err != nil {
 			return h, err
 		}
@@ -77,24 +78,24 @@ func parseObjHeader(rec *objectRecord) (objHeader, error) {
 			return h, fmt.Errorf("cad: 对象类型码为 0（offset %d）", rec.offset)
 		}
 		h.typeCode = ot
-		h.dataStartBit = r.tellBits()
+		h.dataStartBit = r.TellBits()
 		return h, nil
 	}
-	tc, err := r.readBS()
+	tc, err := r.ReadBS()
 	if err != nil {
 		return h, err
 	}
 	if tc != 0 {
 		h.typeCode = tc
-		h.dataStartBit = r.tellBits()
+		h.dataStartBit = r.TellBits()
 		return h, nil
 	}
 	// 个别记录以 R2010+ 布局存储，按该布局重试
 	r2 := rec.bodyBitStream()
-	if _, err := r2.readUMC(); err == nil {
-		if ot, err := r2.readOT(); err == nil && ot != 0 {
+	if _, err := r2.ReadUMC(); err == nil {
+		if ot, err := r2.ReadOT(); err == nil && ot != 0 {
 			h.typeCode = ot
-			h.dataStartBit = r2.tellBits()
+			h.dataStartBit = r2.TellBits()
 			return h, nil
 		}
 	}
@@ -181,7 +182,7 @@ func readUnsignedModularChar(data []byte, pos *int) (int64, error) {
 	var value int64
 	for shift := uint(0); ; shift += 7 {
 		if *pos >= len(data) {
-			return 0, errUnexpectedEOF
+			return 0, bitstream.ErrUnexpectedEOF
 		}
 		b := data[*pos]
 		*pos++
@@ -201,7 +202,7 @@ func readModularChar(data []byte, pos *int) (int64, error) {
 	var value int64
 	for shift := uint(0); shift < 28; shift += 7 {
 		if *pos >= len(data) {
-			return 0, errUnexpectedEOF
+			return 0, bitstream.ErrUnexpectedEOF
 		}
 		b := data[*pos]
 		*pos++
@@ -228,8 +229,8 @@ func parseObjectRecord(objectsData []byte, ref objectRef, r2010Plus bool) (*obje
 	if offset >= len(objectsData) {
 		return nil, fmt.Errorf("cad: 对象偏移 %d 超出数据段", offset)
 	}
-	r := newBitStream(objectsData[offset:])
-	size, err := r.readMS()
+	r := bitstream.NewBitStream(objectsData[offset:])
+	size, err := r.ReadMS()
 	if err != nil {
 		return nil, err
 	}
@@ -239,19 +240,19 @@ func parseObjectRecord(objectsData []byte, ref objectRef, r2010Plus bool) (*obje
 	rec := &objectRecord{
 		offset:        uint32(offset),
 		size:          size,
-		bodyBitOffset: uint64(r.sub),
+		bodyBitOffset: uint64(r.Sub),
 		r2010Plus:     r2010Plus,
 	}
-	bodyStart := r.pos // 相对 objectsData[offset:] 切片的偏移
+	bodyStart := r.Pos // 相对 objectsData[offset:] 切片的偏移
 	bodyBits := uint64(size) * 8
 	if r2010Plus {
-		fieldStart := r.tellBits()
-		hss, err := r.readUMC()
+		fieldStart := r.TellBits()
+		hss, err := r.ReadUMC()
 		if err != nil {
 			return nil, err
 		}
 		rec.handleStreamSizeBits = hss
-		rec.handleSizeFieldBits = uint32(r.tellBits() - fieldStart)
+		rec.handleSizeFieldBits = uint32(r.TellBits() - fieldStart)
 		bodyBits += uint64(rec.handleSizeFieldBits)
 	}
 	bodyEnd := bodyStart + int((bodyBits+7)/8)
@@ -504,7 +505,7 @@ func inspectCandidate(objectsData []byte, c objectRef, ver dwgVersion, dynamicTy
 	info.isEntity = isEntityType(h.typeCode, dynamicTypes)
 	if info.isEntity {
 		r := rec.bodyBitStream()
-		r.setBitPos(h.dataStartBit)
+		r.SetBitPos(h.dataStartBit)
 		if head, err := parseCommonEntityHeadR2013(r, rec.dataEndBit()); err == nil {
 			info.decodedHandle = head.handle
 			info.hasDecoded = true

@@ -4,6 +4,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
@@ -44,9 +45,9 @@ func TestDecodeArcDimensionR2018(t *testing.T) {
 	w.B(1)           // has_leader
 	w.B3BD(9, 10, 0) // leader1_pt
 	w.B3BD(11, 12, 0)
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)

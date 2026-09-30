@@ -8,6 +8,7 @@ package cad
 
 import (
 	"encoding/json"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"testing"
@@ -83,9 +84,9 @@ func TestDecodeOle2FrameFromBits(t *testing.T) {
 	w.BL(9)                    // data_size
 	w.RCS([]byte("OLEDATA!!")) // data（9 字节）
 	w.RC(1)                    // lock_aspect
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)
@@ -110,9 +111,9 @@ func TestDecodeOleFrameFromBits(t *testing.T) {
 	w.BS(0) // flag
 	w.BL(4) // data_size
 	w.RCS([]byte("OLE1"))
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)
@@ -138,9 +139,9 @@ func TestDecodeOleFrameR2000FromBits(t *testing.T) {
 	w.BS(0) // mode
 	w.BL(2) // data_size
 	w.RCS([]byte{0xDE, 0xAD})
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)

@@ -9,7 +9,10 @@
 // 标准入口（R2000 系含 BS 类型码前导，R2010+ 含 UMC+OT 前导）。
 package cad
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
+)
 
 // collectEntityRawBits 收集实体 round-trip 回放所需的原始位串（解码侧）：
 // preBits = [body 局部 0, startBit)（MS 后填充、类型码与扫描跳过位），
@@ -19,18 +22,18 @@ import "fmt"
 // head.objSizeBit（objSizeInSub 布局为流内 RL 值，externalSize 布局为
 // dataEndBit，均为 body 局部坐标）；结构异常（handle 流起点越出候选起点
 // 与数据区末尾之间）时放弃收集，回放端按缺少位串处理。
-func collectEntityRawBits(r *bitStream, b *baseEntity, head *commonEntityHead, startBit, dataEnd uint64) {
+func collectEntityRawBits(r *bitstream.BitStream, b *baseEntity, head *commonEntityHead, startBit, dataEnd uint64) {
 	if b == nil || head == nil {
 		return
 	}
-	total := uint64(len(r.src)) * 8
+	total := uint64(len(r.Src)) * 8
 	hdStart := head.objSizeBit
 	if hdStart < startBit || hdStart > dataEnd || dataEnd > total {
 		return
 	}
-	b.preBits = collectBits(r, 0, startBit)
-	b.headRawBits = collectBits(r, startBit, hdStart)
-	b.RawHandleBits = collectBits(r, hdStart, total)
+	b.preBits = bitstream.CollectBits(r, 0, startBit)
+	b.headRawBits = bitstream.CollectBits(r, startBit, hdStart)
+	b.RawHandleBits = bitstream.CollectBits(r, hdStart, total)
 }
 
 // attachEntityRecordMeta 回填源记录元数据（解码侧挂载）：重解码端重建
@@ -63,10 +66,10 @@ func encodeEntityR200x(ent any, ver dwgVersion) ([]byte, uint64, error) {
 	if b == nil || b.headRawBits == "" || b.RawHandleBits == "" {
 		return nil, 0, fmt.Errorf("cad: 实体 round-trip 缺少位串收集")
 	}
-	w := newEncWriter()
-	w.writeBitsString(b.preBits)
-	w.writeBitsString(b.headRawBits)
-	datEnd := w.tellBits()
-	w.writeBitsString(b.RawHandleBits)
-	return w.bytes(), datEnd, nil
+	w := bitstream.NewEncWriter()
+	w.WriteBitsString(b.preBits)
+	w.WriteBitsString(b.headRawBits)
+	datEnd := w.TellBits()
+	w.WriteBitsString(b.RawHandleBits)
+	return w.Bytes(), datEnd, nil
 }

@@ -8,6 +8,7 @@ package cad
 
 import (
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"os"
 )
 
@@ -41,15 +42,15 @@ func parseClassesSection(data []byte, ver dwgVersion) (map[uint16]string, error)
 // R2007+ 类名在独立字符串流，数值区连续，由 fillClassNamesFromStream
 // 事后填充。
 func parseClassRecords(data []byte, ver dwgVersion) ([]classEntry, error) {
-	r := newBitStream(data)
-	before, err := r.readRCS(len(sentinelClassesBefore))
+	r := bitstream.NewBitStream(data)
+	before, err := r.ReadRCS(len(sentinelClassesBefore))
 	if err != nil {
 		return nil, err
 	}
 	if !bytesEqual(before, sentinelClassesBefore[:]) {
 		return nil, errClassesSentinel
 	}
-	if _, err := r.readRL(); err != nil { // size（低 32 位）
+	if _, err := r.ReadRL(); err != nil { // size（低 32 位）
 		return nil, err
 	}
 	maxClassNumber, err := locateClassHeader(r)
@@ -57,17 +58,17 @@ func parseClassRecords(data []byte, ver dwgVersion) ([]classEntry, error) {
 		return nil, err
 	}
 	// 三种布局公共尾部：RC zero1 + B bit flag
-	if _, err := r.readRC(); err != nil {
+	if _, err := r.ReadRC(); err != nil {
 		return nil, err
 	}
-	if _, err := r.readB(); err != nil {
+	if _, err := r.ReadB(); err != nil {
 		return nil, err
 	}
 
 	dbg := os.Getenv("CAD_CLASSES_DBG") != ""
 	var classes []classEntry
 	for {
-		if r.pos > len(data) {
+		if r.Pos > len(data) {
 			return nil, errClassesTruncated
 		}
 		entry, err := readClassNumericEntry(r, ver)
@@ -76,7 +77,7 @@ func parseClassRecords(data []byte, ver dwgVersion) ([]classEntry, error) {
 		}
 		classes = append(classes, entry)
 		if dbg && len(classes) <= 2 {
-			fmt.Fprintf(os.Stderr, "[cls] 条目%d: class=%d itemID=%d @%d\n", len(classes), entry.classNumber, entry.itemClassID, r.tellBits())
+			fmt.Fprintf(os.Stderr, "[cls] 条目%d: class=%d itemID=%d @%d\n", len(classes), entry.classNumber, entry.itemClassID, r.TellBits())
 		}
 		if entry.classNumber == maxClassNumber {
 			break
@@ -93,30 +94,30 @@ func parseClassRecords(data []byte, ver dwgVersion) ([]classEntry, error) {
 // 成功时给出 maxNum 合理值。探测失败不留任何游标副作用。
 type classHeaderProbe struct {
 	name string
-	run  func(rr *bitStream) (uint16, bool)
+	run  func(rr *bitstream.BitStream) (uint16, bool)
 }
 
 // probeR2010Header R2010+/R2018 布局：RL hsize + RL bitsize + BS maxNum。
-func probeR2010Header(rr *bitStream) (uint16, bool) {
-	if _, e := rr.readRL(); e != nil {
+func probeR2010Header(rr *bitstream.BitStream) (uint16, bool) {
+	if _, e := rr.ReadRL(); e != nil {
 		return 0, false
 	}
-	if _, e := rr.readRL(); e != nil {
+	if _, e := rr.ReadRL(); e != nil {
 		return 0, false
 	}
 	return readClassMax(rr)
 }
 
 // probeR2007Header R2007+ 布局：RL bitsize + BS maxNum。
-func probeR2007Header(rr *bitStream) (uint16, bool) {
-	if _, e := rr.readRL(); e != nil {
+func probeR2007Header(rr *bitstream.BitStream) (uint16, bool) {
+	if _, e := rr.ReadRL(); e != nil {
 		return 0, false
 	}
 	return readClassMax(rr)
 }
 
 // probeR2004Header R2004 布局：直接 BS maxNum + RC zero==0。
-func probeR2004Header(rr *bitStream) (uint16, bool) {
+func probeR2004Header(rr *bitstream.BitStream) (uint16, bool) {
 	return readClassMax(rr)
 }
 
@@ -131,14 +132,14 @@ var classHeaderProbes = []classHeaderProbe{
 
 // locateClassHeader 在当前游标处探测采用哪种段头布局：按候选顺序在副本
 // 上试读，命中者把主流游标推进到该布局结束位。
-func locateClassHeader(r *bitStream) (uint16, error) {
+func locateClassHeader(r *bitstream.BitStream) (uint16, error) {
 	dbg := os.Getenv("CAD_CLASSES_DBG") != ""
 	for _, probe := range classHeaderProbes {
 		rr := *r
 		if maxNum, ok := probe.run(&rr); ok {
-			r.restore(rr.pos, rr.sub)
+			r.Restore(rr.Pos, rr.Sub)
 			if dbg {
-				fmt.Fprintf(os.Stderr, "[cls] 分支命中 max=%d @%d\n", maxNum, r.tellBits())
+				fmt.Fprintf(os.Stderr, "[cls] 分支命中 max=%d @%d\n", maxNum, r.TellBits())
 			}
 			return maxNum, nil
 		}
@@ -147,12 +148,12 @@ func locateClassHeader(r *bitStream) (uint16, error) {
 }
 
 // readClassMax 试读 BS maxNum + RC zero==0 的头部布局尾部。
-func readClassMax(rr *bitStream) (uint16, bool) {
-	maxNum, err := rr.readBS()
+func readClassMax(rr *bitstream.BitStream) (uint16, bool) {
+	maxNum, err := rr.ReadBS()
 	if err != nil || maxNum < 100 {
 		return 0, false
 	}
-	z0, e := rr.readRC()
+	z0, e := rr.ReadRC()
 	if e != nil || z0 != 0 {
 		return 0, false
 	}
@@ -163,19 +164,19 @@ func readClassMax(rr *bitStream) (uint16, bool) {
 // BS classNumber + BS proxyFlags + [R2004-: TV app/cpp/dxf] + B zombie +
 // BS itemClassID + BL numInstances + BS dwgVersion + BS maintVersion +
 // BL unknown + BL unknown（尾部五字段对照 LibreDWG decode.c 类条目）。
-func readClassNumericEntry(r *bitStream, ver dwgVersion) (classEntry, error) {
+func readClassNumericEntry(r *bitstream.BitStream, ver dwgVersion) (classEntry, error) {
 	var entry classEntry
-	classNumber, err := r.readBS()
+	classNumber, err := r.ReadBS()
 	if err != nil {
 		return entry, err
 	}
-	if _, err := r.readBS(); err != nil { // proxy flags
+	if _, err := r.ReadBS(); err != nil { // proxy flags
 		return entry, err
 	}
 	if ver < verR2007 {
 		// R2004-：appname/cppname/dxfname 3×TV 内联（长度含尾部 \0）
 		for i := 0; i < 3; i++ {
-			s, e := r.readTV(0)
+			s, e := r.ReadTV(0)
 			if e != nil {
 				return entry, e
 			}
@@ -184,19 +185,19 @@ func readClassNumericEntry(r *bitStream, ver dwgVersion) (classEntry, error) {
 			}
 		}
 	}
-	if _, err := r.readB(); err != nil { // zombie
+	if _, err := r.ReadB(); err != nil { // zombie
 		return entry, err
 	}
-	itemClassID, err := r.readBS()
+	itemClassID, err := r.ReadBS()
 	if err != nil {
 		return entry, err
 	}
 	for i := 0; i < 5; i++ {
 		var e error
 		if i < 1 || i >= 3 {
-			_, e = r.readBL() // num_instances + unknown×2
+			_, e = r.ReadBL() // num_instances + unknown×2
 		} else {
-			_, e = r.readBS() // dwg_version + maint_version
+			_, e = r.ReadBS() // dwg_version + maint_version
 		}
 		if e != nil {
 			return entry, e
@@ -210,11 +211,11 @@ func readClassNumericEntry(r *bitStream, ver dwgVersion) (classEntry, error) {
 // fillClassNamesFromStream 尝试为主流数值条目填充类名：在若干候选起点
 // （游标当前位置 / 段尾长度字段推算位置）各读一遍 3×TU 名称序列，
 // 逐候选累加类名可读性评分，取最优候选回填。
-func fillClassNamesFromStream(data []byte, r *bitStream, classes []classEntry) {
+func fillClassNamesFromStream(data []byte, r *bitstream.BitStream, classes []classEntry) {
 	if len(classes) == 0 {
 		return
 	}
-	startCandidates := []uint64{r.tellBits()}
+	startCandidates := []uint64{r.TellBits()}
 	if base, ok := stringStreamBase(r, data); ok {
 		startCandidates = append(startCandidates, base)
 	}
@@ -240,12 +241,12 @@ func fillClassNamesFromStream(data []byte, r *bitStream, classes []classEntry) {
 // readClassNamesAt 从指定位起点连续读 count 组 3×TU（app/cpp/dxf），
 // 任一读取失败即整组作废。
 func readClassNamesAt(data []byte, startBit uint64, count int) ([]string, bool) {
-	probe := newBitStream(data)
-	probe.setBitPos(startBit)
+	probe := bitstream.NewBitStream(data)
+	probe.SetBitPos(startBit)
 	names := make([]string, count)
 	for i := 0; i < count; i++ {
 		for j := 0; j < 3; j++ {
-			s, err := probe.readTU()
+			s, err := probe.ReadTU()
 			if err != nil {
 				return nil, false
 			}
@@ -260,20 +261,20 @@ func readClassNamesAt(data []byte, startBit uint64, count int) ([]string, bool) 
 // stringStreamBase 从段尾的 16 字节长度字段推算字符串流起点：
 // 末尾倒数第 1 位为 present 标志；尾部 16 字节为流大小（位单位），
 // 最高位标志扩展高 15 位（此时再往前取一个 RS 拼接）。
-func stringStreamBase(r *bitStream, data []byte) (uint64, bool) {
+func stringStreamBase(r *bitstream.BitStream, data []byte) (uint64, bool) {
 	totalBits := uint64(len(data)) * 8
 	if totalBits <= stringStreamMetaBits+1 {
 		return 0, false
 	}
-	present := newBitStream(data)
-	present.setBitPos(totalBits - 1)
-	if flag, err := present.readB(); err != nil || flag == 0 {
+	present := bitstream.NewBitStream(data)
+	present.SetBitPos(totalBits - 1)
+	if flag, err := present.ReadB(); err != nil || flag == 0 {
 		return 0, false
 	}
 	sizeFieldStart := totalBits - stringStreamMetaBits
-	sr := newBitStream(data)
-	sr.setBitPos(sizeFieldStart)
-	low, err := sr.readRS()
+	sr := bitstream.NewBitStream(data)
+	sr.SetBitPos(sizeFieldStart)
+	low, err := sr.ReadRS()
 	if err != nil {
 		return 0, false
 	}
@@ -283,8 +284,8 @@ func stringStreamBase(r *bitStream, data []byte) (uint64, bool) {
 			return 0, false
 		}
 		sizeFieldStart -= stringStreamMetaBits
-		sr.setBitPos(sizeFieldStart)
-		high, err := sr.readRS()
+		sr.SetBitPos(sizeFieldStart)
+		high, err := sr.ReadRS()
 		if err != nil {
 			return 0, false
 		}
@@ -349,42 +350,42 @@ func bytesEqual(a, b []byte) bool {
 // parseClassesSectionR13R15 R2000 类段：名字以 TV 直接在主流，
 // 条目循环以 RL 声明的数据长度为界。
 func parseClassesSectionR13R15(data []byte) (map[uint16]string, error) {
-	r := newBitStream(data)
-	before, err := r.readRCS(len(sentinelClassesBefore))
+	r := bitstream.NewBitStream(data)
+	before, err := r.ReadRCS(len(sentinelClassesBefore))
 	if err != nil {
 		return nil, err
 	}
 	if !bytesEqual(before, sentinelClassesBefore[:]) {
 		return nil, errClassesSentinel
 	}
-	dataSize, err := r.readRL()
+	dataSize, err := r.ReadRL()
 	if err != nil {
 		return nil, err
 	}
-	endBit := r.tellBits() + uint64(dataSize)*8
+	endBit := r.TellBits() + uint64(dataSize)*8
 	out := map[uint16]string{}
-	for r.tellBits() < endBit {
-		classNumber, err := r.readBS()
+	for r.TellBits() < endBit {
+		classNumber, err := r.ReadBS()
 		if err != nil {
 			break
 		}
-		if _, err := r.readBS(); err != nil { // proxy flags / version
+		if _, err := r.ReadBS(); err != nil { // proxy flags / version
 			break
 		}
-		if _, err := r.readTV(30); err != nil { // app name
+		if _, err := r.ReadTV(30); err != nil { // app name
 			break
 		}
-		if _, err := r.readTV(30); err != nil { // cpp name
+		if _, err := r.ReadTV(30); err != nil { // cpp name
 			break
 		}
-		dxfName, err := r.readTV(30)
+		dxfName, err := r.ReadTV(30)
 		if err != nil {
 			break
 		}
-		if _, err := r.readB(); err != nil { // zombie
+		if _, err := r.ReadB(); err != nil { // zombie
 			break
 		}
-		if _, err := r.readBS(); err != nil { // item class id
+		if _, err := r.ReadBS(); err != nil { // item class id
 			break
 		}
 		if dxfName != "" {

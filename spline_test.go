@@ -3,6 +3,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"testing"
@@ -26,9 +27,9 @@ func TestDecodeSplineControlMode(t *testing.T) {
 	w.BD(0).BD(0).BD(1).BD(1)
 	w.B3BD(0, 0, 0)
 	w.B3BD(10, 20, 0)
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, err := parseEntityHead(r, uint64(len(w.Bytes()))*8, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)
@@ -69,9 +70,9 @@ func TestDecodeSplineFitMode(t *testing.T) {
 	w.BL(2)         // 拟合点数
 	w.B3BD(0, 0, 0)
 	w.B3BD(5, 5, 0)
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, _ := parseEntityHead(r, uint64(len(w.Bytes()))*8, featMaterialFlags|featVisualStyles|featDSBinary)
 	ent, err := decodeSpline(r, &head, false)
 	if err != nil {
@@ -106,9 +107,9 @@ func TestDecodeSplineR2013(t *testing.T) {
 	w.B(0)  // weight 回显位
 	w.B3BD(0, 0, 0)
 	w.B3BD(1, 1, 0)
-	r := newBitStream(w.Bytes())
-	_, _ = r.readUMC()
-	_, _ = r.readOT()
+	r := bitstream.NewBitStream(w.Bytes())
+	_, _ = r.ReadUMC()
+	_, _ = r.ReadOT()
 	head, _ := parseEntityHead(r, uint64(len(w.Bytes()))*8, featMaterialFlags|featVisualStyles|featDSBinary)
 	ent, err := decodeSpline(r, &head, true)
 	if err != nil {

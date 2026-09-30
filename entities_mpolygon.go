@@ -6,7 +6,10 @@
 // 位流经合成流测试验证）。
 package cad
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
+)
 
 // entMpolygon 多边形填充实体。
 type entMpolygon struct {
@@ -24,13 +27,13 @@ type entMpolygon struct {
 // 读取后丢弃）+ x_dir 2RD + 总边界句柄数 BL。与 HATCH 的差异：无
 // pixel_size/种子点段，且 style 在主体首与路径后各出现一次（spec 字面）。
 // MPOLYGON 随 AutoCAD 2004 引入，颜色字段按 R2004+ CMC 布局解析。
-func decodeMpolygonVer(r *bitStream, head *commonEntityHead, ver dwgVersion, codepage uint16) (any, error) {
+func decodeMpolygonVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion, codepage uint16) (any, error) {
 	m := &entMpolygon{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	h := &entHatch{baseEntity: baseEntity{handle: head.handle, color: head.color, mode: head.entityMode}}
 	m.hatch = h
 	streamName := ver >= verR2007 // R2007+ 图案名/渐变名存于对象字符串区（同 HATCH 口径）
 	var err error
-	if m.style, err = r.readBS(); err != nil {
+	if m.style, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
 	if ver >= verR2004 {
@@ -38,7 +41,7 @@ func decodeMpolygonVer(r *bitStream, head *commonEntityHead, ver dwgVersion, cod
 			return nil, err
 		}
 	}
-	if h.elevation, err = r.readBD(); err != nil {
+	if h.elevation, err = r.ReadBD(); err != nil {
 		return nil, err
 	}
 	if h.extrusion, err = read3pt(r); err != nil {
@@ -50,11 +53,11 @@ func decodeMpolygonVer(r *bitStream, head *commonEntityHead, ver dwgVersion, cod
 		}
 	}
 	var v uint8
-	if v, err = r.readB(); err != nil {
+	if v, err = r.ReadB(); err != nil {
 		return nil, err
 	}
 	h.solidFill = v != 0
-	if v, err = r.readB(); err != nil {
+	if v, err = r.ReadB(); err != nil {
 		return nil, err
 	}
 	h.associative = v != 0
@@ -62,24 +65,24 @@ func decodeMpolygonVer(r *bitStream, head *commonEntityHead, ver dwgVersion, cod
 		return nil, err
 	}
 	// 路径后的重复 style（spec 原文双 FIELD_BS(style,75)，字面保留）
-	if m.styleTail, err = r.readBS(); err != nil {
+	if m.styleTail, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
-	if h.patternType, err = r.readBS(); err != nil {
+	if h.patternType, err = r.ReadBS(); err != nil {
 		return nil, err
 	}
 	if !h.solidFill {
-		if h.angle, err = r.readBD(); err != nil {
+		if h.angle, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
-		if h.scaleSpacing, err = r.readBD(); err != nil {
+		if h.scaleSpacing, err = r.ReadBD(); err != nil {
 			return nil, err
 		}
-		if v, err = r.readB(); err != nil {
+		if v, err = r.ReadB(); err != nil {
 			return nil, err
 		}
 		h.doubleFlag = v != 0
-		numDefLines, err := r.readBS()
+		numDefLines, err := r.ReadBS()
 		if err != nil {
 			return nil, err
 		}
@@ -88,22 +91,22 @@ func decodeMpolygonVer(r *bitStream, head *commonEntityHead, ver dwgVersion, cod
 		}
 		for i := uint32(0); i < uint32(numDefLines); i++ {
 			var dl hatchDefLine
-			if dl.angle, err = r.readBD(); err != nil {
+			if dl.angle, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
-			if dl.pt0.x, err = r.readBD(); err != nil {
+			if dl.pt0.x, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
-			if dl.pt0.y, err = r.readBD(); err != nil {
+			if dl.pt0.y, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
-			if dl.offset.x, err = r.readBD(); err != nil {
+			if dl.offset.x, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
-			if dl.offset.y, err = r.readBD(); err != nil {
+			if dl.offset.y, err = r.ReadBD(); err != nil {
 				return nil, err
 			}
-			numDashes, err := r.readBS()
+			numDashes, err := r.ReadBS()
 			if err != nil {
 				return nil, err
 			}
@@ -111,7 +114,7 @@ func decodeMpolygonVer(r *bitStream, head *commonEntityHead, ver dwgVersion, cod
 				return nil, fmt.Errorf("cad: MPOLYGON 划线数异常 %d", numDashes)
 			}
 			for j := uint32(0); j < uint32(numDashes); j++ {
-				d, e := r.readBD()
+				d, e := r.ReadBD()
 				if e != nil {
 					return nil, e
 				}
@@ -126,16 +129,16 @@ func decodeMpolygonVer(r *bitStream, head *commonEntityHead, ver dwgVersion, cod
 			return nil, err
 		}
 	}
-	if m.xDir.x, err = r.readRD(); err != nil {
+	if m.xDir.x, err = r.ReadRD(); err != nil {
 		return nil, err
 	}
-	if m.xDir.y, err = r.readRD(); err != nil {
+	if m.xDir.y, err = r.ReadRD(); err != nil {
 		return nil, err
 	}
-	if _, err = r.readBL(); err != nil { // 总边界对象句柄数（本体在 handle 流）
+	if _, err = r.ReadBL(); err != nil { // 总边界对象句柄数（本体在 handle 流）
 		return nil, err
 	}
-	r.setBitPos(head.objSizeBit)
+	r.SetBitPos(head.objSizeBit)
 	if _, layer, e := parseCommonEntityHandles(r, head); e == nil {
 		m.layer = layer
 	}

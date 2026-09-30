@@ -4,6 +4,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"math"
 	"testing"
 )
@@ -161,15 +162,15 @@ func TestEntityGeometryScore(t *testing.T) {
 
 // TestDecodeLineR14 R13/R14 LINE 合成位流。
 func TestDecodeLineR14(t *testing.T) {
-	w := newEncWriter()
+	w := bitstream.NewEncWriter()
 	w3bd(w, 0, 0, 0)  // start
 	w3bd(w, 10, 0, 0) // end
-	w.writeB(true)    // BT flag → thickness 0
-	w.writeB(true)    // BE flag → (0,0,1)
-	w.writeRC(0)
-	w.writeRC(0)
-	head := commonEntityHead{handle: 0x11, objSizeBit: uint64(w.tellBits()) - 16}
-	ent, err := decodeLineR14(newBitStream(w.bytes()), &head)
+	w.WriteB(true)    // BT flag → thickness 0
+	w.WriteB(true)    // BE flag → (0,0,1)
+	w.WriteRC(0)
+	w.WriteRC(0)
+	head := commonEntityHead{handle: 0x11, objSizeBit: uint64(w.TellBits()) - 16}
+	ent, err := decodeLineR14(bitstream.NewBitStream(w.Bytes()), &head)
 	if err != nil {
 		t.Fatalf("decodeLineR14 失败: %v", err)
 	}
@@ -182,24 +183,24 @@ func TestDecodeLineR14(t *testing.T) {
 // TestDecodeSpline SPLINE 主入口：R2013+ 标志重算与双模式回退。
 func TestDecodeSpline(t *testing.T) {
 	// R2013+：flags&1 → scenario=2（拟合点模式）
-	w := newEncWriter()
-	w.writeBL(1) // scenario 原值
-	w.writeBL(1) // splineFlags1（&1=1 → fit）
-	w.writeBL(0) // knotParameter
-	w.writeBL(3) // degree
+	w := bitstream.NewEncWriter()
+	w.WriteBL(1) // scenario 原值
+	w.WriteBL(1) // splineFlags1（&1=1 → fit）
+	w.WriteBL(0) // knotParameter
+	w.WriteBL(3) // degree
 	// fit 数据：容差 + 起末切线 + 拟合点
-	w.writeBD(0.001)
+	w.WriteBD(0.001)
 	w3bd(w, 1, 0, 0)
 	w3bd(w, 0, 1, 0)
-	w.writeBL(2)
+	w.WriteBL(2)
 	w3bd(w, 0, 0, 0)
 	w3bd(w, 4, 4, 0)
 	// handle 流兜底
 	for i := 0; i < 2; i++ {
-		w.writeRC(0)
+		w.WriteRC(0)
 	}
-	head := commonEntityHead{handle: 0x70, objSizeBit: uint64(w.tellBits()) - 16}
-	ent, err := decodeSpline(newBitStream(w.bytes()), &head, true)
+	head := commonEntityHead{handle: 0x70, objSizeBit: uint64(w.TellBits()) - 16}
+	ent, err := decodeSpline(bitstream.NewBitStream(w.Bytes()), &head, true)
 	if err != nil {
 		t.Fatalf("decodeSpline 失败: %v", err)
 	}
@@ -209,30 +210,30 @@ func TestDecodeSpline(t *testing.T) {
 	}
 
 	// 控制点模式：knotParameter=15 → scenario=1
-	w2 := newEncWriter()
-	w2.writeBL(2)  // scenario 原值
-	w2.writeBL(0)  // splineFlags1
-	w2.writeBL(15) // knotParameter=15 → 控制点
-	w2.writeBL(2)  // degree
+	w2 := bitstream.NewEncWriter()
+	w2.WriteBL(2)  // scenario 原值
+	w2.WriteBL(0)  // splineFlags1
+	w2.WriteBL(15) // knotParameter=15 → 控制点
+	w2.WriteBL(2)  // degree
 	// control 数据：3B 标志 + 2 容差 + 数量 + weight 位 + knots + ctrl
-	w2.writeB(false)
-	w2.writeB(false)
-	w2.writeB(false)
-	w2.writeBD(0.01)
-	w2.writeBD(0.01)
-	w2.writeBL(3)
-	w2.writeBL(2)
-	w2.writeB(false)
-	w2.writeBD(0)
-	w2.writeBD(0.5)
-	w2.writeBD(1)
+	w2.WriteB(false)
+	w2.WriteB(false)
+	w2.WriteB(false)
+	w2.WriteBD(0.01)
+	w2.WriteBD(0.01)
+	w2.WriteBL(3)
+	w2.WriteBL(2)
+	w2.WriteB(false)
+	w2.WriteBD(0)
+	w2.WriteBD(0.5)
+	w2.WriteBD(1)
 	w3bd(w2, 0, 0, 0)
 	w3bd(w2, 2, 2, 0)
 	for i := 0; i < 2; i++ {
-		w2.writeRC(0)
+		w2.WriteRC(0)
 	}
-	head2 := commonEntityHead{handle: 0x71, objSizeBit: uint64(w2.tellBits()) - 16}
-	ent2, err := decodeSpline(newBitStream(w2.bytes()), &head2, true)
+	head2 := commonEntityHead{handle: 0x71, objSizeBit: uint64(w2.TellBits()) - 16}
+	ent2, err := decodeSpline(bitstream.NewBitStream(w2.Bytes()), &head2, true)
 	if err != nil {
 		t.Fatalf("decodeSpline 控制点模式失败: %v", err)
 	}

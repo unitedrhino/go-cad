@@ -10,13 +10,14 @@ package cad
 import (
 	"bytes"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 )
 
 // decodeAcisEvalExprFields 读 AcDbEvalExpr_fields（dwg2.spec 公共宏，
 // 二进制序）：parentid BLd + major/minor BL + value_code BSd（有符号）
 // + value（按 value_code 的 union，-9999 无）+ nodeid BL。
 // 返回 value_code==91（handle 值）时 handle 流是否多占一个引用。
-func decodeAcisEvalExprFields(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) (bool, error) {
+func decodeAcisEvalExprFields(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) (bool, error) {
 	if err := fr.BLd("evalexpr.parentid", g); err != nil {
 		return false, err
 	}
@@ -26,7 +27,7 @@ func decodeAcisEvalExprFields(r *bitStream, ver dwgVersion, fr *gfRead, g *objGe
 	if err := fr.BL("evalexpr.minor", g); err != nil {
 		return false, err
 	}
-	raw, err := r.readBS()
+	raw, err := r.ReadBS()
 	if err != nil {
 		return false, err
 	}
@@ -62,7 +63,7 @@ func decodeAcisEvalExprFields(r *bitStream, ver dwgVersion, fr *gfRead, g *objGe
 
 // decodeAcisShHistoryNodeFields 读 AcDbShHistoryNode_fields：major/minor
 // BL + trans 16×BD + color CMC + step_id BL；material 句柄在 handle 流。
-func decodeAcisShHistoryNodeFields(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeAcisShHistoryNodeFields(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BL("history_node.major", g); err != nil {
 		return err
 	}
@@ -71,7 +72,7 @@ func decodeAcisShHistoryNodeFields(r *bitStream, ver dwgVersion, fr *gfRead, g *
 	}
 	trans := make([]float64, 16)
 	for i := 0; i < 16; i++ {
-		v, e := r.readBD()
+		v, e := r.ReadBD()
 		if e != nil {
 			return e
 		}
@@ -87,8 +88,8 @@ func decodeAcisShHistoryNodeFields(r *bitStream, ver dwgVersion, fr *gfRead, g *
 // acshWithCommon 为 ACSH primitive 解码器包上公共前导
 // （AcDbEvalExpr_fields + AcDbShHistoryNode_fields），并记录
 // value_code==91 的 handle 流占位供 hdl 阶段使用。
-func acshWithCommon(d func(*bitStream, dwgVersion, *gfRead, *objGeneric) error) func(*bitStream, dwgVersion, *gfRead, *objGeneric) error {
-	return func(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func acshWithCommon(d func(*bitstream.BitStream, dwgVersion, *gfRead, *objGeneric) error) func(*bitstream.BitStream, dwgVersion, *gfRead, *objGeneric) error {
+	return func(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 		hasHandle, err := decodeAcisEvalExprFields(r, ver, fr, g)
 		if err != nil {
 			return err
@@ -102,7 +103,7 @@ func acshWithCommon(d func(*bitStream, dwgVersion, *gfRead, *objGeneric) error) 
 }
 
 // acisPrimitiveBody 读类版本 major/minor（各 primitive 公共尾导）。
-func acisPrimitiveBody(r *bitStream, fr *gfRead, g *objGeneric) error {
+func acisPrimitiveBody(r *bitstream.BitStream, fr *gfRead, g *objGeneric) error {
 	if err := fr.BL("major", g); err != nil {
 		return err
 	}
@@ -111,13 +112,13 @@ func acisPrimitiveBody(r *bitStream, fr *gfRead, g *objGeneric) error {
 
 // readBDVector 读 count 个 BD 并以数组记录（edges/radiuses 等向量，
 // 值级审计不对照数组键，仅消费位序）。
-func readBDVector(r *bitStream, key string, count int, g *objGeneric) error {
+func readBDVector(r *bitstream.BitStream, key string, count int, g *objGeneric) error {
 	if count < 0 || count > 1_000_000 {
 		return fmt.Errorf("cad: ACSH %s 数异常 %d", key, count)
 	}
 	out := make([]float64, 0, count)
 	for i := 0; i < count; i++ {
-		v, e := r.readBD()
+		v, e := r.ReadBD()
 		if e != nil {
 			return e
 		}
@@ -128,13 +129,13 @@ func readBDVector(r *bitStream, key string, count int, g *objGeneric) error {
 }
 
 // readBLVector 读 count 个 BL 并以数组记录。
-func readBLVector(r *bitStream, key string, count int, g *objGeneric) error {
+func readBLVector(r *bitstream.BitStream, key string, count int, g *objGeneric) error {
 	if count < 0 || count > 1_000_000 {
 		return fmt.Errorf("cad: ACSH %s 数异常 %d", key, count)
 	}
 	out := make([]int64, 0, count)
 	for i := 0; i < count; i++ {
-		v, e := r.readBL()
+		v, e := r.ReadBL()
 		if e != nil {
 			return e
 		}
@@ -145,7 +146,7 @@ func readBLVector(r *bitStream, key string, count int, g *objGeneric) error {
 }
 
 // decodeGenericACSH_BOX / ACSH_WEDGE：major/minor + length/width/height。
-func decodeGenericACSH_BOX(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericACSH_BOX(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := acisPrimitiveBody(r, fr, g); err != nil {
 		return err
 	}
@@ -158,7 +159,7 @@ func decodeGenericACSH_BOX(r *bitStream, ver dwgVersion, fr *gfRead, g *objGener
 }
 
 // decodeGenericACSH_SPHERE：major/minor + radius。
-func decodeGenericACSH_SPHERE(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericACSH_SPHERE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := acisPrimitiveBody(r, fr, g); err != nil {
 		return err
 	}
@@ -166,7 +167,7 @@ func decodeGenericACSH_SPHERE(r *bitStream, ver dwgVersion, fr *gfRead, g *objGe
 }
 
 // decodeGenericACSH_TORUS：major/minor + major_radius/minor_radius。
-func decodeGenericACSH_TORUS(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericACSH_TORUS(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := acisPrimitiveBody(r, fr, g); err != nil {
 		return err
 	}
@@ -178,7 +179,7 @@ func decodeGenericACSH_TORUS(r *bitStream, ver dwgVersion, fr *gfRead, g *objGen
 
 // decodeGenericACSH_CYLINDER / ACSH_CONE：major/minor + height/
 // major_radius/minor_radius/x_radius（Cone 与 Cylinder 同布局）。
-func decodeGenericACSH_CYLINDER(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericACSH_CYLINDER(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := acisPrimitiveBody(r, fr, g); err != nil {
 		return err
 	}
@@ -192,7 +193,7 @@ func decodeGenericACSH_CYLINDER(r *bitStream, ver dwgVersion, fr *gfRead, g *obj
 
 // decodeGenericACSH_PYRAMID：major/minor + height BD + sides BL +
 // radius/topradius BD。
-func decodeGenericACSH_PYRAMID(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericACSH_PYRAMID(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := acisPrimitiveBody(r, fr, g); err != nil {
 		return err
 	}
@@ -211,7 +212,7 @@ func decodeGenericACSH_PYRAMID(r *bitStream, ver dwgVersion, fr *gfRead, g *objG
 // decodeGenericACSH_FILLET：major/minor/method BL + edges BL 向量 +
 // radiuses BD 向量 + start/end setbacks BD 向量（spec 顺序：先读两个
 // 计数再读 endsetbacks、startsetbacks 向量）。
-func decodeGenericACSH_FILLET(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericACSH_FILLET(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := acisPrimitiveBody(r, fr, g); err != nil {
 		return err
 	}
@@ -248,7 +249,7 @@ func decodeGenericACSH_FILLET(r *bitStream, ver dwgVersion, fr *gfRead, g *objGe
 
 // decodeGenericACSH_CHAMFER：major/minor/method BL + base_dist/
 // other_dist BD + edges BL 向量 + base_face BL。
-func decodeGenericACSH_CHAMFER(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericACSH_CHAMFER(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := acisPrimitiveBody(r, fr, g); err != nil {
 		return err
 	}
@@ -273,7 +274,7 @@ func decodeGenericACSH_CHAMFER(r *bitStream, ver dwgVersion, fr *gfRead, g *objG
 
 // decodeGenericACSH_BOOLEAN：major/minor + operation RCd +
 // operand1/operand2 BL。
-func decodeGenericACSH_BOOLEAN(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericACSH_BOOLEAN(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := acisPrimitiveBody(r, fr, g); err != nil {
 		return err
 	}
@@ -288,24 +289,24 @@ func decodeGenericACSH_BOOLEAN(r *bitStream, ver dwgVersion, fr *gfRead, g *objG
 
 // decodeGenericACSH_BREP：major/minor + ACTION_3DSOLID（DECODE_3DSOLID
 // 的 acis 数据段 + COMMON_3DSOLID 线框段）。键名与 3DSOLID 实体一致。
-func decodeGenericACSH_BREP(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericACSH_BREP(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := acisPrimitiveBody(r, fr, g); err != nil {
 		return err
 	}
 	// DECODE_3DSOLID：acis_empty → [unknown + version + acis 数据段]
-	acisEmpty, err := r.readB()
+	acisEmpty, err := r.ReadB()
 	if err != nil {
 		return err
 	}
 	g.Fields = append(g.Fields, objField{"acis_empty", b2int(acisEmpty != 0)})
 	version := int64(0)
 	if acisEmpty == 0 {
-		unk, e := r.readB()
+		unk, e := r.ReadB()
 		if e != nil {
 			return e
 		}
 		g.Fields = append(g.Fields, objField{"unknown", b2int(unk != 0)})
-		v, e := r.readBS()
+		v, e := r.ReadBS()
 		if e != nil {
 			return e
 		}
@@ -314,16 +315,16 @@ func decodeGenericACSH_BREP(r *bitStream, ver dwgVersion, fr *gfRead, g *objGene
 		switch version {
 		case 1: // SAT：块循环（BL 长度 + 加密 TF 块）
 			for i := 0; ; i++ {
-				bl, e := r.readBL()
+				bl, e := r.ReadBL()
 				if e != nil {
 					return e
 				}
-				if bl == 0 || int64(bl) > int64(r.totalBits()-r.tellBits())/8 {
+				if bl == 0 || int64(bl) > int64(r.TotalBits()-r.TellBits())/8 {
 					break
 				}
 				raw := make([]byte, bl)
 				for j := uint32(0); j < bl; j++ {
-					if raw[j], e = r.readRC(); e != nil {
+					if raw[j], e = r.ReadRC(); e != nil {
 						return e
 					}
 				}
@@ -331,16 +332,16 @@ func decodeGenericACSH_BREP(r *bitStream, ver dwgVersion, fr *gfRead, g *objGene
 				if i > 1_000_000 {
 					return fmt.Errorf("cad: BREP SAT 块数异常")
 				}
-				if r.totalBits()-r.tellBits() < 16 {
+				if r.TotalBits()-r.TellBits() < 16 {
 					break
 				}
 			}
 		case 2: // SAB：按位读出后搜 End-of-ACIS-data 标记
-			startBit := r.tellBits()
-			size := int((r.totalBits() - startBit) / 8)
+			startBit := r.TellBits()
+			size := int((r.TotalBits() - startBit) / 8)
 			if size > 0 {
 				size--
-				if buf, e := r.readRCS(size); e == nil {
+				if buf, e := r.ReadRCS(size); e == nil {
 					end := -1
 					for _, marker := range []string{
 						"\x0e\x03End\x0e\x02of\x0e\x04ACIS\r\x04data",
@@ -353,7 +354,7 @@ func decodeGenericACSH_BREP(r *bitStream, ver dwgVersion, fr *gfRead, g *objGene
 					if end < 0 {
 						end = size
 					}
-					r.setBitPos(startBit + uint64(end)*8)
+					r.SetBitPos(startBit + uint64(end)*8)
 				}
 			}
 		}
@@ -362,32 +363,32 @@ func decodeGenericACSH_BREP(r *bitStream, ver dwgVersion, fr *gfRead, g *objGene
 		g.Fields = append(g.Fields, objField{"version", int64(0)})
 	}
 	// COMMON_3DSOLID：wireframe_data_present → …（同 3DSOLID 实体，仅消费位）
-	wire, err := r.readB()
+	wire, err := r.ReadB()
 	if err != nil {
 		return err
 	}
 	g.Fields = append(g.Fields, objField{"wireframe_data_present", b2int(wire != 0)})
 	if wire != 0 {
-		pp, e := r.readB()
+		pp, e := r.ReadB()
 		if e != nil {
 			return e
 		}
 		g.Fields = append(g.Fields, objField{"point_present", b2int(pp != 0)})
 		if pp != 0 {
-			if _, _, _, e := r.read3BD(); e != nil {
+			if _, _, _, e := r.Read3BD(); e != nil {
 				return e
 			}
 		}
-		if _, e = r.readBL(); e != nil { // isolines
+		if _, e = r.ReadBL(); e != nil { // isolines
 			return e
 		}
-		ip, e := r.readB()
+		ip, e := r.ReadB()
 		if e != nil {
 			return e
 		}
 		g.Fields = append(g.Fields, objField{"isoline_present", b2int(ip != 0)})
 		if ip != 0 {
-			nw, e := r.readBL()
+			nw, e := r.ReadBL()
 			if e != nil {
 				return e
 			}
@@ -396,29 +397,29 @@ func decodeGenericACSH_BREP(r *bitStream, ver dwgVersion, fr *gfRead, g *objGene
 					return e
 				}
 			}
-			ns, e := r.readBL()
+			ns, e := r.ReadBL()
 			if e != nil {
 				return e
 			}
 			for i := uint32(0); i < ns && i < 1_000_000; i++ {
-				if _, e = r.readBL(); e != nil { // vp_id
+				if _, e = r.ReadBL(); e != nil { // vp_id
 					return e
 				}
 				for k := 0; k < 3; k++ {
-					if _, _, _, e = r.read3BD(); e != nil {
+					if _, _, _, e = r.Read3BD(); e != nil {
 						return e
 					}
 				}
-				per, e := r.readB()
+				per, e := r.ReadB()
 				if e != nil {
 					return e
 				}
-				hw, e := r.readB()
+				hw, e := r.ReadB()
 				if e != nil {
 					return e
 				}
 				if hw != 0 {
-					n2, e := r.readBL()
+					n2, e := r.ReadBL()
 					if e != nil {
 						return e
 					}
@@ -432,7 +433,7 @@ func decodeGenericACSH_BREP(r *bitStream, ver dwgVersion, fr *gfRead, g *objGene
 			}
 		}
 	}
-	aeb, err := r.readB()
+	aeb, err := r.ReadB()
 	if err != nil {
 		return err
 	}
@@ -446,20 +447,20 @@ func decodeGenericACSH_BREP(r *bitStream, ver dwgVersion, fr *gfRead, g *objGene
 
 // skipAcisWireBits 按 WIRESTRUCT_fields 消费单条线框位（不存值，
 // BREP 对象侧样本无 wireframe 数据，仅保证结构通读）。
-func skipAcisWireBits(r *bitStream) error {
-	if _, err := r.readRC(); err != nil { // type
+func skipAcisWireBits(r *bitstream.BitStream) error {
+	if _, err := r.ReadRC(); err != nil { // type
 		return err
 	}
-	if _, err := r.readBL(); err != nil { // selection_marker
+	if _, err := r.ReadBL(); err != nil { // selection_marker
 		return err
 	}
-	if _, err := r.readBS(); err != nil { // color
+	if _, err := r.ReadBS(); err != nil { // color
 		return err
 	}
-	if _, err := r.readBL(); err != nil { // acis_index
+	if _, err := r.ReadBL(); err != nil { // acis_index
 		return err
 	}
-	np, err := r.readBL()
+	np, err := r.ReadBL()
 	if err != nil {
 		return err
 	}
@@ -467,22 +468,22 @@ func skipAcisWireBits(r *bitStream) error {
 		return fmt.Errorf("cad: BREP 线框点数异常 %d", np)
 	}
 	for i := uint32(0); i < np; i++ {
-		if _, _, _, err := r.read3BD(); err != nil {
+		if _, _, _, err := r.Read3BD(); err != nil {
 			return err
 		}
 	}
-	tp, err := r.readB()
+	tp, err := r.ReadB()
 	if err != nil {
 		return err
 	}
 	if tp != 0 {
 		for k := 0; k < 5; k++ {
-			if _, _, _, err := r.read3BD(); err != nil {
+			if _, _, _, err := r.Read3BD(); err != nil {
 				return err
 			}
 		}
 		for k := 0; k < 3; k++ {
-			if _, err := r.readB(); err != nil {
+			if _, err := r.ReadB(); err != nil {
 				return err
 			}
 		}
@@ -494,7 +495,7 @@ func skipAcisWireBits(r *bitStream) error {
 // 之后）：evalexpr.value.handle91（value_code=91 时）+
 // history_node.material；BREP 再加 materials×N（version>1 且 R2007+）
 // 与 history_id（version>1，宽容读取）。
-func decodeGenericACSH_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericACSH_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if g.valueHandle91 {
 		h, e := readHandleReference(r, g.Handle)
 		if e != nil {
@@ -533,7 +534,7 @@ func decodeGenericACSH_HDL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGener
 // acshDecoders ACSH 形体系注册表（Box/Wedge/Sphere 同布局共用，
 // 全部包公共前导）。
 func acshDecoders() map[string]internalObjectSpec {
-	spec := func(d func(*bitStream, dwgVersion, *gfRead, *objGeneric) error) internalObjectSpec {
+	spec := func(d func(*bitstream.BitStream, dwgVersion, *gfRead, *objGeneric) error) internalObjectSpec {
 		return internalObjectSpec{decode: acshWithCommon(d), hdl: decodeGenericACSH_HDL}
 	}
 	return map[string]internalObjectSpec{

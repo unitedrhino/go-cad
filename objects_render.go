@@ -4,13 +4,17 @@
 
 package cad
 
+import (
+	"github.com/unitedrhino/go-cad/internal/bitstream"
+)
+
 // decodeAcisRenderSettingsFields 读 AcDbRenderSettings_fields：
 // class_version BL（R2013+ 位流存 class_version+1，读后减 1 且 JSON
 // 不输出该键——LibreDWG VALUE_BL 语义）+ name T + fog/backfaces/
 // environ 4×B + environ_image_filename T + description T +
 // display_index BL + has_predefined B（仅 R2013+）。
-func decodeAcisRenderSettingsFields(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
-	cv, err := r.readBL()
+func decodeAcisRenderSettingsFields(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+	cv, err := r.ReadBL()
 	if err != nil {
 		return err
 	}
@@ -51,13 +55,13 @@ func decodeAcisRenderSettingsFields(r *bitStream, ver dwgVersion, fr *gfRead, g 
 }
 
 // decodeGenericRENDERSETTINGS RENDERSETTINGS 基类：仅 settings 公共字段。
-func decodeGenericRENDERSETTINGS(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericRENDERSETTINGS(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	return decodeAcisRenderSettingsFields(r, ver, fr, g)
 }
 
 // decodeGenericMENTALRAYRENDERSETTINGS MENTALRAYRENDERSETTINGS：settings
 // 公共字段 + AcDbMentalRayRenderSettings 专有（mr_version 起 41 字段）。
-func decodeGenericMENTALRAYRENDERSETTINGS(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericMENTALRAYRENDERSETTINGS(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeAcisRenderSettingsFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -172,7 +176,7 @@ func decodeGenericMENTALRAYRENDERSETTINGS(r *bitStream, ver dwgVersion, fr *gfRe
 // decodeGenericRAPIDRTRENDERSETTINGS RAPIDRTRENDERSETTINGS：settings
 // 公共字段 + AcDbRapidRTRenderSettings 专有（rapidrt_version 起 8 字段；
 // pre-R2013 时 has_predefined 移到体尾）。
-func decodeGenericRAPIDRTRENDERSETTINGS(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericRAPIDRTRENDERSETTINGS(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := decodeAcisRenderSettingsFields(r, ver, fr, g); err != nil {
 		return err
 	}
@@ -208,7 +212,7 @@ func decodeGenericRAPIDRTRENDERSETTINGS(r *bitStream, ver dwgVersion, fr *gfRead
 
 // decodeGenericRENDERENTRY RENDERENTRY：AcDbRenderEntry 全字段
 // （class_version 起 18 字段，start 组无 hour——spec 即 6 个 BS）。
-func decodeGenericRENDERENTRY(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericRENDERENTRY(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BL("class_version", g); err != nil {
 		return err
 	}
@@ -246,7 +250,7 @@ func decodeGenericRENDERENTRY(r *bitStream, ver dwgVersion, fr *gfRead, g *objGe
 }
 
 // decodeGenericRENDERGLOBAL RENDERGLOBAL：AcDbRenderGlobal 全字段。
-func decodeGenericRENDERGLOBAL(r *bitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
+func decodeGenericRENDERGLOBAL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if err := fr.BL("class_version", g); err != nil {
 		return err
 	}
@@ -276,7 +280,7 @@ func decodeGenericRENDERGLOBAL(r *bitStream, ver dwgVersion, fr *gfRead, g *objG
 
 // init 注册渲染设置族解码器。
 func init() {
-	for name, d := range map[string]func(*bitStream, dwgVersion, *gfRead, *objGeneric) error{
+	for name, d := range map[string]func(*bitstream.BitStream, dwgVersion, *gfRead, *objGeneric) error{
 		"RENDERSETTINGS":          decodeGenericRENDERSETTINGS,
 		"MENTALRAYRENDERSETTINGS": decodeGenericMENTALRAYRENDERSETTINGS,
 		"RAPIDRTRENDERSETTINGS":   decodeGenericRAPIDRTRENDERSETTINGS,

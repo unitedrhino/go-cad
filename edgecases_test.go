@@ -4,6 +4,7 @@ package cad
 
 import (
 	"bytes"
+	"github.com/unitedrhino/go-cad/internal/bitstream"
 	"os"
 	"path/filepath"
 	"testing"
@@ -165,9 +166,9 @@ func TestDecompressLZ77EmptyInput(t *testing.T) {
 
 // TestReadCRCTruncated CRC 读侧截断容错：流耗尽后 readCRC 必须报错。
 func TestReadCRCTruncated(t *testing.T) {
-	r := newBitStream([]byte{0x01})
-	r.restore(0, 0) // 不足 2 字节
-	if _, err := r.readCRC(); err == nil {
+	r := bitstream.NewBitStream([]byte{0x01})
+	r.Restore(0, 0) // 不足 2 字节
+	if _, err := r.ReadCRC(); err == nil {
 		t.Error("流耗尽后 readCRC 应报错")
 	}
 }

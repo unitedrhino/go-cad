@@ -127,7 +127,7 @@ func roundTripAll(t *testing.T, sample string, ver dwgVersion) {
 			rr := rec2.bodyBitStream()
 			if g.r2010Plus {
 				// 调用契约：调用方需定位到 dataStartBit（记录头之后）
-				rr.setBitPos(g.bodyBitOff + uint64(len(g.preBits)))
+				rr.SetBitPos(g.bodyBitOff + uint64(len(g.preBits)))
 			}
 			// 位级对照：body2 与原 body 快照的首个差异位
 			if snap := bodySnaps[h]; snap != nil {
@@ -159,7 +159,7 @@ func roundTripAll(t *testing.T, sample string, ver dwgVersion) {
 					continue
 				}
 				v2 := g2.Field(f.Key)
-				if !anyRoundTripEqual(f.Val, v2) && !anyEqual(f.Val, v2) {
+				if !testsupport.AnyRoundTripEqual(f.Val, v2) && !anyEqual(f.Val, v2) {
 					t.Logf("%s h=%d 字段 %s: %v != %v", g.Name, h, f.Key, f.Val, v2)
 					fails[g.Name+"(字段)"]++
 					fail++
@@ -254,7 +254,7 @@ func roundTripAllEntities(t *testing.T, doc *Document, data []byte, sample strin
 				return
 			}
 			rr := rec2.bodyBitStream()
-			rr.setBitPos(h2.dataStartBit)
+			rr.SetBitPos(h2.dataStartBit)
 			var e2 any
 			if isVersionedEntityKind(typeName) {
 				e2, err = decodeVersionedEntity(rr, h2, h, typeName, ver)
