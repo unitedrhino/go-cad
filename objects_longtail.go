@@ -10,6 +10,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
 // decodeGenericIDBUFFER 解析 IDBUFFER（dwg.spec DWG_OBJECT(IDBUFFER)，
@@ -88,7 +89,7 @@ func decodeGenericLAYER_INDEX(r *bitstream.BitStream, ver dwgVersion, fr *gfRead
 func decodeGenericLAYER_INDEX_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	num, _ := g.Field("num_entries").(int64)
 	for i := 0; i < int(num); i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -179,7 +180,7 @@ func decodeGenericPROXY_OBJECT(r *bitstream.BitStream, ver dwgVersion, fr *gfRea
 // （objids），尾部 CRC/padding 字节被当作句柄的差异与参考实现一致。
 func decodeGenericPROXY_OBJECT_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	for r.TellBits()+8 <= uint64(len(r.Src))*8 {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return nil // 宽容终止：尾部非句柄位串
 		}

@@ -6,6 +6,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
 // dimSpecificLayout 类型专属尾部布局（ODA spec 20.4.22-20.4.27）。
@@ -861,8 +862,8 @@ func decodeDimHandles(r *bitstream.BitStream, head *commonEntityHead, d *entDime
 	r.SetBitPos(head.objSizeBit)
 	owner, layer, e3 := parseCommonEntityHandles(r, head)
 	_ = owner
-	dimstyle, e1 := readHandleReference(r, head.handle)
-	block, e2 := readHandleReference(r, head.handle)
+	dimstyle, e1 := objrec.ReadHandleReference(r, head.handle)
+	block, e2 := objrec.ReadHandleReference(r, head.handle)
 	if e1 == nil && e2 == nil && e3 == nil {
 		d.dimstyleHandle, d.anonymousBlock, d.layer = dimstyle, block, layer
 	} else {

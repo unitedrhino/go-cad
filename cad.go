@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"os"
 	"strconv"
@@ -168,31 +169,31 @@ func Parse(data []byte) (*Document, error) {
 // 该条目名在图纸变量字典中唯一，无需回溯 NOD→ROOT 链）。
 // LIGHT 实体的光度分支由该值 =="2" 触发，须在实体主体解码前可知。
 // 失败静默返回空串（按非光度基线解码）。
-func probeLightingUnits(refs []objectRef, objectsData []byte, d *Document, dynamicTypes map[uint16]string) string {
+func probeLightingUnits(refs []objrec.ObjectRef, objectsData []byte, d *Document, dynamicTypes map[uint16]string) string {
 	vars := map[uint64]string{}
 	dicts := map[uint64]*objDictionary{}
 	for _, ref := range refs {
-		rec, err := parseObjectRecord(objectsData, ref, d.objRecordR2010Plus())
+		rec, err := objrec.ParseObjectRecord(objectsData, ref, d.objRecordR2010Plus())
 		if err != nil {
 			continue
 		}
-		h, err := parseObjHeader(rec)
+		h, err := objrec.ParseObjHeader(rec)
 		if err != nil {
 			continue
 		}
-		r := rec.bodyBitStream()
-		switch h.typeCode {
+		r := rec.BodyBitStream()
+		switch h.TypeCode {
 		case 0x2A:
-			r.SetBitPos(h.dataStartBit)
+			r.SetBitPos(h.DataStartBit)
 			if dd, err := decodeDictionaryObject(r, rec, d.version, d.version >= verR2013); err == nil {
-				dicts[ref.handle] = dd
+				dicts[ref.Handle] = dd
 			}
 		default:
-			if entityTypeName(h.typeCode, dynamicTypes) == "DICTIONARYVAR" {
-				r.SetBitPos(h.dataStartBit)
-				if g, err := decodeInternalObject(r, rec, d.version, d.version >= verR2013, h.typeCode, "DICTIONARYVAR", d.codepage); err == nil {
+			if objrec.EntityTypeName(h.TypeCode, dynamicTypes) == "DICTIONARYVAR" {
+				r.SetBitPos(h.DataStartBit)
+				if g, err := decodeInternalObject(r, rec, d.version, d.version >= verR2013, h.TypeCode, "DICTIONARYVAR", d.codepage); err == nil {
 					if v, ok := g.Field("strvalue").(string); ok {
-						vars[ref.handle] = v
+						vars[ref.Handle] = v
 					}
 				}
 			}
@@ -231,51 +232,51 @@ func (d *Document) decodeObjects(fileData []byte) error {
 	d.lightingUnits = probeLightingUnits(index, objectsData, d, dynamicTypes)
 
 	for _, ref := range index {
-		rec, err := parseObjectRecord(objectsData, ref, d.objRecordR2010Plus())
+		rec, err := objrec.ParseObjectRecord(objectsData, ref, d.objRecordR2010Plus())
 		if err != nil {
 			d.skipped++
 			continue
 		}
-		h, err := parseObjHeader(rec)
+		h, err := objrec.ParseObjHeader(rec)
 		if err != nil {
 			d.skipped++
 			continue
 		}
-		switch h.typeCode {
+		switch h.TypeCode {
 		case 0x33: // LAYER
-			if lc, err := decodeLayerRecord(rec, ref.handle, d.version); err == nil {
-				d.layerColors[ref.handle] = lc
+			if lc, err := decodeLayerRecord(rec, ref.Handle, d.version); err == nil {
+				d.layerColors[ref.Handle] = lc
 			}
 			continue
 		case 0x2A: // DICTIONARY
-			r := rec.bodyBitStream()
-			r.SetBitPos(h.dataStartBit)
+			r := rec.BodyBitStream()
+			r.SetBitPos(h.DataStartBit)
 			if dd, err := decodeDictionaryObject(r, rec, d.version, d.version >= verR2013); err == nil {
-				d.dictionaries[ref.handle] = dd
+				d.dictionaries[ref.Handle] = dd
 			} else if os.Getenv("CAD_DECODE_DBG") != "" {
-				fmt.Fprintf(os.Stderr, "[dic] h=%d %v\n", ref.handle, err)
+				fmt.Fprintf(os.Stderr, "[dic] h=%d %v\n", ref.Handle, err)
 			}
 			continue
 		case 0x4F: // XRECORD
-			r := rec.bodyBitStream()
-			r.SetBitPos(h.dataStartBit)
+			r := rec.BodyBitStream()
+			r.SetBitPos(h.DataStartBit)
 			if xx, err := decodeXrecordObject(r, rec, d.version, d.version >= verR2013); err == nil {
-				d.xrecords[ref.handle] = xx
+				d.xrecords[ref.Handle] = xx
 			} else if os.Getenv("CAD_DECODE_DBG") != "" {
-				fmt.Fprintf(os.Stderr, "[xrec] h=%d %v\n", ref.handle, err)
+				fmt.Fprintf(os.Stderr, "[xrec] h=%d %v\n", ref.Handle, err)
 			}
 			continue
 		}
-		name := entityTypeName(h.typeCode, dynamicTypes)
+		name := objrec.EntityTypeName(h.TypeCode, dynamicTypes)
 		// 实体判定优先（WIPEOUT/LIGHT 等实体类不再被 UNKNOWN 对象兜底截走）
-		if name == "" || !isEntityType(h.typeCode, dynamicTypes) {
-			if decodeInternalObjectOK(h.typeCode, name) {
-				r := rec.bodyBitStream()
-				r.SetBitPos(h.dataStartBit)
-				if g, err := decodeInternalObject(r, rec, d.version, d.version >= verR2013, h.typeCode, name, d.codepage); err == nil {
-					d.internalObjects[ref.handle] = g
+		if name == "" || !objrec.IsEntityType(h.TypeCode, dynamicTypes) {
+			if decodeInternalObjectOK(h.TypeCode, name) {
+				r := rec.BodyBitStream()
+				r.SetBitPos(h.DataStartBit)
+				if g, err := decodeInternalObject(r, rec, d.version, d.version >= verR2013, h.TypeCode, name, d.codepage); err == nil {
+					d.internalObjects[ref.Handle] = g
 				} else if os.Getenv("CAD_DECODE_DBG") != "" {
-					fmt.Fprintf(os.Stderr, "[obj] h=%d type=%X %v\n", ref.handle, h.typeCode, err)
+					fmt.Fprintf(os.Stderr, "[obj] h=%d type=%X %v\n", ref.Handle, h.TypeCode, err)
 				}
 			}
 			continue
@@ -284,11 +285,11 @@ func (d *Document) decodeObjects(fileData []byte) error {
 			// 定义类标记：不参与渲染与文本，静默跳过
 			continue
 		}
-		r := rec.bodyBitStream()
-		r.SetBitPos(h.dataStartBit)
+		r := rec.BodyBitStream()
+		r.SetBitPos(h.DataStartBit)
 		if isVersionedEntityKind(name) {
 			// ACIS 系/WIPEOUT：版本感知专用解码（纳管进 entityByHandle）
-			ent, err := decodeVersionedEntity(r, h, ref.handle, name, d.version)
+			ent, err := decodeVersionedEntity(r, h, ref.Handle, name, d.version)
 			if err != nil {
 				d.failBy(ref, fmt.Errorf("%s: %w", name, err))
 				d.skipped++
@@ -297,9 +298,9 @@ func (d *Document) decodeObjects(fileData []byte) error {
 			d.classify(ent)
 			continue
 		}
-		ent, err := decodeEntityFieldsVer(r, h, ref.handle, h.rec.size, entityTypeName(h.typeCode, dynamicTypes), h.typeCode, d.version, d.codepage, dynamicTypes, d.lightingUnits)
+		ent, err := decodeEntityFieldsVer(r, h, ref.Handle, h.Rec.Size, objrec.EntityTypeName(h.TypeCode, dynamicTypes), h.TypeCode, d.version, d.codepage, dynamicTypes, d.lightingUnits)
 		if err != nil {
-			d.failBy(ref, fmt.Errorf("%s: %w", entityTypeName(h.typeCode, dynamicTypes), err))
+			d.failBy(ref, fmt.Errorf("%s: %w", objrec.EntityTypeName(h.TypeCode, dynamicTypes), err))
 			d.skipped++
 			continue
 		}
@@ -438,12 +439,12 @@ func isVersionedEntityKind(name string) bool {
 
 // decodeVersionedEntity 版本感知实体的扫描解码：与 decodeEntityFieldsVer
 // 同一候选扫描框架，主体解码按类型分发到 ACIS 系/WIPEOUT 专用解码器。
-func decodeVersionedEntity(r *bitstream.BitStream, h objHeader, objHandle uint64, typeName string, ver dwgVersion) (any, error) {
-	dataEnd := h.rec.dataEndBit()
+func decodeVersionedEntity(r *bitstream.BitStream, h objrec.ObjHeader, objHandle uint64, typeName string, ver dwgVersion) (any, error) {
+	dataEnd := h.Rec.DataEndBit()
 	startByte, startBit := r.Cursor()
 	base := uint64(startByte)*8 + uint64(startBit)
 	parsers := headParsersForVersion(ver)
-	ent, _, err := scanEntityBest(r, base, dataEnd, hdlSizeFieldBits(h), parsers, objHandle, h.rec.size, typeName, h.typeCode, func(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
+	ent, _, err := scanEntityBest(r, base, dataEnd, hdlSizeFieldBits(h), parsers, objHandle, h.Rec.Size, typeName, h.TypeCode, func(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
 		switch typeName {
 		case "WIPEOUT":
 			return decodeWipeoutVer(r, head, ver)
@@ -454,50 +455,8 @@ func decodeVersionedEntity(r *bitstream.BitStream, h objHeader, objHandle uint64
 		}
 		return decodeAcisVer(r, head, typeName, ver, ver)
 	})
-	attachEntityRecordMeta(ent, h.rec)
+	attachEntityRecordMeta(ent, h.Rec)
 	return ent, err
-}
-
-// isEntityType 判断类型码是否为可渲染实体：图元直判 + 动态类名命中常见实体后缀。
-func isEntityType(code uint16, dynamic map[uint16]string) bool {
-	switch objTypeCode[code] {
-	case "TEXT", "ATTRIB", "ATTDEF", "INSERT", "MINSERT", "ARC", "CIRCLE", "LINE",
-		"POINT", "ELLIPSE", "MTEXT", "LWPOLYLINE", "VERTEX_2D", "VERTEX_3D",
-		"VERTEX_MESH", "VERTEX_PFACE", "VERTEX_PFACE_FACE",
-		"POLYLINE_2D", "POLYLINE_3D", "SEQEND", "BLOCK", "ENDBLK",
-		"SPLINE", "LEADER", "3DFACE", "SOLID", "RAY", "XLINE", "MLINE",
-		"TOLERANCE", "POLYLINE_PFACE", "POLYLINE_MESH", "SHAPE", "VIEWPORT",
-		"REGION", "3DSOLID", "BODY",
-		"OLEFRAME", "OLE2FRAME", "PROXY_ENTITY",
-		"DIM_ORDINATE", "DIM_LINEAR", "DIM_ALIGNED", "DIM_ANG3PT", "DIM_ANG2LN",
-		"DIM_RADIUS", "DIM_DIAMETER":
-		return true
-	}
-	if name, ok := dynamic[code]; ok {
-		switch name {
-		case "ACDBLINE", "ACDBCIRCLE", "ACDBARC", "ACDBPOINT", "ACDBELLIPSE",
-			"ACDBMTEXT", "ACDBTEXT", "ACDBLWPOLYLINE", "ACDBINSERT", "ACDBATTRIB",
-			"ACDBPOLYLINE", "ACDBSPLINE", "ACDBHATCH", "ACDBDIMENSION",
-			"HATCH",                     // R13/R14 类段中 HATCH 以本名注册（type 536/539）
-			"REGION", "3DSOLID", "BODY", // 注入动态表的固定码实体（0x25/26/27）
-			// 实体类（gold 确认身份；专有几何暂未实现，走通用实体头）
-			"ACDBWIPEOUT", "WIPEOUT", "IMAGE", "ACDBRASTERIMAGE",
-			"LWPOLYLINE", // R14 类段以本名注册（type 535；R2000+ 为固定码 0x0F）
-			"MPOLYGON", "ACDBMPOLYGON",
-			"ACDBTABLE", "ACAD_TABLE",
-			"ACDBARCALIGNEDTEXT", "ARC_DIMENSION", "MULTILEADER",
-			"LARGE_RADIAL_DIMENSION", // R2000+ 大半径标注（DIMENSION 同框架解码）
-			"ACDBMLINESTYLE",         /*占位无*/
-			// 螺旋线（dwgread 亦仅记录 unknown_bits，无内嵌几何）
-			"HELIX",
-			// 底图引用（几何在外部 PDF/DGN/DWF 文件）
-			"PDFUNDERLAY", "DGNUNDERLAY", "DWFUNDERLAY":
-			return true
-		case "LIGHT", "ACDBLIGHT":
-			return true
-		}
-	}
-	return false
 }
 
 // stripMTextFormat 剥离 MTEXT 行内格式控制码（\\P 换行、{...} 分组、\\X 等）。
@@ -540,11 +499,11 @@ func stripMTextFormat(s string) string {
 }
 
 // failBy 记录单个对象的失败原因（调试辅助）。
-func (d *Document) failBy(ref objectRef, err error) {
+func (d *Document) failBy(ref objrec.ObjectRef, err error) {
 	if d.debugFailures == nil {
 		d.debugFailures = map[uint64]string{}
 	}
-	d.debugFailures[ref.handle] = err.Error()
+	d.debugFailures[ref.Handle] = err.Error()
 }
 
 // DebugFailures 返回按句柄的失败原因（调试辅助）。
@@ -580,7 +539,7 @@ func parseR2000Document(data []byte) (*Document, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cad: 加载对象图失败: %w", err)
 	}
-	refs, err := parseObjectMapHandles(objectMap)
+	refs, err := objrec.ParseObjectMapHandles(objectMap)
 	if err != nil {
 		return nil, fmt.Errorf("cad: 解析 R2000 对象图失败: %w", err)
 	}
@@ -593,67 +552,67 @@ func parseR2000Document(data []byte) (*Document, error) {
 	doc.lightingUnits = probeLightingUnits(refs, data, doc, dynamicTypes)
 
 	for _, ref := range refs {
-		rec, err := parseObjectRecord(data, ref, false) // R2000 记录无 UMC/OT 前缀，偏移即文件内位置
+		rec, err := objrec.ParseObjectRecord(data, ref, false) // R2000 记录无 UMC/OT 前缀，偏移即文件内位置
 		if err != nil {
 			doc.skipped++
 			continue
 		}
-		h, err := parseObjHeader(rec)
+		h, err := objrec.ParseObjHeader(rec)
 		if err != nil {
 			doc.skipped++
 			continue
 		}
-		switch h.typeCode {
+		switch h.TypeCode {
 		case 0x33: // LAYER
-			if lc, err := decodeLayerRecord(rec, ref.handle, doc.version); err == nil {
-				doc.layerColors[ref.handle] = lc
+			if lc, err := decodeLayerRecord(rec, ref.Handle, doc.version); err == nil {
+				doc.layerColors[ref.Handle] = lc
 			}
 			continue
 		case 0x2A: // DICTIONARY
-			r := rec.bodyBitStream()
-			r.SetBitPos(h.dataStartBit)
+			r := rec.BodyBitStream()
+			r.SetBitPos(h.DataStartBit)
 			if dd, err := decodeDictionaryObject(r, rec, doc.version, false); err == nil {
-				doc.dictionaries[ref.handle] = dd
+				doc.dictionaries[ref.Handle] = dd
 			}
 			continue
 		case 0x4F: // XRECORD
-			r := rec.bodyBitStream()
-			r.SetBitPos(h.dataStartBit)
+			r := rec.BodyBitStream()
+			r.SetBitPos(h.DataStartBit)
 			if xx, err := decodeXrecordObject(r, rec, doc.version, false); err == nil {
-				doc.xrecords[ref.handle] = xx
+				doc.xrecords[ref.Handle] = xx
 			}
 			continue
 		}
-		name := entityTypeName(h.typeCode, dynamicTypes)
+		name := objrec.EntityTypeName(h.TypeCode, dynamicTypes)
 		if name == "XRECORD" {
 			// R13/R14 的 XRECORD 为类类型（type≥500 经类名表解析），非固定 0x4F
-			r := rec.bodyBitStream()
-			r.SetBitPos(h.dataStartBit)
+			r := rec.BodyBitStream()
+			r.SetBitPos(h.DataStartBit)
 			if xx, err := decodeXrecordObject(r, rec, doc.version, false); err == nil {
-				doc.xrecords[ref.handle] = xx
+				doc.xrecords[ref.Handle] = xx
 			}
 			continue
 		}
 		// 实体判定优先（同 decodeObjects）
-		if name != "" && isEntityType(h.typeCode, dynamicTypes) {
+		if name != "" && objrec.IsEntityType(h.TypeCode, dynamicTypes) {
 			// 落到下方实体解码
-		} else if decodeInternalObjectOK(h.typeCode, name) {
-			r := rec.bodyBitStream()
-			r.SetBitPos(h.dataStartBit)
-			if g, err := decodeInternalObject(r, rec, doc.version, false, h.typeCode, name, doc.codepage); err == nil {
-				doc.internalObjects[ref.handle] = g
+		} else if decodeInternalObjectOK(h.TypeCode, name) {
+			r := rec.BodyBitStream()
+			r.SetBitPos(h.DataStartBit)
+			if g, err := decodeInternalObject(r, rec, doc.version, false, h.TypeCode, name, doc.codepage); err == nil {
+				doc.internalObjects[ref.Handle] = g
 			} else if os.Getenv("CAD_DECODE_DBG") != "" {
-				fmt.Fprintf(os.Stderr, "[obj] h=%d type=%X %v\n", ref.handle, h.typeCode, err)
+				fmt.Fprintf(os.Stderr, "[obj] h=%d type=%X %v\n", ref.Handle, h.TypeCode, err)
 			}
 			continue
 		} else if name == "" {
 			continue
 		}
-		r := rec.bodyBitStream()
-		r.SetBitPos(h.dataStartBit)
+		r := rec.BodyBitStream()
+		r.SetBitPos(h.DataStartBit)
 		if isVersionedEntityKind(name) {
 			// ACIS 系/WIPEOUT：版本感知专用解码（纳管进 entityByHandle）
-			ent, err := decodeVersionedEntity(r, h, ref.handle, name, doc.version)
+			ent, err := decodeVersionedEntity(r, h, ref.Handle, name, doc.version)
 			if err != nil {
 				doc.failBy(ref, fmt.Errorf("%s: %w", name, err))
 				doc.skipped++
@@ -662,9 +621,9 @@ func parseR2000Document(data []byte) (*Document, error) {
 			doc.classify(ent)
 			continue
 		}
-		ent, err := decodeEntityFieldsVer(r, h, ref.handle, h.rec.size, entityTypeName(h.typeCode, dynamicTypes), h.typeCode, doc.version, doc.codepage, dynamicTypes, doc.lightingUnits)
+		ent, err := decodeEntityFieldsVer(r, h, ref.Handle, h.Rec.Size, objrec.EntityTypeName(h.TypeCode, dynamicTypes), h.TypeCode, doc.version, doc.codepage, dynamicTypes, doc.lightingUnits)
 		if err != nil {
-			doc.failBy(ref, fmt.Errorf("%s: %w", entityTypeName(h.typeCode, dynamicTypes), err))
+			doc.failBy(ref, fmt.Errorf("%s: %w", objrec.EntityTypeName(h.TypeCode, dynamicTypes), err))
 			doc.skipped++
 			continue
 		}
@@ -701,7 +660,7 @@ func DebugObjectIndexExport(data []byte) ([]struct {
 		out = append(out, struct {
 			Handle uint64
 			Offset uint32
-		}{r.handle, r.offset})
+		}{r.Handle, r.Offset})
 	}
 	return out, nil
 }
@@ -711,11 +670,11 @@ func DebugRecord2(objectsData []byte, ref struct {
 	Handle uint64
 	Offset uint32
 }, r2010Plus bool) (body []byte, bitOff uint64, size uint32, err error) {
-	rec, err := parseObjectRecord(objectsData, objectRef{ref.Handle, ref.Offset}, r2010Plus)
+	rec, err := objrec.ParseObjectRecord(objectsData, objrec.ObjectRef{Handle: ref.Handle, Offset: ref.Offset}, r2010Plus)
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	return rec.body, rec.bodyBitOffset, rec.size, nil
+	return rec.Body, rec.BodyBitOffset, rec.Size, nil
 }
 
 // LoadNamedSectionDebug2 调试用：加载段数据。
@@ -1247,33 +1206,33 @@ func DebugScanGoldLines(data []byte, gold map[uint64][6]float64) []string {
 	if err != nil {
 		return []string{"seg: " + err.Error()}
 	}
-	refs, err := parseObjectMapHandles(mustHandles(data))
+	refs, err := objrec.ParseObjectMapHandles(mustHandles(data))
 	if err != nil {
 		return []string{"idx: " + err.Error()}
 	}
 	var out []string
 	for _, ref := range refs {
-		g, ok := gold[ref.handle]
-		if !ok || int(ref.offset)+64 > len(objectsData) {
+		g, ok := gold[ref.Handle]
+		if !ok || int(ref.Offset)+64 > len(objectsData) {
 			continue
 		}
-		rec, err := parseObjectRecord(objectsData, ref, true)
+		rec, err := objrec.ParseObjectRecord(objectsData, ref, true)
 		if err != nil {
 			continue
 		}
-		h, err := parseObjHeader(rec)
-		if err != nil || h.typeCode != 0x13 {
+		h, err := objrec.ParseObjHeader(rec)
+		if err != nil || h.TypeCode != 0x13 {
 			continue
 		}
-		r := rec.bodyBitStream()
-		r.SetBitPos(h.dataStartBit)
-		ent, err := decodeEntityFieldsVer(r, h, ref.handle, h.rec.size, "LINE", 30, verR2018, 0, nil, "")
+		r := rec.BodyBitStream()
+		r.SetBitPos(h.DataStartBit)
+		ent, err := decodeEntityFieldsVer(r, h, ref.Handle, h.Rec.Size, "LINE", 30, verR2018, 0, nil, "")
 		if err != nil {
 			continue
 		}
 		line := ent.(*entLine)
 		if near(line.start.x, g[0]) && near(line.start.y, g[1]) && near(line.end.x, g[3]) && near(line.end.y, g[4]) {
-			out = append(out, fmt.Sprintf("handle=%d offset=%d 匹配", ref.handle, ref.offset))
+			out = append(out, fmt.Sprintf("handle=%d offset=%d 匹配", ref.Handle, ref.Offset))
 		}
 	}
 	return out
@@ -1314,18 +1273,18 @@ func DebugObjectBody(data []byte, handle uint64) (body []byte, bitOffset uint64,
 		return nil, 0, err
 	}
 	r2010Plus := ver == verR2010 || ver == verR2013 || ver == verR2018
-	var found *objectRef
+	var found *objrec.ObjectRef
 	for i := range index {
-		if index[i].handle == handle {
+		if index[i].Handle == handle {
 			found = &index[i] // 与 Parse 一致：同句柄取最后一次出现
 		}
 	}
 	if found == nil {
 		return nil, 0, fmt.Errorf("cad: 对象 %d 不在对象图", handle)
 	}
-	rec, err := parseObjectRecord(objectsData, *found, r2010Plus)
+	rec, err := objrec.ParseObjectRecord(objectsData, *found, r2010Plus)
 	if err != nil {
 		return nil, 0, err
 	}
-	return rec.body, rec.bodyBitOffset, nil
+	return rec.Body, rec.BodyBitOffset, nil
 }

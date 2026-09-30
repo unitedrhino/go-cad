@@ -5,6 +5,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"testing"
 )
@@ -72,8 +73,8 @@ func TestTableContentSynthetic(t *testing.T) {
 	original[2] = uint8(datEnd >> 16)
 	original[3] = uint8(datEnd >> 24)
 
-	rec := &objectRecord{body: original, bodyBitOffset: 0, size: uint32(len(original))}
-	g, err := decodeInternalObject(rec.bodyBitStream(), rec, verR2000, false, 537, "TABLECONTENT", 30)
+	rec := &objrec.ObjectRecord{Body: original, BodyBitOffset: 0, Size: uint32(len(original))}
+	g, err := decodeInternalObject(rec.BodyBitStream(), rec, verR2000, false, 537, "TABLECONTENT", 30)
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
@@ -130,8 +131,8 @@ func TestDataTableSynthetic(t *testing.T) {
 	original[2] = uint8(datEnd >> 16)
 	original[3] = uint8(datEnd >> 24)
 
-	rec := &objectRecord{body: original, bodyBitOffset: 0, size: uint32(len(original))}
-	g, err := decodeInternalObject(rec.bodyBitStream(), rec, verR2000, false, 541, "DATATABLE", 30)
+	rec := &objrec.ObjectRecord{Body: original, BodyBitOffset: 0, Size: uint32(len(original))}
+	g, err := decodeInternalObject(rec.BodyBitStream(), rec, verR2000, false, 541, "DATATABLE", 30)
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}

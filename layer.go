@@ -7,6 +7,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
 // layerColor LAYER 记录解析结果。name 为图层真名（DXF 写出与符号表
@@ -31,7 +32,7 @@ var layerCMCLayouts = [8]uint8{0x0, 0x1, 0x2, 0x4, 0x3, 0x5, 0x6, 0x7}
 // + [R13/R14 B×4 状态位 / R2000+ BS flag0] + CMC 颜色；
 // owner/xdic/xref/ltype 等 handle 字段在 bitsize 起的 handle 流，不占 dat 流。
 // R2010+ 走 UMC/OT 前缀 + 字符串流名称路径。
-func decodeLayerRecord(rec *objectRecord, objHandle uint64, ver dwgVersion) (layerColor, error) {
+func decodeLayerRecord(rec *objrec.ObjectRecord, objHandle uint64, ver dwgVersion) (layerColor, error) {
 	if ver == verR13 || ver == verR14 || ver == verR2000 {
 		// R13/R14/R2000：dat 流顺序完全确定，直接按 spec 解析并以
 		// bitsize 闭环校验；失败时回退历史扫描路径。
@@ -39,7 +40,7 @@ func decodeLayerRecord(rec *objectRecord, objHandle uint64, ver dwgVersion) (lay
 			return lc, nil
 		}
 	}
-	if rec.r2010Plus {
+	if rec.R2010Plus {
 		return decodeLayerRecordR2010Plus(rec, objHandle, ver)
 	}
 	return scanLayerRecordClassic(rec, objHandle, ver)
@@ -49,12 +50,12 @@ func decodeLayerRecord(rec *objectRecord, objHandle uint64, ver dwgVersion) (lay
 // （对照 LibreDWG dwg_decode_object 与 dwg.spec COMMON_TABLE_FLAGS(Layer)，
 // 以记录头 UMC 推导的 bitsize 闭环校验），失败回退历史扫描路径
 // （类型码前缀 + 8 变体颜色扫描，名称走字符串流）。
-func decodeLayerRecordR2010Plus(rec *objectRecord, objHandle uint64, ver dwgVersion) (layerColor, error) {
+func decodeLayerRecordR2010Plus(rec *objrec.ObjectRecord, objHandle uint64, ver dwgVersion) (layerColor, error) {
 	if lc, err := parseLayerSpecR2010Plus(rec, objHandle, ver); err == nil {
 		return lc, nil
 	}
 	var lc layerColor
-	r := rec.bodyBitStream()
+	r := rec.BodyBitStream()
 	steps := []func(*bitstream.BitStream) error{
 		func(r *bitstream.BitStream) error { _, e := r.ReadUMC(); return e }, // handle-stream-size
 		func(r *bitstream.BitStream) error { _, e := r.ReadOT(); return e },  // 类型码
@@ -88,11 +89,11 @@ func decodeLayerRecordR2010Plus(rec *objectRecord, objHandle uint64, ver dwgVers
 // （EED + reactors + xdic + TV 名称）全部通过且 CMC 变体可解时采信；
 // 多个位置均可解时取最后一个（误命中多为前部垃圾位型的巧合解码，真实
 // handle 位置在其后，经验证 R2004/R2000 样本）。
-func scanLayerRecordClassic(rec *objectRecord, objHandle uint64, ver dwgVersion) (layerColor, error) {
+func scanLayerRecordClassic(rec *objrec.ObjectRecord, objHandle uint64, ver dwgVersion) (layerColor, error) {
 	var lc layerColor
 	var lastName string
 	for delta := uint64(0); delta <= 160; delta++ {
-		r := rec.bodyBitStream()
+		r := rec.BodyBitStream()
 		r.SetBitPos(delta)
 		hd, e := r.ReadH()
 		if e != nil || hd.Value != objHandle {
@@ -142,14 +143,14 @@ func scanLayerRecordClassic(rec *objectRecord, objHandle uint64, ver dwgVersion)
 // bitsize 无内联字段，由记录头 UMC 推导（dataEndBit，即 handle 流起点）：
 // dat 流解析结束位与之相等即整条 dat 流零歧义。名称不在主位流
 // （R2007+ FIELD_T 走字符串流），从字符串区首个 TU 补读。
-func parseLayerSpecR2010Plus(rec *objectRecord, objHandle uint64, ver dwgVersion) (layerColor, error) {
+func parseLayerSpecR2010Plus(rec *objrec.ObjectRecord, objHandle uint64, ver dwgVersion) (layerColor, error) {
 	var lc layerColor
-	h, err := parseObjHeader(rec)
+	h, err := objrec.ParseObjHeader(rec)
 	if err != nil {
 		return lc, err
 	}
-	r := rec.bodyBitStream()
-	r.SetBitPos(h.dataStartBit)
+	r := rec.BodyBitStream()
+	r.SetBitPos(h.DataStartBit)
 	hd, err := r.ReadH()
 	if err != nil {
 		return lc, err
@@ -195,11 +196,11 @@ func parseLayerSpecR2010Plus(rec *objectRecord, objHandle uint64, ver dwgVersion
 	// 合缝即整条 dat 流零歧义（has_strings=0 时无字符串区，仅校验字段区
 	// 不越过 has_strings 位）。
 	endBit := r.TellBits()
-	strEnd := rec.dataEndBit()
+	strEnd := rec.DataEndBit()
 	if strEnd < 34 {
 		return lc, fmt.Errorf("cad: LAYER 记录过短（handle %d）", objHandle)
 	}
-	rr := rec.bodyBitStream()
+	rr := rec.BodyBitStream()
 	rr.SetBitPos(strEnd - 1)
 	hasStrings, err := rr.ReadB()
 	if err != nil {
@@ -249,10 +250,10 @@ func extractTrueColor(rgb uint32) (uint32, bool) {
 // readR2010PlusLayerName R2010+ 表记录名称的字符串流补读：bitsize 由
 // 记录头推导，has_strings 位在 bitsize-1，名称是字符串区首个 TU。
 // 读取失败返回空串（颜色解析不受影响）。
-func readR2010PlusLayerName(rec *objectRecord) string {
-	r := rec.bodyBitStream()
-	bitsize := rec.dataEndBit() - rec.bodyBitOffset - uint64(rec.handleSizeFieldBits)
-	libreBase := uint64(rec.handleSizeFieldBits) + rec.bodyBitOffset
+func readR2010PlusLayerName(rec *objrec.ObjectRecord) string {
+	r := rec.BodyBitStream()
+	bitsize := rec.DataEndBit() - rec.BodyBitOffset - uint64(rec.HandleSizeFieldBits)
+	libreBase := uint64(rec.HandleSizeFieldBits) + rec.BodyBitOffset
 	r.SetBitPos(libreBase + bitsize - 1)
 	if has, e := r.ReadB(); e == nil && has == 1 {
 		if strs := readStringAreaBitRange(r, libreBase+bitsize, 1, true); len(strs) > 0 {
@@ -271,13 +272,13 @@ func readR2010PlusLayerName(rec *objectRecord) string {
 // 到 handle 流的边界位：解析结束位 == bitsize 即整条 dat 流零歧义（对全部
 // LAYER 记录实测成立）。CMC 为 R2004 前形态（仅 BS 索引，off 时负值；
 // 真彩/rgb 段是 R2004+ 才引入）。
-func decodeLayerRecordPreR2004(rec *objectRecord, objHandle uint64, ver dwgVersion) (layerColor, error) {
-	h, err := parseObjHeader(rec)
+func decodeLayerRecordPreR2004(rec *objrec.ObjectRecord, objHandle uint64, ver dwgVersion) (layerColor, error) {
+	h, err := objrec.ParseObjHeader(rec)
 	if err != nil {
 		return layerColor{}, err
 	}
-	r := rec.bodyBitStream()
-	r.SetBitPos(h.dataStartBit)
+	r := rec.BodyBitStream()
+	r.SetBitPos(h.DataStartBit)
 	var bitsize uint64
 	if ver == verR2000 {
 		bs, err := r.ReadRL()
@@ -356,18 +357,18 @@ func decodeLayerRecordPreR2004(rec *objectRecord, objHandle uint64, ver dwgVersi
 // readLayerNameStringStream R2007 表记录名称的字符串流补读：
 // RL bitsize（类型码之后的 dataStartBit 处）→ bitsize-1 位 has_strings →
 // 字符串区首个 TU。读取失败返回 ("", false)，调用方回退合成名。
-func readLayerNameStringStream(rec *objectRecord) (string, bool) {
-	h, err := parseObjHeader(rec)
+func readLayerNameStringStream(rec *objrec.ObjectRecord) (string, bool) {
+	h, err := objrec.ParseObjHeader(rec)
 	if err != nil {
 		return "", false
 	}
-	r := rec.bodyBitStream()
-	r.SetBitPos(h.dataStartBit)
+	r := rec.BodyBitStream()
+	r.SetBitPos(h.DataStartBit)
 	bitsize, err := readInlineBitsize(r)
 	if err != nil {
 		return "", false
 	}
-	base := rec.bodyBitOffset
+	base := rec.BodyBitOffset
 	r.SetBitPos(base + bitsize - 1)
 	has, err := r.ReadB()
 	if err != nil || has != 1 {

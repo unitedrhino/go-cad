@@ -7,6 +7,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"os"
 	"strings"
 )
@@ -37,13 +38,13 @@ type objDictionary struct {
 // + [R2004+ B is_xdic_missing] + [R2013+ B has_ds_data] + BL numitems
 // + [R2000b+ BS cloning] + RC is_hardowner + numitems×T 文字（R2007+ TU，更早 TV）。
 // handle 流（bitsize 起）：ownerhandle + reactors + xdic + itemhandles×numitems。
-func decodeDictionaryObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVersion, r2013Plus bool) (*objDictionary, error) {
+func decodeDictionaryObject(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver dwgVersion, r2013Plus bool) (*objDictionary, error) {
 	return decodeDictionaryObjectFull(r, rec, ver, r2013Plus, false)
 }
 
 // decodeDictionaryObjectFull 解析 DICTIONARY；withDefault 为 true 时
 // 按 DICTIONARYWDFLT 在 itemhandles 后追加读取 defaultid 句柄。
-func decodeDictionaryObjectFull(r *bitstream.BitStream, rec *objectRecord, ver dwgVersion, r2013Plus bool, withDefault bool) (*objDictionary, error) {
+func decodeDictionaryObjectFull(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver dwgVersion, r2013Plus bool, withDefault bool) (*objDictionary, error) {
 	d := &objDictionary{}
 	var err error
 	// bitsize 定位策略：R2000-R2007 内联 RL 在最前；R13/R14 在 EED 后；
@@ -52,7 +53,7 @@ func decodeDictionaryObjectFull(r *bitstream.BitStream, rec *objectRecord, ver d
 	// dat 段前导位：RL bitsize 字段起点（body 内）；原始流中 bitsize RL
 	// 之前可能有对象 section 头的残留位，重编码从 RL 占位起编，位长
 	// 校验需补回前导
-	d.hdOffsetBits = r.TellBits() - rec.bodyBitOffset
+	d.hdOffsetBits = r.TellBits() - rec.BodyBitOffset
 	if bitsizePos == bitsizePosHead {
 		if d.objSizeBit, err = readInlineBitsize(r); err != nil {
 			return nil, err
@@ -137,10 +138,10 @@ func decodeDictionaryObjectFull(r *bitstream.BitStream, rec *objectRecord, ver d
 	// 直接取记录数据结束位（含 handle-stream-size 字段自身的位长）
 	switch bitsizePos {
 	case bitsizePosDerived:
-		d.objSizeBit = rec.dataEndBit() - rec.bodyBitOffset - uint64(rec.handleSizeFieldBits)
-		r.SetBitPos(rec.dataEndBit())
+		d.objSizeBit = rec.DataEndBit() - rec.BodyBitOffset - uint64(rec.HandleSizeFieldBits)
+		r.SetBitPos(rec.DataEndBit())
 	default:
-		r.SetBitPos(rec.bodyBitOffset + d.objSizeBit)
+		r.SetBitPos(rec.BodyBitOffset + d.objSizeBit)
 	}
 	// handle 流原始位串：起点（bitsize）至 body 尾，供重编码原样写回
 	d.RawHandleBits = bitstream.CollectBits(r, r.TellBits(), uint64(len(r.Src))*8)
@@ -148,24 +149,24 @@ func decodeDictionaryObjectFull(r *bitstream.BitStream, rec *objectRecord, ver d
 		return nil, err
 	}
 	for i := 0; i < d.numReactors; i++ {
-		if _, err = readHandleReference(r, d.handle); err != nil {
+		if _, err = objrec.ReadHandleReference(r, d.handle); err != nil {
 			return nil, err
 		}
 	}
 	if !d.xdicMissing {
-		if _, err = readHandleReference(r, d.handle); err != nil {
+		if _, err = objrec.ReadHandleReference(r, d.handle); err != nil {
 			return nil, err
 		}
 	}
 	for i := 0; i < d.numItems; i++ {
-		h, e := readHandleReference(r, d.handle)
+		h, e := objrec.ReadHandleReference(r, d.handle)
 		if e != nil {
 			return nil, e
 		}
 		d.itemHandles = append(d.itemHandles, h)
 	}
 	if withDefault {
-		if d.defaultID, err = readHandleReference(r, d.handle); err != nil {
+		if d.defaultID, err = objrec.ReadHandleReference(r, d.handle); err != nil {
 			return nil, err
 		}
 	}
@@ -199,7 +200,7 @@ func (x *objXrecord) XdataItems() []xdataItem { return x.xdata }
 // + [R2004+ B is_xdic_missing] + [R2013+ B has_ds_data] + BL xdata_size
 // + xdata 原始字节（内容暂不解析） + [R2000b+ BS cloning]。
 // handle 流（bitsize 起）：ownerhandle + reactors + xdic + objid_handles 至流尾。
-func decodeXrecordObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVersion, r2013Plus bool) (*objXrecord, error) {
+func decodeXrecordObject(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver dwgVersion, r2013Plus bool) (*objXrecord, error) {
 	x := &objXrecord{}
 	var err error
 	bitsizePos := dictBitsizePos(ver)
@@ -290,10 +291,10 @@ func decodeXrecordObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVersi
 	// 直接取记录数据结束位（含 handle-stream-size 字段自身的位长）
 	switch bitsizePos {
 	case bitsizePosDerived:
-		x.objSizeBit = rec.dataEndBit() - rec.bodyBitOffset - uint64(rec.handleSizeFieldBits)
-		r.SetBitPos(rec.dataEndBit())
+		x.objSizeBit = rec.DataEndBit() - rec.BodyBitOffset - uint64(rec.HandleSizeFieldBits)
+		r.SetBitPos(rec.DataEndBit())
 	default:
-		r.SetBitPos(rec.bodyBitOffset + x.objSizeBit)
+		r.SetBitPos(rec.BodyBitOffset + x.objSizeBit)
 	}
 	// handle 流原始位串：起点（bitsize）至 body 尾，供重编码原样写回
 	x.RawHandleBits = bitstream.CollectBits(r, r.TellBits(), uint64(len(r.Src))*8)
@@ -301,12 +302,12 @@ func decodeXrecordObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVersi
 		return nil, err
 	}
 	for i := 0; i < x.numReactors; i++ {
-		if _, err = readHandleReference(r, x.handle); err != nil {
+		if _, err = objrec.ReadHandleReference(r, x.handle); err != nil {
 			return nil, err
 		}
 	}
 	if !x.xdicMissing {
-		if _, err = readHandleReference(r, x.handle); err != nil {
+		if _, err = objrec.ReadHandleReference(r, x.handle); err != nil {
 			return nil, err
 		}
 	}
@@ -316,7 +317,7 @@ func decodeXrecordObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVersi
 	{
 		hdlEnd := r.TellBits() + uint64(len(x.RawHandleBits))
 		for r.TellBits() < hdlEnd && x.numObjidHandles <= 4096 {
-			h, e := readHandleReference(r, x.handle)
+			h, e := objrec.ReadHandleReference(r, x.handle)
 			if e != nil || h == 0 {
 				break
 			}
@@ -596,7 +597,7 @@ func skipEEDChain(r *bitstream.BitStream) error {
 
 // readOwnerHandle 读取 ownerhandle（H，绝对引用）。
 func readOwnerHandle(r *bitstream.BitStream, cur uint64) (uint64, error) {
-	return readHandleReference(r, cur)
+	return objrec.ReadHandleReference(r, cur)
 }
 
 // xdataItem XRECORD 扩展数据的一个类型化值项（LibreDWG Dwg_Resbuf）。

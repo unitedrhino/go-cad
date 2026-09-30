@@ -10,6 +10,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
 // setFieldTop 按 gold JSON 的重复键覆盖语义写字段：同名键已存在时
@@ -573,12 +574,12 @@ func decodeGenericBLOCKVISIBILITYPARAMETER(r *bitstream.BitStream, ver dwgVersio
 // blocks 与 states 的 blocks/params 句柄（按 hdlCount 累计数）。
 func decodeGenericBLOCKVISIBILITYPARAMETER_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if g.valueHandle91 {
-		if _, e := readHandleReference(r, g.Handle); e != nil {
+		if _, e := objrec.ReadHandleReference(r, g.Handle); e != nil {
 			return e
 		}
 	}
 	for i := 0; i < g.hdlCount; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -741,7 +742,7 @@ func decodeGenericBLOCKSTRETCHACTION(r *bitstream.BitStream, ver dwgVersion, fr 
 // hdls×num_hdls（spec 声明顺序：BlockAction deps 在前）。
 func decodeGenericBLOCKSTRETCHACTION_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if g.valueHandle91 {
-		if _, e := readHandleReference(r, g.Handle); e != nil {
+		if _, e := objrec.ReadHandleReference(r, g.Handle); e != nil {
 			return e
 		}
 	}
@@ -751,7 +752,7 @@ func decodeGenericBLOCKSTRETCHACTION_HDL(r *bitstream.BitStream, ver dwgVersion,
 	}
 	nh, _ := g.Field("num_hdls").(int64)
 	for i := 0; i < int(nh); i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -763,7 +764,7 @@ func decodeGenericBLOCKSTRETCHACTION_HDL(r *bitstream.BitStream, ver dwgVersion,
 // decodeBlockActionHandles 读 num_deps 个 deps 句柄。
 func decodeBlockActionHandles(r *bitstream.BitStream, g *objGeneric, numDeps int) error {
 	for i := 0; i < numDeps; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -775,7 +776,7 @@ func decodeBlockActionHandles(r *bitstream.BitStream, g *objGeneric, numDeps int
 // decodeGenericBLOCKACTION_HDL 通用 BLOCK*ACTION handle 流：deps×N。
 func decodeGenericBLOCKACTION_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if g.valueHandle91 {
-		if _, e := readHandleReference(r, g.Handle); e != nil {
+		if _, e := objrec.ReadHandleReference(r, g.Handle); e != nil {
 			return e
 		}
 	}
@@ -788,7 +789,7 @@ func decodeGenericBLOCKACTION_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gf
 // evalexpr.value.handle91（value_code=91 时占 1 个引用）。
 func decodeGenericBLOCKGRIPLOCATIONCOMPONENT_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if g.valueHandle91 {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -800,13 +801,13 @@ func decodeGenericBLOCKGRIPLOCATIONCOMPONENT_HDL(r *bitstream.BitStream, ver dwg
 // decodeGenericBLOCKUSERPARAMETER_HDL handle 流：assocvariable +
 // value.u.handle（EvalVariant 为 HANDLE 类型时）。
 func decodeGenericBLOCKUSERPARAMETER_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
-	h, e := readHandleReference(r, g.Handle) // assocvariable
+	h, e := objrec.ReadHandleReference(r, g.Handle) // assocvariable
 	if e != nil {
 		return e
 	}
 	g.Handles = append(g.Handles, h)
 	if g.valueHandle91 {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -824,7 +825,7 @@ func decodeGenericBLOCKREPRESENTATION(r *bitstream.BitStream, ver dwgVersion, fr
 
 // decodeGenericBLOCKREPRESENTATION_HDL handle 流：block 句柄。
 func decodeGenericBLOCKREPRESENTATION_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
-	h, e := readHandleReference(r, g.Handle)
+	h, e := objrec.ReadHandleReference(r, g.Handle)
 	if e != nil {
 		return e
 	}

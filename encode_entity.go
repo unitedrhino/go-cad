@@ -12,6 +12,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
 // collectEntityRawBits 收集实体 round-trip 回放所需的原始位串（解码侧）：
@@ -40,7 +41,7 @@ func collectEntityRawBits(r *bitstream.BitStream, b *baseEntity, head *commonEnt
 // objectRecord 时需要 MS size 与 R2010+ 的 UMC 元数据（dataEndBit 推导
 // 依赖 size/handleSizeFieldBits/handleStreamSizeBits/bodyBitOffset），
 // 这些值无法在 scanEntityBest 内部获得，由版本化解码入口补记。
-func attachEntityRecordMeta(ent any, rec *objectRecord) {
+func attachEntityRecordMeta(ent any, rec *objrec.ObjectRecord) {
 	if ent == nil || rec == nil {
 		return
 	}
@@ -48,11 +49,11 @@ func attachEntityRecordMeta(ent any, rec *objectRecord) {
 	if b == nil {
 		return
 	}
-	b.r2010Plus = rec.r2010Plus
-	b.sizeBytes = rec.size
-	b.hSizeField = rec.handleSizeFieldBits
-	b.hssBits = rec.handleStreamSizeBits
-	b.bodyBitOff = rec.bodyBitOffset
+	b.r2010Plus = rec.R2010Plus
+	b.sizeBytes = rec.Size
+	b.hSizeField = rec.HandleSizeFieldBits
+	b.hssBits = rec.HandleStreamSizeBits
+	b.bodyBitOff = rec.BodyBitOffset
 }
 
 // encodeEntityR200x 将实体重编码为完整记录 body 位流（R13-R2018 家族

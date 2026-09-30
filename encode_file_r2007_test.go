@@ -7,6 +7,7 @@ package cad
 
 import (
 	"bytes"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -110,7 +111,7 @@ func TestWriteReadR2007(t *testing.T) {
 			for i := range refs1 {
 				if refs1[i] != refs2[i] {
 					t.Errorf("条目 %d 不一致: (%d,%d) != (%d,%d)",
-						i, refs2[i].handle, refs2[i].offset, refs1[i].handle, refs1[i].offset)
+						i, refs2[i].Handle, refs2[i].Offset, refs1[i].Handle, refs1[i].Offset)
 				}
 			}
 		})
@@ -118,13 +119,13 @@ func TestWriteReadR2007(t *testing.T) {
 }
 
 // r2007GateMapRefs 解析样本的对象图条目（R2007 容器 AcDb:Handles 段）。
-func r2007GateMapRefs(t *testing.T, data []byte) []objectRef {
+func r2007GateMapRefs(t *testing.T, data []byte) []objrec.ObjectRef {
 	t.Helper()
 	handles, err := loadNamedSectionData(data, "AcDb:Handles")
 	if err != nil {
 		t.Fatalf("加载 AcDb:Handles 段失败: %v", err)
 	}
-	refs, err := parseObjectMapHandles(handles)
+	refs, err := objrec.ParseObjectMapHandles(handles)
 	if err != nil {
 		t.Fatalf("解析对象图失败: %v", err)
 	}

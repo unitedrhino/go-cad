@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
 // decodeAcisEvalExprFields 读 AcDbEvalExpr_fields（dwg2.spec 公共宏，
@@ -497,13 +498,13 @@ func skipAcisWireBits(r *bitstream.BitStream) error {
 // 与 history_id（version>1，宽容读取）。
 func decodeGenericACSH_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	if g.valueHandle91 {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
 		g.Handles = append(g.Handles, h)
 	}
-	h, e := readHandleReference(r, g.Handle) // history_node.material
+	h, e := objrec.ReadHandleReference(r, g.Handle) // history_node.material
 	if e != nil {
 		return e
 	}
@@ -513,7 +514,7 @@ func decodeGenericACSH_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g
 		if version > 1 && ver >= verR2007 {
 			if nm, _ := g.Field("num_materials").(int64); nm > 0 && nm <= 1_000_000 {
 				for i := int64(0); i < nm; i++ {
-					h, e := readHandleReference(r, g.Handle)
+					h, e := objrec.ReadHandleReference(r, g.Handle)
 					if e != nil {
 						return e
 					}
@@ -523,7 +524,7 @@ func decodeGenericACSH_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g
 		}
 		if version > 1 {
 			// history_id：spec 解码器分支带 AVAIL_BITS 防御，错位即放弃
-			if h, e := readHandleReference(r, g.Handle); e == nil {
+			if h, e := objrec.ReadHandleReference(r, g.Handle); e == nil {
 				g.Handles = append(g.Handles, h)
 			}
 		}

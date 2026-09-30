@@ -8,6 +8,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"os"
 	"strings"
 )
@@ -361,7 +362,7 @@ func decodeGenericSCALE(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *o
 
 // decodeInternalObject 按类型码/类名查找并解码通用内部对象：
 // dat 流专有字段 → handle 流（owner + reactors + xdic + 附加引用）。
-func decodeInternalObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVersion, r2013Plus bool, typeCode uint16, className string, codepage uint16) (*objGeneric, error) {
+func decodeInternalObject(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver dwgVersion, r2013Plus bool, typeCode uint16, className string, codepage uint16) (*objGeneric, error) {
 	// UNDERLAY 引用实体：实体布局但经对象分发（此前 UNKNOWN_OBJ 兜底），
 	// 按实体头 + UNDERLAY_fields 解码（见 objects_underlay.go）
 	if className == "PDFUNDERLAY" || className == "DWFUNDERLAY" || className == "DGNUNDERLAY" {
@@ -382,7 +383,7 @@ func decodeInternalObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVers
 		ug.Fields = append(ug.Fields,
 			objField{"object", ug.Name},
 			objField{"type", int64(typeCode)},
-			objField{"size", int64(rec.size)},
+			objField{"size", int64(rec.Size)},
 			objField{"has_ds_data", false},
 		)
 		_ = skipEEDChain(r)
@@ -403,27 +404,27 @@ func decodeInternalObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVers
 			}
 		}
 		if bitsizePosU == bitsizePosDerived {
-			ug.ObjSizeBit = rec.dataEndBit() - rec.bodyBitOffset - uint64(rec.handleSizeFieldBits)
-			r.SetBitPos(rec.dataEndBit())
+			ug.ObjSizeBit = rec.DataEndBit() - rec.BodyBitOffset - uint64(rec.HandleSizeFieldBits)
+			r.SetBitPos(rec.DataEndBit())
 		} else {
-			r.SetBitPos(rec.bodyBitOffset + ug.ObjSizeBit)
+			r.SetBitPos(rec.BodyBitOffset + ug.ObjSizeBit)
 		}
 		ug.Fields = append(ug.Fields, objField{"is_xdic_missing", ug.XdicMissing})
 		ug.Fields = append(ug.Fields, objField{"bitsize", int64(ug.ObjSizeBit)})
 		ug.Owner, _ = readOwnerHandle(r, ug.Handle)
 		for i := 0; i < ug.NumReactors; i++ {
-			if _, e := readHandleReference(r, ug.Handle); e != nil {
+			if _, e := objrec.ReadHandleReference(r, ug.Handle); e != nil {
 				break
 			}
 		}
 		if !ug.XdicMissing {
-			readHandleReference(r, ug.Handle)
+			objrec.ReadHandleReference(r, ug.Handle)
 		}
 		// 回放收集：data 段与 handle 流的原始位串（同通用路径模式）
 		unkEnd := r.TellBits()
 		ug.headRawBits = bitstream.CollectBits(r, unkStart, unkEnd)
 		ug.RawHandleBits = bitstream.CollectBits(r, unkEnd, uint64(len(r.Src))*8)
-		ug.hdOffsetBits = unkStart - rec.bodyBitOffset
+		ug.hdOffsetBits = unkStart - rec.BodyBitOffset
 		return ug, nil
 	}
 	// DICTIONARYWDFLT：DICTIONARY 布局 + hdl 尾 defaultid
@@ -434,12 +435,12 @@ func decodeInternalObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVers
 			return nil, e
 		}
 		// 位串收集：data 段 + handle 流 + 元数据（与通用路径同构）
-		hdOff := startPos - rec.bodyBitOffset
-		headRaw := bitstream.CollectBits(r, startPos+32, rec.dataEndBit())
+		hdOff := startPos - rec.BodyBitOffset
+		headRaw := bitstream.CollectBits(r, startPos+32, rec.DataEndBit())
 		flds := []objField{
 			{"object", "DICTIONARYWDFLT"},
 			{"type", int64(typeCode)},
-			{"size", int64(rec.size)},
+			{"size", int64(rec.Size)},
 			{"bitsize", int64(dd.objSizeBit)},
 			{"num_reactors", int64(dd.numReactors)},
 			{"is_xdic_missing", dd.xdicMissing},
@@ -487,13 +488,13 @@ func decodeInternalObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVers
 	}
 	g := &objGeneric{Name: className}
 	if g.Name == "" {
-		if n, ok := objTypeCode[typeCode]; ok {
+		if n, ok := objrec.ObjTypeCode[typeCode]; ok {
 			g.Name = n
 		}
 	}
 	bitsizePos := dictBitsizePos(ver)
 	// dat 段前导位：RL bitsize 字段起点（body 内），重编码位长校验用
-	g.hdOffsetBits = r.TellBits() - rec.bodyBitOffset
+	g.hdOffsetBits = r.TellBits() - rec.BodyBitOffset
 	if bitsizePos == bitsizePosHead {
 		bs, e := readInlineBitsize(r)
 		if e != nil {
@@ -558,10 +559,10 @@ func decodeInternalObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVers
 	if ver >= verR2007 {
 		bitsize := g.ObjSizeBit
 		if bitsize == 0 { // R2010+：由记录头推导
-			bitsize = rec.dataEndBit() - rec.bodyBitOffset - uint64(rec.handleSizeFieldBits)
+			bitsize = rec.DataEndBit() - rec.BodyBitOffset - uint64(rec.HandleSizeFieldBits)
 			g.ObjSizeBit = bitsize
 		}
-		libreBase := uint64(rec.handleSizeFieldBits) + rec.bodyBitOffset
+		libreBase := uint64(rec.HandleSizeFieldBits) + rec.BodyBitOffset
 		savedBits := r.TellBits()
 		r.SetBitPos(libreBase + bitsize - 1)
 		b, e := r.ReadB()
@@ -580,28 +581,28 @@ func decodeInternalObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVers
 	// 终点为记录数据结束位（dataEndBit），并保存重建 rec 元数据。
 	if bitsizePos == bitsizePosHead {
 		if g.ObjSizeBit > g.hdOffsetBits+32 {
-			g.headRawBits = bitstream.CollectBits(r, rec.bodyBitOffset+g.hdOffsetBits+32, rec.bodyBitOffset+g.ObjSizeBit)
+			g.headRawBits = bitstream.CollectBits(r, rec.BodyBitOffset+g.hdOffsetBits+32, rec.BodyBitOffset+g.ObjSizeBit)
 		}
 	} else {
 		g.r2010Plus = true
-		g.sizeBytes = rec.size
-		g.hSizeField = rec.handleSizeFieldBits
-		g.hssBits = rec.handleStreamSizeBits
-		g.bodyBitOff = rec.bodyBitOffset
-		g.preBits = bitstream.CollectBits(r, rec.bodyBitOffset, rec.bodyBitOffset+g.hdOffsetBits)
+		g.sizeBytes = rec.Size
+		g.hSizeField = rec.HandleSizeFieldBits
+		g.hssBits = rec.HandleStreamSizeBits
+		g.bodyBitOff = rec.BodyBitOffset
+		g.preBits = bitstream.CollectBits(r, rec.BodyBitOffset, rec.BodyBitOffset+g.hdOffsetBits)
 		// 注意：终点 dataEndBit 与 RawHandleBits 起点（bitsize）存在
 		// hSizeField 位重叠——R2010+ 首轮 handle 定位（setBitPos
 		// dataEndBit）能通过 gold 的机理未明，修正需连同首轮定位
 		// 一起统一，见任务文档 R2010+ 卡点记录
-		g.headRawBits = bitstream.CollectBits(r, rec.bodyBitOffset+g.hdOffsetBits, rec.dataEndBit())
+		g.headRawBits = bitstream.CollectBits(r, rec.BodyBitOffset+g.hdOffsetBits, rec.DataEndBit())
 	}
 	// handle 流
 	switch bitsizePos {
 	case bitsizePosDerived:
-		g.ObjSizeBit = rec.dataEndBit() - rec.bodyBitOffset - uint64(rec.handleSizeFieldBits)
-		r.SetBitPos(rec.dataEndBit())
+		g.ObjSizeBit = rec.DataEndBit() - rec.BodyBitOffset - uint64(rec.HandleSizeFieldBits)
+		r.SetBitPos(rec.DataEndBit())
 	default:
-		r.SetBitPos(rec.bodyBitOffset + g.ObjSizeBit)
+		r.SetBitPos(rec.BodyBitOffset + g.ObjSizeBit)
 	}
 	// handle 流原始位串：起点（bitsize）至 body 尾，供重编码原样写回
 	g.RawHandleBits = bitstream.CollectBits(r, r.TellBits(), uint64(len(r.Src))*8)
@@ -609,12 +610,12 @@ func decodeInternalObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVers
 		return nil, fmt.Errorf("hdl.owner@%d: %w", r.TellBits(), err)
 	}
 	for i := 0; i < g.NumReactors; i++ {
-		if _, err = readHandleReference(r, g.Handle); err != nil {
+		if _, err = objrec.ReadHandleReference(r, g.Handle); err != nil {
 			return nil, fmt.Errorf("hdl.reactor%d@%d: %w", i, r.TellBits(), err)
 		}
 	}
 	if !g.XdicMissing {
-		if _, err = readHandleReference(r, g.Handle); err != nil {
+		if _, err = objrec.ReadHandleReference(r, g.Handle); err != nil {
 			return nil, fmt.Errorf("hdl.xdic@%d: %w", r.TellBits(), err)
 		}
 	}
@@ -626,7 +627,7 @@ func decodeInternalObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVers
 	g.Fields = append(g.Fields,
 		objField{"object", objName},
 		objField{"type", int64(typeCode)},
-		objField{"size", int64(rec.size)},
+		objField{"size", int64(rec.Size)},
 		objField{"bitsize", int64(g.ObjSizeBit)},
 		objField{"num_reactors", int64(g.NumReactors)},
 		objField{"is_xdic_missing", g.XdicMissing},
@@ -645,7 +646,7 @@ func decodeInternalObject(r *bitstream.BitStream, rec *objectRecord, ver dwgVers
 	}
 	n += vecN
 	for i := 0; i < n; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return nil, fmt.Errorf("hdl.vec%d/%d@%d: %w", i, n, r.TellBits(), e)
 		}
@@ -756,7 +757,7 @@ func decodeGenericSORTENTSTABLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRe
 	}
 	g.Fields = append(g.Fields, objField{"num_ents", int64(num)})
 	for i := 0; i < int(num); i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -770,7 +771,7 @@ func decodeGenericSORTENTSTABLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRe
 // block_owner（排序所属的 mspace/pspace BLOCK_HEADER，soft owner）+
 // ents×num_ents（排序前顺序的实体引用，与 sort_ents 按下标配对）。
 func decodeGenericSORTENTSTABLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
-	h, e := readHandleReference(r, g.Handle)
+	h, e := objrec.ReadHandleReference(r, g.Handle)
 	if e != nil {
 		return e
 	}
@@ -778,7 +779,7 @@ func decodeGenericSORTENTSTABLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *
 	g.Fields = append(g.Fields, objField{"block_owner", int64(h)})
 	num, _ := g.Field("num_ents").(int64)
 	for i := 0; i < int(num); i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}

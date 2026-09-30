@@ -7,6 +7,7 @@ package cad
 import (
 	"bytes"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"testing"
 )
 
@@ -72,17 +73,17 @@ func buildSyntheticLineR2000() ([]byte, uint64) {
 func TestEntityRoundTripSynthetic(t *testing.T) {
 	original, datEnd := buildSyntheticLineR2000()
 	// 解码
-	rec := &objectRecord{body: original, bodyBitOffset: 0, size: uint32(len(original))}
-	h, err := parseObjHeader(rec)
+	rec := &objrec.ObjectRecord{Body: original, BodyBitOffset: 0, Size: uint32(len(original))}
+	h, err := objrec.ParseObjHeader(rec)
 	if err != nil {
 		t.Fatalf("parseObjHeader 失败: %v", err)
 	}
-	if h.typeCode != 0x13 {
-		t.Fatalf("typeCode: %X != 0x13", h.typeCode)
+	if h.TypeCode != 0x13 {
+		t.Fatalf("typeCode: %X != 0x13", h.TypeCode)
 	}
-	rr := rec.bodyBitStream()
-	rr.SetBitPos(h.dataStartBit)
-	e1, err := decodeEntityFieldsVer(rr, h, 50, rec.size, "LINE", 0x13, verR2000, 0, nil, "")
+	rr := rec.BodyBitStream()
+	rr.SetBitPos(h.DataStartBit)
+	e1, err := decodeEntityFieldsVer(rr, h, 50, rec.Size, "LINE", 0x13, verR2000, 0, nil, "")
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
@@ -106,8 +107,8 @@ func TestEntityRoundTripSynthetic(t *testing.T) {
 	// 位串收集完整性：preBits = BS 类型码前导位，RawHandleBits 从
 	// handle 流起点到记录尾
 	b := entBase(e1)
-	if uint64(len(b.preBits)) != h.dataStartBit {
-		t.Errorf("preBits 位长: %d != %d", len(b.preBits), h.dataStartBit)
+	if uint64(len(b.preBits)) != h.DataStartBit {
+		t.Errorf("preBits 位长: %d != %d", len(b.preBits), h.DataStartBit)
 	}
 	if b.objSizeBit != datEnd {
 		t.Errorf("objSizeBit: %d != %d", b.objSizeBit, datEnd)
@@ -130,14 +131,14 @@ func TestEntityRoundTripSynthetic(t *testing.T) {
 		t.Fatalf("回放位流不一致:\n got % X\nwant % X", body2, original)
 	}
 	// 重解码：字段级一致
-	rec2 := &objectRecord{body: body2, bodyBitOffset: 0, size: uint32(len(body2))}
-	h2, err := parseObjHeader(rec2)
+	rec2 := &objrec.ObjectRecord{Body: body2, BodyBitOffset: 0, Size: uint32(len(body2))}
+	h2, err := objrec.ParseObjHeader(rec2)
 	if err != nil {
 		t.Fatalf("重解码 parseObjHeader 失败: %v", err)
 	}
-	rr2 := rec2.bodyBitStream()
-	rr2.SetBitPos(h2.dataStartBit)
-	e2, err := decodeEntityFieldsVer(rr2, h2, 50, rec2.size, "LINE", 0x13, verR2000, 0, nil, "")
+	rr2 := rec2.BodyBitStream()
+	rr2.SetBitPos(h2.DataStartBit)
+	e2, err := decodeEntityFieldsVer(rr2, h2, 50, rec2.Size, "LINE", 0x13, verR2000, 0, nil, "")
 	if err != nil {
 		t.Fatalf("重解码失败: %v", err)
 	}

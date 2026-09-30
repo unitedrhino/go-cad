@@ -6,6 +6,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"strconv"
 )
@@ -328,7 +329,7 @@ func finishHatchBody(r *bitstream.BitStream, head *commonEntityHead, h *entHatch
 	for pi := range h.paths {
 		p := &h.paths[pi]
 		for i := uint32(0); i < p.numBoundaryHandles; i++ {
-			hh, e := readHandleReference(r, head.handle)
+			hh, e := objrec.ReadHandleReference(r, head.handle)
 			if e != nil {
 				break
 			}

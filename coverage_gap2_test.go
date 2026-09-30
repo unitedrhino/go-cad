@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"math/rand"
 	"os"
@@ -1458,8 +1459,8 @@ func TestDebugFailures(t *testing.T) {
 	if len(d.DebugFailures()) != 0 {
 		t.Fatal("初始 debugFailures 应为空")
 	}
-	d.failBy(objectRef{handle: 0x30}, errWriterErr)
-	d.failBy(objectRef{handle: 0x31}, errWriterErr)
+	d.failBy(objrec.ObjectRef{Handle: 0x30}, errWriterErr)
+	d.failBy(objrec.ObjectRef{Handle: 0x31}, errWriterErr)
 	got := d.DebugFailures()
 	if len(got) != 2 || got[0x30] != "write failed" {
 		t.Errorf("DebugFailures = %v", got)

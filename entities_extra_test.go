@@ -4,6 +4,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"testing"
@@ -125,9 +126,9 @@ func TestDecodeInsertWithHandleStream(t *testing.T) {
 	w.H(0x05, 77)  // 块头句柄
 
 	body := w.Bytes()
-	rec := &objectRecord{
-		body: body, size: uint32(len(body)),
-		r2010Plus: true, handleSizeFieldBits: 8, handleStreamSizeBits: uint32(len(body)*8 - int(dataEndBit)),
+	rec := &objrec.ObjectRecord{
+		Body: body, Size: uint32(len(body)),
+		R2010Plus: true, HandleSizeFieldBits: 8, HandleStreamSizeBits: uint32(len(body)*8 - int(dataEndBit)),
 	}
 	r := bitstream.NewBitStream(body)
 	_, _ = r.ReadUMC()

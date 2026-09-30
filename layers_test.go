@@ -4,6 +4,7 @@ package cad
 
 import (
 	"encoding/binary"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"testing"
 )
@@ -104,27 +105,27 @@ func TestParseObjectRecordR2010Layout(t *testing.T) {
 	data := w.Bytes()
 
 	objects := append([]byte{}, data...)
-	refs := []objectRef{{handle: 1, offset: 0}}
-	rec, err := parseObjectRecord(objects, refs[0], true)
+	refs := []objrec.ObjectRef{{Handle: 1, Offset: 0}}
+	rec, err := objrec.ParseObjectRecord(objects, refs[0], true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rec.size != 8 {
-		t.Fatalf("size=%d 期望 8", rec.size)
+	if rec.Size != 8 {
+		t.Fatalf("size=%d 期望 8", rec.Size)
 	}
-	if !rec.r2010Plus {
+	if !rec.R2010Plus {
 		t.Fatal("r2010Plus 应为 true")
 	}
 	// hss=0 → 数据结束位 = bodyBitOffset + hsf + size*8 - 0
-	h, err := parseObjHeader(rec)
+	h, err := objrec.ParseObjHeader(rec)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if h.typeCode != 0x13 {
-		t.Fatalf("typeCode=%#x 期望 0x13", h.typeCode)
+	if h.TypeCode != 0x13 {
+		t.Fatalf("typeCode=%#x 期望 0x13", h.TypeCode)
 	}
-	if rec.dataEndBit() < uint64(rec.size)*8 {
-		t.Fatalf("dataEndBit=%d 异常", rec.dataEndBit())
+	if rec.DataEndBit() < uint64(rec.Size)*8 {
+		t.Fatalf("dataEndBit=%d 异常", rec.DataEndBit())
 	}
 	_ = payload
 }
@@ -136,37 +137,37 @@ func TestParseObjHeaderR2000Layout(t *testing.T) {
 	w.BS(0x13)
 	w.RCS(make([]byte, 16))
 	objects := w.Bytes()
-	rec, err := parseObjectRecord(objects, objectRef{handle: 2, offset: 0}, false)
+	rec, err := objrec.ParseObjectRecord(objects, objrec.ObjectRef{Handle: 2, Offset: 0}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := parseObjHeader(rec)
+	h, err := objrec.ParseObjHeader(rec)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if h.typeCode != 0x13 {
-		t.Fatalf("typeCode=%#x", h.typeCode)
+	if h.TypeCode != 0x13 {
+		t.Fatalf("typeCode=%#x", h.TypeCode)
 	}
 }
 
 func TestReadModularChars(t *testing.T) {
 	data := []byte{0x05}
 	pos := 0
-	v, err := readUnsignedModularChar(data, &pos)
+	v, err := objrec.ReadUnsignedModularChar(data, &pos)
 	if err != nil || v != 5 || pos != 1 {
 		t.Fatalf("UMC: v=%d pos=%d err=%v", v, pos, err)
 	}
 	// 有符号：0x44（低 6 位 4，符号位 0x40 置位）→ -4
 	data2 := []byte{0x44}
 	pos2 := 0
-	v2, err := readModularChar(data2, &pos2)
+	v2, err := objrec.ReadModularChar(data2, &pos2)
 	if err != nil || v2 != -4 {
 		t.Fatalf("MC(-4): v=%d err=%v", v2, err)
 	}
 	// 正数：0x04 → 4
 	data3 := []byte{0x04}
 	pos3 := 0
-	v4, _ := readModularChar(data3, &pos3)
+	v4, _ := objrec.ReadModularChar(data3, &pos3)
 	if v4 != 4 {
 		t.Fatalf("MC(4): v=%d", v4)
 	}
@@ -175,7 +176,7 @@ func TestReadModularChars(t *testing.T) {
 func TestParseObjectMapHandlesTerminator(t *testing.T) {
 	// 只有终止块 → 空索引
 	data := []byte{0x00, 0x02}
-	objects, err := parseObjectMapHandles(data)
+	objects, err := objrec.ParseObjectMapHandles(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +184,7 @@ func TestParseObjectMapHandlesTerminator(t *testing.T) {
 		t.Fatalf("期望空索引得到 %d 条", len(objects))
 	}
 	// 数据不足报错
-	if _, err := parseObjectMapHandles([]byte{0x00, 0x10, 0x01}); err == nil {
+	if _, err := objrec.ParseObjectMapHandles([]byte{0x00, 0x10, 0x01}); err == nil {
 		t.Error("块越界应报错")
 	}
 }
@@ -233,30 +234,30 @@ func TestScoreClassName(t *testing.T) {
 }
 
 func TestEntityTypeName(t *testing.T) {
-	if entityTypeName(0x13, nil) != "LINE" {
+	if objrec.EntityTypeName(0x13, nil) != "LINE" {
 		t.Fatal("0x13 应为 LINE")
 	}
-	if entityTypeName(0x33, nil) != "LAYER" {
+	if objrec.EntityTypeName(0x33, nil) != "LAYER" {
 		t.Fatal("0x33 应为 LAYER")
 	}
 	dyn := map[uint16]string{500: "ACDBSOMETHING"}
-	if entityTypeName(500, dyn) != "ACDBSOMETHING" {
+	if objrec.EntityTypeName(500, dyn) != "ACDBSOMETHING" {
 		t.Fatal("动态类名应命中")
 	}
-	if entityTypeName(999, nil) != "" {
+	if objrec.EntityTypeName(999, nil) != "" {
 		t.Fatal("未知码应返回空")
 	}
 }
 
 func TestIsEntityType(t *testing.T) {
-	if !isEntityType(0x13, nil) || !isEntityType(0x07, nil) || !isEntityType(0x4D, nil) {
+	if !objrec.IsEntityType(0x13, nil) || !objrec.IsEntityType(0x07, nil) || !objrec.IsEntityType(0x4D, nil) {
 		t.Error("基础图元类型应为实体")
 	}
-	if isEntityType(0x33, nil) {
+	if objrec.IsEntityType(0x33, nil) {
 		t.Error("LAYER 不是实体")
 	}
 	dyn := map[uint16]string{500: "ACDBHATCH"}
-	if !isEntityType(500, dyn) {
+	if !objrec.IsEntityType(500, dyn) {
 		t.Error("动态实体类应命中")
 	}
 }

@@ -10,6 +10,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
 // decodeAssocActionFields AcDbAssocAction_fields 的 dat 流部分：
@@ -64,7 +65,7 @@ func decodeAssocActionFields(r *bitstream.BitStream, ver dwgVersion, fr *gfRead,
 // owningnetwork + actionbody + deps×num_deps。
 func decodeAssocActionHandles(r *bitstream.BitStream, g *objGeneric, numDeps int) error {
 	for i := 0; i < 2+numDeps; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -320,7 +321,7 @@ func decodeGenericASSOC2DCONSTRAINTGROUP_HDL(r *bitstream.BitStream, ver dwgVers
 	numActions, _ := g.Field("num_actions").(int64)
 	total := 2 + int(numDeps) + 1 + int(numActions)
 	for i := 0; i < total; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -368,7 +369,7 @@ func decodeGenericASSOCVARIABLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *
 		return err
 	}
 	if g.valueHandle91 {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -439,7 +440,7 @@ func decodeGenericASSOCPATHACTIONPARAM(r *bitstream.BitStream, ver dwgVersion, f
 func decodeGenericASSOCPATHACTIONPARAM_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	numParams, _ := g.Field("num_params").(int64)
 	for i := 0; i < int(numParams); i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -578,7 +579,7 @@ func makeGenericSURFACEACTIONBODY(tail func(*bitstream.BitStream, dwgVersion, *g
 // pab.deps/pab.assocdep/values 句柄/sab.assocdep（按 hdlCount）。
 func decodeGenericSURFACEACTIONBODY_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < g.hdlCount; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}

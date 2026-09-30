@@ -7,6 +7,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"os"
 )
 
@@ -828,7 +829,7 @@ func decodeGenericTABLESTYLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfR
 		n = int(v)
 	}
 	for i := 0; i < n; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -985,7 +986,7 @@ func decodeGenericMLEADERSTYLE(r *bitstream.BitStream, ver dwgVersion, fr *gfRea
 // line_type + arrow_head + text_style + block（4 个）。
 func decodeGenericMLEADERSTYLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < 4; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -1093,7 +1094,7 @@ func decodeGenericDETAILVIEWSTYLE(r *bitstream.BitStream, ver dwgVersion, fr *gf
 // decodeGenericDETAILVIEWSTYLE_HDL DETAILVIEWSTYLE 的 handle 流 6 个。
 func decodeGenericDETAILVIEWSTYLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < 6; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -1216,7 +1217,7 @@ func decodeGenericSECTIONVIEWSTYLE(r *bitstream.BitStream, ver dwgVersion, fr *g
 // decodeGenericSECTIONVIEWSTYLE_HDL SECTIONVIEWSTYLE 的 handle 流 6 个。
 func decodeGenericSECTIONVIEWSTYLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < 6; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}

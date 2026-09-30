@@ -7,6 +7,7 @@ package cad
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"path/filepath"
@@ -179,27 +180,27 @@ func TestEntityScanDebug(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	index, err := parseObjectMapHandles(objectMap)
+	index, err := objrec.ParseObjectMapHandles(objectMap)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, ref := range index {
-		if ref.handle != wantH {
+		if ref.Handle != wantH {
 			continue
 		}
-		rec, err := parseObjectRecord(data, ref, false)
+		rec, err := objrec.ParseObjectRecord(data, ref, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		h, err := parseObjHeader(rec)
+		h, err := objrec.ParseObjHeader(rec)
 		if err != nil {
 			t.Fatal(err)
 		}
 		fmt.Printf("type=%d dataStartBit=%d size=%d bodyLen=%d dataEnd=%d codepage=%d\n",
-			h.typeCode, h.dataStartBit, rec.size, len(rec.body)*8, rec.dataEndBit(), doc.codepage)
-		r := rec.bodyBitStream()
-		r.SetBitPos(h.dataStartBit)
-		head, err := parseCommonEntityHeadR14(r, rec.dataEndBit())
+			h.TypeCode, h.DataStartBit, rec.Size, len(rec.Body)*8, rec.DataEndBit(), doc.codepage)
+		r := rec.BodyBitStream()
+		r.SetBitPos(h.DataStartBit)
+		head, err := parseCommonEntityHeadR14(r, rec.DataEndBit())
 		if err != nil {
 			t.Fatalf("head: %v", err)
 		}

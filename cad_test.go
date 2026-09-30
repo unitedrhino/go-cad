@@ -4,6 +4,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"testing"
@@ -89,7 +90,7 @@ func TestBitReaderReadTU(t *testing.T) {
 func TestReadHandleReferenceRelative(t *testing.T) {
 	// code=0x0A（软引用 +offset），counter=1 值 5：头字节 0xA1（code 高 4 位 + counter 低 4 位）
 	r := bitstream.NewBitStream([]byte{0xA1, 0x05})
-	v, err := readHandleReference(r, 100)
+	v, err := objrec.ReadHandleReference(r, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,13 +99,13 @@ func TestReadHandleReferenceRelative(t *testing.T) {
 	}
 	// code=0x06（+1），counter=0：头字节 0x60
 	r2 := bitstream.NewBitStream([]byte{0x60})
-	v2, _ := readHandleReference(r2, 100)
+	v2, _ := objrec.ReadHandleReference(r2, 100)
 	if v2 != 101 {
 		t.Fatalf("期望 101 得到 %d", v2)
 	}
 	// code=0x0C（-offset），counter=1 值 3：头字节 0xC1
 	r3 := bitstream.NewBitStream([]byte{0xC1, 0x03})
-	v3, _ := readHandleReference(r3, 100)
+	v3, _ := objrec.ReadHandleReference(r3, 100)
 	if v3 != 97 {
 		t.Fatalf("期望 97 得到 %d", v3)
 	}
@@ -121,14 +122,14 @@ func TestParseObjectMapHandles(t *testing.T) {
 		0x00, 0x00, // CRC
 		0x00, 0x02, // 终止块
 	}
-	objects, err := parseObjectMapHandles(data)
+	objects, err := objrec.ParseObjectMapHandles(data)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(objects) != 3 {
 		t.Fatalf("期望 3 个条目得到 %d", len(objects))
 	}
-	expect := []objectRef{{5, 10}, {89, 11}, {119, 16}}
+	expect := []objrec.ObjectRef{{Handle: 5, Offset: 10}, {Handle: 89, Offset: 11}, {Handle: 119, Offset: 16}}
 	for i, e := range expect {
 		if objects[i] != e {
 			t.Fatalf("条目 %d: 期望 %+v 得到 %+v", i, e, objects[i])
@@ -146,11 +147,11 @@ func TestParseObjectMapHandlesSkipsNegative(t *testing.T) {
 		0x00, 0x00,
 		0x00, 0x02,
 	}
-	objects, err := parseObjectMapHandles(data)
+	objects, err := objrec.ParseObjectMapHandles(data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(objects) != 2 || objects[1].handle != 35 || objects[1].offset != 15 {
+	if len(objects) != 2 || objects[1].Handle != 35 || objects[1].Offset != 15 {
 		t.Fatalf("负差分跳过结果错误: %+v", objects)
 	}
 }

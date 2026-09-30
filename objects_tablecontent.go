@@ -11,6 +11,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
 // readTableValueFields 读取 TABLE_value_fields 宏（Dwg_TABLE_value，
@@ -373,7 +374,7 @@ func decodeGenericTABLECONTENT_HDL(r *bitstream.BitStream, ver dwgVersion, fr *g
 		n = int(v)
 	}
 	for i := 0; i < n; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}

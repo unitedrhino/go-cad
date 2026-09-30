@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"strings"
 )
 
@@ -240,7 +241,7 @@ func decodeGenericFIELD(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *o
 // decodeGenericFIELD_HDL handle 流：childs×num_childs + objects×num_objects。
 func decodeGenericFIELD_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < g.hdlCount; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -351,7 +352,7 @@ func decodeGenericGEODATA(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g 
 
 // decodeGenericGEODATA_HDL handle 流：host_block（1 个）。
 func decodeGenericGEODATA_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
-	h, e := readHandleReference(r, g.Handle)
+	h, e := objrec.ReadHandleReference(r, g.Handle)
 	if e != nil {
 		return e
 	}
@@ -377,7 +378,7 @@ func decodeGenericSECTION_MANAGER(r *bitstream.BitStream, ver dwgVersion, fr *gf
 // decodeGenericSECTION_MANAGER_HDL handle 流：sections×num_sections。
 func decodeGenericSECTION_MANAGER_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < g.hdlCount; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -492,7 +493,7 @@ func decodeGenericSECTION_SETTINGS(r *bitstream.BitStream, ver dwgVersion, fr *g
 // destblock（按 hdlCount 累计数）。
 func decodeGenericSECTION_SETTINGS_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < g.hdlCount; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -578,7 +579,7 @@ func decodeGenericPLOTSETTINGS(r *bitstream.BitStream, ver dwgVersion, fr *gfRea
 // shadeplot（R2007a+）。R13/R14 走 plotview_name T（无句柄）。
 func decodeGenericPLOTSETTINGS_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < g.hdlCount; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -629,7 +630,7 @@ func decodeGenericLEADEROBJECTCONTEXTDATA(r *bitstream.BitStream, ver dwgVersion
 
 // decodeGenericLEADEROBJECTCONTEXTDATA_HDL handle 流：scale（1 个）。
 func decodeGenericLEADEROBJECTCONTEXTDATA_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
-	h, e := readHandleReference(r, g.Handle)
+	h, e := objrec.ReadHandleReference(r, g.Handle)
 	if e != nil {
 		return e
 	}

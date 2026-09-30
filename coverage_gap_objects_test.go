@@ -6,6 +6,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"os"
 	"path/filepath"
 	"strings"
@@ -236,7 +237,7 @@ func TestSelectBestDuplicateHandles(t *testing.T) {
 		t.Fatal("inspectCandidate 应解析成功")
 	}
 	// 构造重复：首条候选复制一份（同句柄同偏移）
-	dup := make([]objectRef, 0, len(refs)+1)
+	dup := make([]objrec.ObjectRef, 0, len(refs)+1)
 	dup = append(dup, refs[0], refs[0])
 	dup = append(dup, refs[1:]...)
 	selected := selectBestDuplicateHandles(objectsData, dup, verR2004, nil)
@@ -245,10 +246,10 @@ func TestSelectBestDuplicateHandles(t *testing.T) {
 	}
 	seen := map[uint64]bool{}
 	for _, r := range selected {
-		if seen[r.handle] {
-			t.Fatalf("句柄 %d 重复输出", r.handle)
+		if seen[r.Handle] {
+			t.Fatalf("句柄 %d 重复输出", r.Handle)
 		}
-		seen[r.handle] = true
+		seen[r.Handle] = true
 	}
 }
 

@@ -8,6 +8,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
 // ---- DIMASSOC（dwg2.spec DWG_OBJECT(DIMASSOC)，类 526）----
@@ -154,7 +155,7 @@ func decodeGenericDIMASSOC_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRea
 		total += rc.xrefs + rc.intsect
 	}
 	for i := 0; i < total; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -254,7 +255,7 @@ func decodeGenericASSOCNETWORK_HDL(r *bitstream.BitStream, ver dwgVersion, fr *g
 	numOwned, _ := g.Field("num_owned_actions").(int64)
 	total := 2 + int(numDeps) + int(numActions) + int(numOwned)
 	for i := 0; i < total; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -299,7 +300,7 @@ func decodeGenericASSOCACTION_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gf
 	numDeps, _ := g.Field("num_deps").(int64)
 	total := 2 + int(numDeps)
 	for i := 0; i < total; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -353,7 +354,7 @@ func decodeGenericASSOCDEPENDENCY(r *bitstream.BitStream, ver dwgVersion, fr *gf
 // dep_on + readdep + node + dep_body（4 个）。
 func decodeGenericASSOCDEPENDENCY_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < 4; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -456,7 +457,7 @@ func decodeGenericEVALUATION_GRAPH(r *bitstream.BitStream, ver dwgVersion, fr *g
 func decodeGenericEVALUATION_GRAPH_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	numNodes, _ := g.Field("num_nodes").(int64)
 	for i := 0; i < int(numNodes); i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -477,7 +478,7 @@ func decodeGenericMLINESTYLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfR
 	}
 	numLines, _ := g.Field("num_lines").(int64)
 	for i := 0; i < int(numLines); i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -533,7 +534,7 @@ func decodeGenericASSOCOSNAPPOINTREFACTIONPARAM(r *bitstream.BitStream, ver dwgV
 func decodeGenericASSOCOSNAPPOINTREFACTIONPARAM_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	numParams, _ := g.Field("num_params").(int64)
 	for i := 0; i < int(numParams); i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}

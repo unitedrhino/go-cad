@@ -7,6 +7,7 @@ package cad
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"sort"
@@ -63,8 +64,8 @@ func roundTripAll(t *testing.T, sample string, ver dwgVersion) {
 				t.Logf("bodySnap: 索引失败: %v", err1)
 			} else {
 				for _, ref := range index {
-					if rec, err2 := parseObjectRecord(objectsData, ref, true); err2 == nil {
-						bodySnaps[ref.handle] = rec.body
+					if rec, err2 := objrec.ParseObjectRecord(objectsData, ref, true); err2 == nil {
+						bodySnaps[ref.Handle] = rec.Body
 					}
 				}
 				t.Logf("bodySnap: 快照数=%d", len(bodySnaps))
@@ -102,8 +103,8 @@ func roundTripAll(t *testing.T, sample string, ver dwgVersion) {
 						if d, ok := doc.dictionaries[h]; ok && d != nil {
 							db2, derr := encodeDictionaryR2000(d, ver, false)
 							if derr == nil {
-								drec := &objectRecord{body: db2, bodyBitOffset: 0, size: uint32(len(db2))}
-								if _, derr = decodeDictionaryObjectFull(drec.bodyBitStream(), drec, ver, false, false); derr == nil {
+								drec := &objrec.ObjectRecord{Body: db2, BodyBitOffset: 0, Size: uint32(len(db2))}
+								if _, derr = decodeDictionaryObjectFull(drec.BodyBitStream(), drec, ver, false, false); derr == nil {
 									pass++
 									return
 								}
@@ -119,12 +120,12 @@ func roundTripAll(t *testing.T, sample string, ver dwgVersion) {
 				}
 				return
 			}
-			rec2 := &objectRecord{body: body2, bodyBitOffset: g.bodyBitOff, size: g.sizeBytes,
-				r2010Plus: g.r2010Plus, handleSizeFieldBits: g.hSizeField, handleStreamSizeBits: g.hssBits}
+			rec2 := &objrec.ObjectRecord{Body: body2, BodyBitOffset: g.bodyBitOff, Size: g.sizeBytes,
+				R2010Plus: g.r2010Plus, HandleSizeFieldBits: g.hSizeField, HandleStreamSizeBits: g.hssBits}
 			if !g.r2010Plus {
-				rec2.size = uint32(len(body2))
+				rec2.Size = uint32(len(body2))
 			}
-			rr := rec2.bodyBitStream()
+			rr := rec2.BodyBitStream()
 			if g.r2010Plus {
 				// 调用契约：调用方需定位到 dataStartBit（记录头之后）
 				rr.SetBitPos(g.bodyBitOff + uint64(len(g.preBits)))
@@ -244,22 +245,22 @@ func roundTripAllEntities(t *testing.T, doc *Document, data []byte, sample strin
 				t.Logf("%s h=%d diff@%d body2=%dB snap=%dB", typeName, h, firstDiff, len(body2), len(snap))
 			}
 			// 重建记录并重解码（坐标系与源一致，走标准实体入口）
-			rec2 := &objectRecord{body: body2, bodyBitOffset: b1.bodyBitOff, size: b1.sizeBytes,
-				r2010Plus: b1.r2010Plus, handleSizeFieldBits: b1.hSizeField, handleStreamSizeBits: b1.hssBits}
-			h2, err := parseObjHeader(rec2)
+			rec2 := &objrec.ObjectRecord{Body: body2, BodyBitOffset: b1.bodyBitOff, Size: b1.sizeBytes,
+				R2010Plus: b1.r2010Plus, HandleSizeFieldBits: b1.hSizeField, HandleStreamSizeBits: b1.hssBits}
+			h2, err := objrec.ParseObjHeader(rec2)
 			if err != nil {
 				t.Logf("%s h=%d 重解码记录头失败: %v", typeName, h, err)
 				fails[typeName+"(重解码)"]++
 				fail++
 				return
 			}
-			rr := rec2.bodyBitStream()
-			rr.SetBitPos(h2.dataStartBit)
+			rr := rec2.BodyBitStream()
+			rr.SetBitPos(h2.DataStartBit)
 			var e2 any
 			if isVersionedEntityKind(typeName) {
 				e2, err = decodeVersionedEntity(rr, h2, h, typeName, ver)
 			} else {
-				e2, err = decodeEntityFieldsVer(rr, h2, h, rec2.size, typeName, b1.typeCode, ver, doc.codepage, dynamicTypes, doc.lightingUnits)
+				e2, err = decodeEntityFieldsVer(rr, h2, h, rec2.Size, typeName, b1.typeCode, ver, doc.codepage, dynamicTypes, doc.lightingUnits)
 			}
 			if err != nil {
 				t.Logf("%s h=%d 重解码失败: %v", typeName, h, err)

@@ -8,6 +8,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
 // readCommonTableFlags 读取 COMMON_TABLE_FLAGS 并存储字段：
@@ -198,7 +199,7 @@ func decodeGenericBLOCKHEADER_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gf
 		n = 5
 	}
 	for i := 0; i < n; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -348,7 +349,7 @@ func decodeGenericCONTROL_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead
 		}
 	}
 	for i := 0; i < n+extra; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -573,7 +574,7 @@ func decodeGenericVPORT_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, 
 		n = 6
 	}
 	for i := 0; i < n; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -999,7 +1000,7 @@ func decodeGenericDIMSTYLE_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRea
 		n = 9
 	}
 	for i := 0; i < n; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -1067,7 +1068,7 @@ func decodeGenericVX_TABLE_RECORD(r *bitstream.BitStream, ver dwgVersion, fr *gf
 // viewport + prev_entry（2 个）。
 func decodeGenericVX_TABLE_RECORD_HDL(r *bitstream.BitStream, ver dwgVersion, fr *gfRead, g *objGeneric) error {
 	for i := 0; i < 2; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}
@@ -1084,7 +1085,7 @@ func decodeGenericCELLSTYLEMAP_HDL(r *bitstream.BitStream, ver dwgVersion, fr *g
 		n = int(v)
 	}
 	for i := 0; i < n; i++ {
-		h, e := readHandleReference(r, g.Handle)
+		h, e := objrec.ReadHandleReference(r, g.Handle)
 		if e != nil {
 			return e
 		}

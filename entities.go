@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"os"
 	"strconv"
@@ -597,36 +598,36 @@ func parseCommonEntityHeadR2013(r *bitstream.BitStream, dataEndBit uint64) (comm
 //     material/shadow(R2007+) → plotstyle → visual styles(R2010+)
 func parseCommonEntityHandles(r *bitstream.BitStream, head *commonEntityHead) (owner, layer uint64, err error) {
 	if head.entityMode == 0 {
-		if owner, err = readHandleReference(r, head.handle); err != nil {
+		if owner, err = objrec.ReadHandleReference(r, head.handle); err != nil {
 			return
 		}
 	}
 	for i := uint32(0); i < head.numReactors; i++ {
-		if _, err = readHandleReference(r, head.handle); err != nil {
+		if _, err = objrec.ReadHandleReference(r, head.handle); err != nil {
 			return
 		}
 	}
 	if !head.xdicMissing {
-		if head.xdicObjHandle, err = readHandleReference(r, head.handle); err != nil {
+		if head.xdicObjHandle, err = objrec.ReadHandleReference(r, head.handle); err != nil {
 			return
 		}
 	}
 	if head.r13r14 {
 		// R13/R14：layer 在前，ltype 由 isbylayerlt 推导（1→0 不占流，0→3 占流），
 		// prev/next 在尾部
-		if layer, err = readHandleReference(r, head.handle); err != nil {
+		if layer, err = objrec.ReadHandleReference(r, head.handle); err != nil {
 			return
 		}
 		if head.ltypeFlags == 3 {
-			if _, err = readHandleReference(r, head.handle); err != nil {
+			if _, err = objrec.ReadHandleReference(r, head.handle); err != nil {
 				return
 			}
 		}
 		if !head.noLinks {
-			if head.prevEntity, err = readHandleReference(r, head.handle); err != nil { // prev_entity
+			if head.prevEntity, err = objrec.ReadHandleReference(r, head.handle); err != nil { // prev_entity
 				return
 			}
-			if head.nextEntity, err = readHandleReference(r, head.handle); err != nil { // next_entity
+			if head.nextEntity, err = objrec.ReadHandleReference(r, head.handle); err != nil { // next_entity
 				return
 			}
 		}
@@ -635,70 +636,44 @@ func parseCommonEntityHandles(r *bitstream.BitStream, head *commonEntityHead) (o
 	if head.prevNextLinks && !head.noLinks {
 		// R2000：prev/next 在 layer 之前（spec VERSIONS(R_13b1, R_2000) 块
 		// 先于 SINCE(R_2000b) 的 layer）
-		if head.prevEntity, err = readHandleReference(r, head.handle); err != nil { // prev_entity
+		if head.prevEntity, err = objrec.ReadHandleReference(r, head.handle); err != nil { // prev_entity
 			return
 		}
-		if head.nextEntity, err = readHandleReference(r, head.handle); err != nil { // next_entity
+		if head.nextEntity, err = objrec.ReadHandleReference(r, head.handle); err != nil { // next_entity
 			return
 		}
 	}
-	if layer, err = readHandleReference(r, head.handle); err != nil {
+	if layer, err = objrec.ReadHandleReference(r, head.handle); err != nil {
 		return
 	}
 	if head.ltypeFlags == 3 {
-		if _, err = readHandleReference(r, head.handle); err != nil {
+		if _, err = objrec.ReadHandleReference(r, head.handle); err != nil {
 			return
 		}
 	}
 	if head.materialFlags == 3 {
-		if _, err = readHandleReference(r, head.handle); err != nil {
+		if _, err = objrec.ReadHandleReference(r, head.handle); err != nil {
 			return
 		}
 	}
 	if head.shadowFlags == 3 {
-		if _, err = readHandleReference(r, head.handle); err != nil {
+		if _, err = objrec.ReadHandleReference(r, head.handle); err != nil {
 			return
 		}
 	}
 	if head.plotstyleFlgs == 3 {
-		if head.plotstyleHandle, err = readHandleReference(r, head.handle); err != nil {
+		if head.plotstyleHandle, err = objrec.ReadHandleReference(r, head.handle); err != nil {
 			return
 		}
 	}
 	for i := 0; i < 3; i++ { // full/face/edge visual style 句柄
 		if head.visualStyle[i] {
-			if _, err = readHandleReference(r, head.handle); err != nil {
+			if _, err = objrec.ReadHandleReference(r, head.handle); err != nil {
 				return
 			}
 		}
 	}
 	return
-}
-
-// readHandleReference 解析相对句柄引用：code 6/8 为 ±1，A/C 为加减偏移。
-func readHandleReference(r *bitstream.BitStream, base uint64) (uint64, error) {
-	h, err := r.ReadH()
-	if err != nil {
-		return 0, err
-	}
-	switch h.Code {
-	case 0x06:
-		return base + 1, nil
-	case 0x08:
-		if base == 0 {
-			return 0, nil
-		}
-		return base - 1, nil
-	case 0x0A:
-		return base + h.Value, nil
-	case 0x0C:
-		if h.Value > base {
-			return 0, nil
-		}
-		return base - h.Value, nil
-	default:
-		return h.Value, nil
-	}
 }
 
 // baseEntity 全部图元的公共字段（内嵌于各图元）。
@@ -762,7 +737,7 @@ func decodeTextStyleHandle(r *bitstream.BitStream, head *commonEntityHead) uint6
 	r.SetBitPos(head.objSizeBit)
 	var style uint64
 	if _, _, err := parseCommonEntityHandles(r, head); err == nil {
-		if h, e := readHandleReference(r, head.handle); e == nil {
+		if h, e := objrec.ReadHandleReference(r, head.handle); e == nil {
 			style = h
 		}
 	}
@@ -916,11 +891,11 @@ type point3 struct{ x, y, z float64 }
 
 // hdlSizeFieldBits R2010+ 记录头的 handle-stream-size (UMC) 字段位宽。
 // 该字段位于对象数据区之前，gold bitsize 不含它，审计导出时需扣除。
-func hdlSizeFieldBits(h objHeader) uint64 {
-	if h.rec == nil {
+func hdlSizeFieldBits(h objrec.ObjHeader) uint64 {
+	if h.Rec == nil {
 		return 0
 	}
-	return uint64(h.rec.handleSizeFieldBits)
+	return uint64(h.Rec.HandleSizeFieldBits)
 }
 
 // headParser 公共头候选解析器。
@@ -1510,7 +1485,7 @@ func decodeSpline(r *bitstream.BitStream, head *commonEntityHead, r2013Plus bool
 	r.SetBitPos(head.objSizeBit)
 	if owner, layer, e := parseCommonEntityHandles(r, head); e == nil {
 		sp.owner, sp.layer = owner, layer
-		if st, e2 := readHandleReference(r, head.handle); e2 == nil {
+		if st, e2 := objrec.ReadHandleReference(r, head.handle); e2 == nil {
 			sp.styleHandle = st
 		}
 	}
@@ -2867,18 +2842,18 @@ func decodeInsert(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion
 	var attribHandles []uint64
 	var seqendHandle uint64
 	if owner, layer, err := parseCommonEntityHandles(r, head); err == nil {
-		if blockHeader, err = readHandleReference(r, head.handle); err == nil {
+		if blockHeader, err = objrec.ReadHandleReference(r, head.handle); err == nil {
 			if hasAttribs == 1 {
 				if ver == verR13 || ver == verR14 || ver == verR2000 {
 					// R13~R2000：固定 first/last 两个句柄
-					first, e1 := readHandleReference(r, head.handle)
-					last, e2 := readHandleReference(r, head.handle)
+					first, e1 := objrec.ReadHandleReference(r, head.handle)
+					last, e2 := objrec.ReadHandleReference(r, head.handle)
 					if e1 == nil && e2 == nil {
 						attribHandles = append(attribHandles, first, last)
 					}
 				} else {
 					for i := uint32(0); i < ownedCount; i++ {
-						h, herr := readHandleReference(r, head.handle)
+						h, herr := objrec.ReadHandleReference(r, head.handle)
 						if herr != nil {
 							break
 						}
@@ -2886,7 +2861,7 @@ func decodeInsert(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersion
 					}
 				}
 				// SEQEND 结束句柄（attribs 之后恒在，gold seqend 键导出）
-				if h, e := readHandleReference(r, head.handle); e == nil {
+				if h, e := objrec.ReadHandleReference(r, head.handle); e == nil {
 					seqendHandle = h
 				}
 			}
@@ -3975,18 +3950,18 @@ func isFinite(f float64) bool {
 
 // decodeEntityFieldsVer 按版本解码实体：在类型码后的位窗口内扫描
 // 「位偏移 × 版本布局」候选，公共头 + 图元几何联合评分取最优。
-func decodeEntityFieldsVer(r *bitstream.BitStream, h objHeader, objHandle uint64, recSize uint32, typeName string, typeCode uint16, ver dwgVersion, codepage uint16, dynamicTypes map[uint16]string, lightingUnits string) (any, error) {
+func decodeEntityFieldsVer(r *bitstream.BitStream, h objrec.ObjHeader, objHandle uint64, recSize uint32, typeName string, typeCode uint16, ver dwgVersion, codepage uint16, dynamicTypes map[uint16]string, lightingUnits string) (any, error) {
 	// R13/R14 的 BT（位厚度）无 mode 前缀位（LibreDWG bit_read_BT 版本分支），
 	// 随位读取器传入各图元解码器
 	r.LegacyBT = ver == verR13 || ver == verR14
-	dataEnd := h.rec.dataEndBit()
+	dataEnd := h.Rec.DataEndBit()
 	startByte, startBit := r.Cursor()
 	base := uint64(startByte)*8 + uint64(startBit)
 	parsers := headParsersForVersion(ver)
 	ent, _, err := scanEntityBest(r, base, dataEnd, hdlSizeFieldBits(h), parsers, objHandle, recSize, typeName, typeCode, func(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
 		return decodeEntityByTypeVer(r, head, h, objHandle, ver, codepage, dynamicTypes, lightingUnits)
 	})
-	attachEntityRecordMeta(ent, h.rec)
+	attachEntityRecordMeta(ent, h.Rec)
 	return ent, err
 }
 
@@ -4013,8 +3988,8 @@ func decodeBlockLike(r *bitstream.BitStream, head *commonEntityHead, typeName st
 }
 
 // decodeEntityByTypeVer 按版本与类型分发图元解码。
-func decodeEntityByTypeVer(r *bitstream.BitStream, head *commonEntityHead, h objHeader, objHandle uint64, ver dwgVersion, codepage uint16, dynamicTypes map[uint16]string, lightingUnits string) (any, error) {
-	name := entityTypeName(h.typeCode, dynamicTypes)
+func decodeEntityByTypeVer(r *bitstream.BitStream, head *commonEntityHead, h objrec.ObjHeader, objHandle uint64, ver dwgVersion, codepage uint16, dynamicTypes map[uint16]string, lightingUnits string) (any, error) {
+	name := objrec.EntityTypeName(h.TypeCode, dynamicTypes)
 	unicodeText := ver >= verR2007 // R2007+ 文本为 UTF-16（LibreDWG FIELD_T 版本分支）
 	switch name {
 	case "BLOCK", "ENDBLK", "SEQEND":
@@ -4081,7 +4056,7 @@ func decodeEntityByTypeVer(r *bitstream.BitStream, head *commonEntityHead, h obj
 	case "OLEFRAME":
 		return decodeOleFrameVer(r, head, ver)
 	case "PROXY_ENTITY":
-		return decodeProxyEntityVer(r, head, h.rec.dataEndBit(), ver)
+		return decodeProxyEntityVer(r, head, h.Rec.DataEndBit(), ver)
 	case "TOLERANCE":
 		return decodeTolerance(r, head)
 	case "POLYLINE_PFACE":
@@ -4152,7 +4127,7 @@ func decodeEntityByTypeVer(r *bitstream.BitStream, head *commonEntityHead, h obj
 		if unknownEntFallbackNames[name] {
 			return decodeUnknownEnt(r, head, name)
 		}
-		return nil, fmt.Errorf("cad: 不支持的实体类型 %s (0x%X)", name, h.typeCode)
+		return nil, fmt.Errorf("cad: 不支持的实体类型 %s (0x%X)", name, h.TypeCode)
 	}
 }
 

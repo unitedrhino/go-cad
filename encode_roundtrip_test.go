@@ -5,6 +5,7 @@ package cad
 import (
 	"bytes"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"path/filepath"
@@ -41,13 +42,13 @@ func TestPlaceHolderRoundTrip(t *testing.T) {
 			t.Logf("g1 %s = %v", f.Key, f.Val)
 		}
 	}
-	rec2 := &objectRecord{
-		body:          body2,
-		bodyBitOffset: 0,
-		size:          uint32(len(body2)),
+	rec2 := &objrec.ObjectRecord{
+		Body:          body2,
+		BodyBitOffset: 0,
+		Size:          uint32(len(body2)),
 	}
 	// 重解码：className 用首次解码的真实类名（ACDBPLACEHOLDER）
-	g2, err := decodeInternalObject(rec2.bodyBitStream(), rec2, verR2000, false, 0x50, "ACDBPLACEHOLDER", 30)
+	g2, err := decodeInternalObject(rec2.BodyBitStream(), rec2, verR2000, false, 0x50, "ACDBPLACEHOLDER", 30)
 	if err != nil {
 		t.Fatalf("重解码失败: %v", err)
 	}
@@ -135,8 +136,8 @@ func TestXrecordRoundTripSynthetic(t *testing.T) {
 	original[2] = uint8(datEnd >> 16)
 	original[3] = uint8(datEnd >> 24)
 
-	rec := &objectRecord{body: original, bodyBitOffset: 0, size: uint32(len(original))}
-	x1, err := decodeXrecordObject(rec.bodyBitStream(), rec, verR2000, false)
+	rec := &objrec.ObjectRecord{Body: original, BodyBitOffset: 0, Size: uint32(len(original))}
+	x1, err := decodeXrecordObject(rec.BodyBitStream(), rec, verR2000, false)
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
@@ -165,8 +166,8 @@ func TestXrecordRoundTripSynthetic(t *testing.T) {
 	if !bytes.Equal(original, body2) {
 		t.Fatalf("重编码位流不一致:\n got % X\nwant % X", body2, original)
 	}
-	rec2 := &objectRecord{body: body2, bodyBitOffset: 0, size: uint32(len(body2))}
-	x2, err := decodeXrecordObject(rec2.bodyBitStream(), rec2, verR2000, false)
+	rec2 := &objrec.ObjectRecord{Body: body2, BodyBitOffset: 0, Size: uint32(len(body2))}
+	x2, err := decodeXrecordObject(rec2.BodyBitStream(), rec2, verR2000, false)
 	if err != nil {
 		t.Fatalf("重解码失败: %v", err)
 	}
@@ -248,8 +249,8 @@ func TestXrecordRoundTrip(t *testing.T) {
 				continue
 			}
 			t.Logf("%s h=%d xdataSize=%d items=%d body2=%d 字节", name, x1.handle, x1.xdataSize, len(x1.xdata), len(body2))
-			rec2 := &objectRecord{body: body2, bodyBitOffset: 0, size: uint32(len(body2))}
-			x2, err := decodeXrecordObject(rec2.bodyBitStream(), rec2, doc.version, false)
+			rec2 := &objrec.ObjectRecord{Body: body2, BodyBitOffset: 0, Size: uint32(len(body2))}
+			x2, err := decodeXrecordObject(rec2.BodyBitStream(), rec2, doc.version, false)
 			if err != nil {
 				t.Errorf("%s h=%d 重解码失败: %v", name, x1.handle, err)
 				continue
@@ -332,8 +333,8 @@ func TestDictionaryRoundTrip(t *testing.T) {
 					fail++
 					return
 				}
-				rec2 := &objectRecord{body: body2, bodyBitOffset: 0, size: uint32(len(body2))}
-				d2, err := decodeDictionaryObjectFull(rec2.bodyBitStream(), rec2, doc.version, false, false)
+				rec2 := &objrec.ObjectRecord{Body: body2, BodyBitOffset: 0, Size: uint32(len(body2))}
+				d2, err := decodeDictionaryObjectFull(rec2.BodyBitStream(), rec2, doc.version, false, false)
 				if err != nil {
 					t.Errorf("%s h=%d 重解码失败: %v", name, d1.handle, err)
 					fail++

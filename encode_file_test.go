@@ -7,6 +7,7 @@ package cad
 
 import (
 	"bytes"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -99,12 +100,12 @@ func TestWriteReadR2000(t *testing.T) {
 			if len(refs1) != len(refs2) {
 				t.Fatalf("对象图条目数不一致: %d != %d", len(refs2), len(refs1))
 			}
-			delta := int64(refs2[0].offset) - int64(refs1[0].offset)
+			delta := int64(refs2[0].Offset) - int64(refs1[0].Offset)
 			for i := range refs1 {
-				if refs1[i].handle != refs2[i].handle {
-					t.Errorf("条目 %d 句柄不一致: %d != %d", i, refs2[i].handle, refs1[i].handle)
+				if refs1[i].Handle != refs2[i].Handle {
+					t.Errorf("条目 %d 句柄不一致: %d != %d", i, refs2[i].Handle, refs1[i].Handle)
 				}
-				if got := int64(refs2[i].offset) - int64(refs1[i].offset); got != delta {
+				if got := int64(refs2[i].Offset) - int64(refs1[i].Offset); got != delta {
 					t.Errorf("条目 %d 偏移平移不均匀: %d != %d", i, got, delta)
 				}
 			}
@@ -113,13 +114,13 @@ func TestWriteReadR2000(t *testing.T) {
 }
 
 // r2000GateMapRefs 解析样本的对象图条目（R2000 容器 2 号段）。
-func r2000GateMapRefs(t *testing.T, data []byte) []objectRef {
+func r2000GateMapRefs(t *testing.T, data []byte) []objrec.ObjectRef {
 	t.Helper()
 	omap, err := readR2000Section(data, r2000SecObjectMap)
 	if err != nil {
 		t.Fatalf("加载对象图失败: %v", err)
 	}
-	refs, err := parseObjectMapHandles(omap)
+	refs, err := objrec.ParseObjectMapHandles(omap)
 	if err != nil {
 		t.Fatalf("解析对象图失败: %v", err)
 	}
@@ -130,11 +131,11 @@ func r2000GateMapRefs(t *testing.T, data []byte) []objectRef {
 // 经 parseObjectMapHandles 回读须逐条还原；块 size 字段不得超过读侧
 // 2040 上限；偏移平移（负 baseDelta）同样保真。
 func TestBuildR2000ObjectMapChunks(t *testing.T) {
-	build := func(n int, base uint32) []objectRef {
-		refs := make([]objectRef, 0, n)
+	build := func(n int, base uint32) []objrec.ObjectRef {
+		refs := make([]objrec.ObjectRef, 0, n)
 		h, off := uint64(0x30), base
 		for i := 0; i < n; i++ {
-			refs = append(refs, objectRef{handle: h, offset: off})
+			refs = append(refs, objrec.ObjectRef{Handle: h, Offset: off})
 			h += 2
 			off += 48 + uint32(i%7)*8 // 变长记录间隔，覆盖多种 MC 编码长度
 		}
@@ -171,7 +172,7 @@ func TestBuildR2000ObjectMapChunks(t *testing.T) {
 			if tc.n >= 800 && chunks < 3 {
 				t.Errorf("预期多块（含终止块），实际 %d 块", chunks)
 			}
-			got, err := parseObjectMapHandles(stream)
+			got, err := objrec.ParseObjectMapHandles(stream)
 			if err != nil {
 				t.Fatalf("重建流解析失败: %v", err)
 			}
@@ -179,10 +180,10 @@ func TestBuildR2000ObjectMapChunks(t *testing.T) {
 				t.Fatalf("条目数不一致: %d != %d", len(got), len(refs))
 			}
 			for i := range refs {
-				wantOff := uint32(int64(refs[i].offset) + tc.delta)
-				if got[i].handle != refs[i].handle || got[i].offset != wantOff {
+				wantOff := uint32(int64(refs[i].Offset) + tc.delta)
+				if got[i].Handle != refs[i].Handle || got[i].Offset != wantOff {
 					t.Fatalf("条目 %d 不一致: got (%d,%d) want (%d,%d)",
-						i, got[i].handle, got[i].offset, refs[i].handle, wantOff)
+						i, got[i].Handle, got[i].Offset, refs[i].Handle, wantOff)
 				}
 			}
 		})

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"os"
 	"sort"
@@ -491,7 +492,7 @@ func decodeMline(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
 	r.SetBitPos(head.objSizeBit)
 	if owner2, layer2, e := parseCommonEntityHandles(r, head); e == nil {
 		m.owner, m.layer = owner2, layer2
-		if h, e2 := readHandleReference(r, head.handle); e2 == nil {
+		if h, e2 := objrec.ReadHandleReference(r, head.handle); e2 == nil {
 			m.styleHandle = h
 		}
 	}
@@ -919,22 +920,22 @@ func decodePolyline2d(r *bitstream.BitStream, head *commonEntityHead, hasOwnedCo
 	if !hasOwnedCount {
 		// R13~R2000（dwg.spec POLYLINE VERSIONS(R_13,R_2000) 分支）：
 		// 公共句柄流后为 first_vertex/last_vertex 两个句柄引用
-		if p.firstVertex, err = readHandleReference(r, head.handle); err != nil {
+		if p.firstVertex, err = objrec.ReadHandleReference(r, head.handle); err != nil {
 			return nil, err
 		}
-		if p.lastVertex, err = readHandleReference(r, head.handle); err != nil {
+		if p.lastVertex, err = objrec.ReadHandleReference(r, head.handle); err != nil {
 			return nil, err
 		}
 	}
 	for i := 0; i < ownedCount; i++ {
-		h, e := readHandleReference(r, head.handle)
+		h, e := objrec.ReadHandleReference(r, head.handle)
 		if e != nil {
 			break
 		}
 		p.ownedHandles = append(p.ownedHandles, h)
 	}
 	// SEQEND 结束句柄（顶点句柄之后恒在，gold seqend 键导出）
-	if h, e := readHandleReference(r, head.handle); e == nil {
+	if h, e := objrec.ReadHandleReference(r, head.handle); e == nil {
 		p.seqend = h
 	}
 	return p, nil
@@ -983,22 +984,22 @@ func decodePolyline3d(r *bitstream.BitStream, head *commonEntityHead, hasOwnedCo
 	if !hasOwnedCount {
 		// R13~R2000（dwg.spec POLYLINE VERSIONS(R_13,R_2000) 分支）：
 		// 公共句柄流后为 first_vertex/last_vertex 两个句柄引用
-		if p.firstVertex, err = readHandleReference(r, head.handle); err != nil {
+		if p.firstVertex, err = objrec.ReadHandleReference(r, head.handle); err != nil {
 			return nil, err
 		}
-		if p.lastVertex, err = readHandleReference(r, head.handle); err != nil {
+		if p.lastVertex, err = objrec.ReadHandleReference(r, head.handle); err != nil {
 			return nil, err
 		}
 	}
 	for i := 0; i < ownedCount; i++ {
-		h, e := readHandleReference(r, head.handle)
+		h, e := objrec.ReadHandleReference(r, head.handle)
 		if e != nil {
 			break
 		}
 		p.ownedHandles = append(p.ownedHandles, h)
 	}
 	// SEQEND 结束句柄（顶点句柄之后恒在，gold seqend 键导出）
-	if h, e := readHandleReference(r, head.handle); e == nil {
+	if h, e := objrec.ReadHandleReference(r, head.handle); e == nil {
 		p.seqend = h
 	}
 	return p, nil
@@ -1131,7 +1132,7 @@ func decodeToleranceVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgV
 	if _, layer2, e := parseCommonEntityHandles(r, head); e == nil {
 		tol.layer = layer2
 	}
-	if h, e := readHandleReference(r, head.handle); e == nil && h != 0 {
+	if h, e := objrec.ReadHandleReference(r, head.handle); e == nil && h != 0 {
 		tol.dimstyle = h
 	}
 	if ver >= verR2007 {
@@ -1187,22 +1188,22 @@ func decodePolylinePface(r *bitstream.BitStream, head *commonEntityHead, hasOwne
 	}
 	if !hasOwnedCount {
 		// R13~R2000：公共句柄流后为 first_vertex/last_vertex 两个句柄引用
-		if p.firstVertex, err = readHandleReference(r, head.handle); err != nil {
+		if p.firstVertex, err = objrec.ReadHandleReference(r, head.handle); err != nil {
 			return nil, err
 		}
-		if p.lastVertex, err = readHandleReference(r, head.handle); err != nil {
+		if p.lastVertex, err = objrec.ReadHandleReference(r, head.handle); err != nil {
 			return nil, err
 		}
 	}
 	for i := 0; i < ownedCount; i++ {
-		h, e := readHandleReference(r, head.handle)
+		h, e := objrec.ReadHandleReference(r, head.handle)
 		if e != nil {
 			break
 		}
 		p.ownedHandles = append(p.ownedHandles, h)
 	}
 	// SEQEND 结束句柄（顶点句柄之后恒在，gold seqend 键导出）
-	if h, e := readHandleReference(r, head.handle); e == nil {
+	if h, e := objrec.ReadHandleReference(r, head.handle); e == nil {
 		p.seqend = h
 	}
 	return p, nil
@@ -1525,7 +1526,7 @@ func decodePolylineMesh(r *bitstream.BitStream, head *commonEntityHead, hasOwned
 		m.layer = layer2
 	}
 	for i := 0; i < ownedCount; i++ {
-		h, e := readHandleReference(r, head.handle)
+		h, e := objrec.ReadHandleReference(r, head.handle)
 		if e != nil {
 			break
 		}
@@ -1636,10 +1637,10 @@ func decodeWipeoutVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVer
 	if _, layer2, e := parseCommonEntityHandles(r, head); e == nil {
 		w.layer = layer2
 	}
-	if h, e := readHandleReference(r, head.handle); e == nil && h != 0 {
+	if h, e := objrec.ReadHandleReference(r, head.handle); e == nil && h != 0 {
 		w.imageDef = h
 	}
-	if h, e := readHandleReference(r, head.handle); e == nil && h != 0 {
+	if h, e := objrec.ReadHandleReference(r, head.handle); e == nil && h != 0 {
 		w.imageDefReactor = h
 	}
 	return w, nil
@@ -1906,7 +1907,7 @@ func decodeAcisVer(r *bitstream.BitStream, head *commonEntityHead, kind string, 
 	owner, layer := decodeOwnerLayer(r, head)
 	a.owner, a.layer = owner, layer
 	for i := 0; i < int(a.numMaterials); i++ {
-		if _, e := readHandleReference(r, head.handle); e != nil {
+		if _, e := objrec.ReadHandleReference(r, head.handle); e != nil {
 			break
 		}
 	}
@@ -1918,7 +1919,7 @@ func decodeAcisVer(r *bitstream.BitStream, head *commonEntityHead, kind string, 
 	// R13~R2000 handle 流在 prev/next 后即结束；acis_empty=1 的 AcDs
 	// 空记录 R2013+ 修订段为错位垃圾（LibreDWG 同点 ERROR），不读取。
 	if srcVer >= verR2004 && !a.acisEmpty {
-		if h, e := readHandleReference(r, head.handle); e == nil {
+		if h, e := objrec.ReadHandleReference(r, head.handle); e == nil {
 			a.historyId = h
 		}
 	}
@@ -1930,7 +1931,7 @@ func decodeAcisVer(r *bitstream.BitStream, head *commonEntityHead, kind string, 
 func readAcisHandles(r *bitstream.BitStream, head *commonEntityHead) []uint64 {
 	var out []uint64
 	for i := 0; i < 8; i++ {
-		h, err := readHandleReference(r, head.handle)
+		h, err := objrec.ReadHandleReference(r, head.handle)
 		if err != nil {
 			break
 		}

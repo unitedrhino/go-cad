@@ -4,6 +4,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"testing"
@@ -20,8 +21,8 @@ func decodeEntityByName(t *testing.T, w *testsupport.BitWriter, typeCode uint16,
 	if err != nil {
 		t.Fatalf("公共头解析失败: %v", err)
 	}
-	h := objHeader{typeCode: typeCode}
-	ent, err := decodeEntityByTypeVer(r, &head, h, head.handle, verR2018, h.typeCode, dynamic, "")
+	h := objrec.ObjHeader{TypeCode: typeCode}
+	ent, err := decodeEntityByTypeVer(r, &head, h, head.handle, verR2018, h.TypeCode, dynamic, "")
 	if err != nil {
 		t.Fatalf("解码失败: %v", err)
 	}
@@ -58,7 +59,7 @@ func TestDecodeLargeRadialDimR2018(t *testing.T) {
 	w.B3BD(5, 6, 0)   // ovr_center
 	w.B3BD(70, 90, 0) // jog_pt
 	dynamic := map[uint16]string{0x1F4: "LARGE_RADIAL_DIMENSION"}
-	if !isEntityType(0x1F4, dynamic) {
+	if !objrec.IsEntityType(0x1F4, dynamic) {
 		t.Fatal("isEntityType 未识别 LARGE_RADIAL_DIMENSION")
 	}
 	ent := decodeEntityByName(t, w, 0x1F4, dynamic)

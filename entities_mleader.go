@@ -9,6 +9,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 )
 
@@ -455,27 +456,27 @@ func decodeMLeader(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersio
 		ok := true
 		if !r2010 {
 			if m.ctx.hasContentTxt {
-				m.ctx.txt.styleHandle, _ = readHandleReference(r, head.handle)
+				m.ctx.txt.styleHandle, _ = objrec.ReadHandleReference(r, head.handle)
 			} else if m.ctx.hasContentBlk {
-				m.ctx.blk.blockTable, _ = readHandleReference(r, head.handle)
+				m.ctx.blk.blockTable, _ = objrec.ReadHandleReference(r, head.handle)
 			}
 			// spec FIELD_HANDLE 序：mleaderstyle → line_ltype →
 			// arrow_handle → text_style → block_style → arrowheads[] →
 			// blocklabels[]
-			if m.mleaderStyle, herr = readHandleReference(r, head.handle); herr != nil {
+			if m.mleaderStyle, herr = objrec.ReadHandleReference(r, head.handle); herr != nil {
 				ok = false
-			} else if m.lineLtype, herr = readHandleReference(r, head.handle); herr != nil {
+			} else if m.lineLtype, herr = objrec.ReadHandleReference(r, head.handle); herr != nil {
 				ok = false
-			} else if m.arrowHandle, herr = readHandleReference(r, head.handle); herr != nil {
+			} else if m.arrowHandle, herr = objrec.ReadHandleReference(r, head.handle); herr != nil {
 				ok = false
-			} else if m.textStyle, herr = readHandleReference(r, head.handle); herr != nil {
+			} else if m.textStyle, herr = objrec.ReadHandleReference(r, head.handle); herr != nil {
 				ok = false
-			} else if m.blockStyle, herr = readHandleReference(r, head.handle); herr != nil {
+			} else if m.blockStyle, herr = objrec.ReadHandleReference(r, head.handle); herr != nil {
 				ok = false
 			}
 			if ok {
 				for i := range m.arrowheads {
-					if m.arrowheads[i].arrowhead, herr = readHandleReference(r, head.handle); herr != nil {
+					if m.arrowheads[i].arrowhead, herr = objrec.ReadHandleReference(r, head.handle); herr != nil {
 						ok = false
 						break
 					}
@@ -483,7 +484,7 @@ func decodeMLeader(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersio
 			}
 			if ok {
 				for i := range m.blocklabels {
-					if m.blocklabels[i].attdef, herr = readHandleReference(r, head.handle); herr != nil {
+					if m.blocklabels[i].attdef, herr = objrec.ReadHandleReference(r, head.handle); herr != nil {
 						ok = false
 						break
 					}
@@ -495,11 +496,11 @@ func decodeMLeader(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersio
 		for i := range m.ctx.leaders {
 			for j := range m.ctx.leaders[i].lines {
 				if r2010 {
-					if m.ctx.leaders[i].lines[j].ltype, herr = readHandleReference(r, head.handle); herr != nil {
+					if m.ctx.leaders[i].lines[j].ltype, herr = objrec.ReadHandleReference(r, head.handle); herr != nil {
 						ok = false
 						break
 					}
-					if m.ctx.leaders[i].lines[j].arrowHandle, herr = readHandleReference(r, head.handle); herr != nil {
+					if m.ctx.leaders[i].lines[j].arrowHandle, herr = objrec.ReadHandleReference(r, head.handle); herr != nil {
 						ok = false
 						break
 					}
@@ -510,19 +511,19 @@ func decodeMLeader(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersio
 			}
 		}
 		if ok && m.ctx.hasContentTxt {
-			m.ctx.txt.styleHandle, _ = readHandleReference(r, head.handle)
+			m.ctx.txt.styleHandle, _ = objrec.ReadHandleReference(r, head.handle)
 		} else if ok && m.ctx.hasContentBlk {
-			m.ctx.blk.blockTable, _ = readHandleReference(r, head.handle)
+			m.ctx.blk.blockTable, _ = objrec.ReadHandleReference(r, head.handle)
 		}
 		if ok {
-			if m.mleaderStyle, herr = readHandleReference(r, head.handle); herr == nil {
+			if m.mleaderStyle, herr = objrec.ReadHandleReference(r, head.handle); herr == nil {
 				// spec FIELD_HANDLE 序：mleaderstyle → line_ltype →
 				// arrow_handle → text_style → block_style（R2010b+ 无
 				// arrowheads/blocklabels 句柄）
-				if m.lineLtype, herr = readHandleReference(r, head.handle); herr == nil {
-					if m.arrowHandle, herr = readHandleReference(r, head.handle); herr == nil {
-						if m.textStyle, herr = readHandleReference(r, head.handle); herr == nil {
-							m.blockStyle, herr = readHandleReference(r, head.handle)
+				if m.lineLtype, herr = objrec.ReadHandleReference(r, head.handle); herr == nil {
+					if m.arrowHandle, herr = objrec.ReadHandleReference(r, head.handle); herr == nil {
+						if m.textStyle, herr = objrec.ReadHandleReference(r, head.handle); herr == nil {
+							m.blockStyle, herr = objrec.ReadHandleReference(r, head.handle)
 						}
 					}
 				}

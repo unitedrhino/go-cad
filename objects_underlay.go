@@ -10,6 +10,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
 // underlayFields UNDERLAY 引用实体的专有字段（UNDERLAY_fields）与
@@ -34,9 +35,9 @@ type underlayFields struct {
 
 // decodeUnderlayEntity 解析 UNDERLAY 引用实体并转为 objGeneric。
 // r 已定位到类型码之后（body 局部坐标）；rec/ver 用于实体头布局选择。
-func decodeUnderlayEntity(r *bitstream.BitStream, rec *objectRecord, ver dwgVersion, typeCode uint16, className string) (*objGeneric, error) {
+func decodeUnderlayEntity(r *bitstream.BitStream, rec *objrec.ObjectRecord, ver dwgVersion, typeCode uint16, className string) (*objGeneric, error) {
 	base := r.TellBits()
-	dataEnd := rec.dataEndBit()
+	dataEnd := rec.DataEndBit()
 	// 实体头布局：typecode 后先有流内 RL objSize（R2010+ 除外）再有
 	// 主句柄（H），与对象头顺序不同。逐布局探出主句柄供
 	// scanEntityBest 的头句柄一致性校验，再回卷交给扫描
@@ -56,8 +57,8 @@ func decodeUnderlayEntity(r *bitstream.BitStream, rec *objectRecord, ver dwgVers
 		}
 	}
 	r.SetBitPos(base)
-	res, _, ferr := scanEntityBest(r, base, dataEnd, uint64(rec.handleSizeFieldBits),
-		parsers, objHandle, rec.size, className, typeCode,
+	res, _, ferr := scanEntityBest(r, base, dataEnd, uint64(rec.HandleSizeFieldBits),
+		parsers, objHandle, rec.Size, className, typeCode,
 		func(r *bitstream.BitStream, head *commonEntityHead) (any, error) {
 			return readUnderlayFields(r, head)
 		})
@@ -115,7 +116,7 @@ func decodeUnderlayEntity(r *bitstream.BitStream, rec *objectRecord, ver dwgVers
 	g.Fields = append(g.Fields,
 		objField{"object", g.Name},
 		objField{"type", int64(typeCode)},
-		objField{"size", int64(rec.size)},
+		objField{"size", int64(rec.Size)},
 		objField{"bitsize", int64(uf.auditBitsize)},
 		objField{"num_reactors", int64(head.numReactors)},
 		objField{"is_xdic_missing", head.xdicMissing},
@@ -125,7 +126,7 @@ func decodeUnderlayEntity(r *bitstream.BitStream, rec *objectRecord, ver dwgVers
 	// 位串收集（对齐 UNKNOWN_OBJ 兜底语义）：hdOffsetBits 为类型码后
 	// 前导位，headRawBits 覆盖公共头+专有字段至 handle 流起点，
 	// RawHandleBits 覆盖 handle 流起点至记录尾
-	g.hdOffsetBits = base - rec.bodyBitOffset
+	g.hdOffsetBits = base - rec.BodyBitOffset
 	if uf.objSizeBit > base {
 		g.headRawBits = bitstream.CollectBits(r, base, uf.objSizeBit)
 	}
@@ -150,7 +151,7 @@ func readUnderlayFields(r *bitstream.BitStream, head *commonEntityHead) (any, er
 		r.Restore(savedByte, savedBit)
 		return nil, err
 	}
-	defID, err := readHandleReference(r, head.handle)
+	defID, err := objrec.ReadHandleReference(r, head.handle)
 	if err != nil {
 		r.Restore(savedByte, savedBit)
 		return nil, err

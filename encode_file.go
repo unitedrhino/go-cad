@@ -14,6 +14,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"hash/crc32"
 	"io"
 )
@@ -29,7 +30,7 @@ type r2000RawData struct {
 	// sections 段号 → 段原始字节（含段内哨兵/CRC，仅收录源目录中 size>0 的段）。
 	sections map[uint8][]byte
 	// refs 对象图条目（handle 与源文件内绝对偏移），重建对象图流用。
-	refs []objectRef
+	refs []objrec.ObjectRef
 	// objBase 对象区源基址（refs 中最小记录偏移）。
 	objBase uint32
 	// objBlob 对象区原始字节 [objBase, 最大记录尾)，含 MS 头与尾部 CRC，
@@ -39,7 +40,7 @@ type r2000RawData struct {
 
 // captureR2000Raw 从源文件与对象图条目提取回放素材（解析路径的一次性钩子）：
 // 尽力保留，任一段越界只跳过该段不阻断解析。
-func captureR2000Raw(data []byte, refs []objectRef) *r2000RawData {
+func captureR2000Raw(data []byte, refs []objrec.ObjectRef) *r2000RawData {
 	raw := &r2000RawData{refs: refs, sections: make(map[uint8][]byte)}
 	if len(data) >= 0x15 {
 		raw.header = append([]byte(nil), data[:0x15]...)
@@ -62,12 +63,12 @@ func captureR2000Raw(data []byte, refs []objectRef) *r2000RawData {
 	// 源文件中记录连续铺放，取 [最小偏移, 最大记录尾) 整块保留即可完整回放。
 	minOff, maxEnd := ^uint64(0), uint64(0)
 	for _, ref := range refs {
-		end, ok := r2000RecordEnd(data, ref.offset)
+		end, ok := r2000RecordEnd(data, ref.Offset)
 		if !ok {
 			continue
 		}
-		if uint64(ref.offset) < minOff {
-			minOff = uint64(ref.offset)
+		if uint64(ref.Offset) < minOff {
+			minOff = uint64(ref.Offset)
 		}
 		if end > maxEnd {
 			maxEnd = end
@@ -218,7 +219,7 @@ func writeR2000Sections(raw *r2000RawData) ([]byte, error) {
 // [BE u16 size][差分对][BE u16 CRC(seed 0xC0C1)]，块内差分从 0 重新累计，
 // 以 size=2 的终止块收尾。baseDelta 为对象区基址平移量（新偏移 = 源偏移 +
 // baseDelta）。
-func buildR2000ObjectMap(refs []objectRef, baseDelta int64) []byte {
+func buildR2000ObjectMap(refs []objrec.ObjectRef, baseDelta int64) []byte {
 	out := make([]byte, 0, len(refs)*6+16)
 	chunkStart := 0
 	lastHandle := int64(0)
@@ -235,10 +236,10 @@ func buildR2000ObjectMap(refs []objectRef, baseDelta int64) []byte {
 	chunkStart = len(out)
 	out = append(out, 0, 0) // size 字段占位
 	for _, ref := range refs {
-		newOffset := int64(ref.offset) + baseDelta
-		out = putUMC(out, uint64(int64(ref.handle)-lastHandle))
+		newOffset := int64(ref.Offset) + baseDelta
+		out = putUMC(out, uint64(int64(ref.Handle)-lastHandle))
 		out = putMC(out, newOffset-lastOffset)
-		lastHandle = int64(ref.handle)
+		lastHandle = int64(ref.Handle)
 		lastOffset = newOffset
 		if len(out)-chunkStart > 2030 {
 			closeChunk()

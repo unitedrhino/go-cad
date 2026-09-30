@@ -18,6 +18,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"math"
 	"sort"
 )
@@ -1970,13 +1971,13 @@ func writeDwgForwardR2000(doc *Document) ([]byte, error) {
 	clsOff := hvOff + uint64(len(hvSec))
 	objBase := clsOff + uint64(len(clsSec))
 	blob := make([]byte, 0, len(objs)*24)
-	refs := make([]objectRef, 0, len(objs))
+	refs := make([]objrec.ObjectRef, 0, len(objs))
 	for _, o := range objs {
 		rec, err := buildForwardObjectRecord(o)
 		if err != nil {
 			return nil, fmt.Errorf("cad: 对象 %d 记录组装失败: %w", o.handle, err)
 		}
-		refs = append(refs, objectRef{handle: o.handle, offset: uint32(objBase + uint64(len(blob)))})
+		refs = append(refs, objrec.ObjectRef{Handle: o.handle, Offset: uint32(objBase + uint64(len(blob)))})
 		blob = append(blob, rec...)
 	}
 	mapPayload := buildR2000ObjectMap(refs, 0)

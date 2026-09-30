@@ -4,6 +4,7 @@ package cad
 
 import (
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"testing"
@@ -51,8 +52,8 @@ func TestDecodeLineFromBits(t *testing.T) {
 	w.BT(0)
 	w.BE(0, 0, 1)
 	// handle 流（objSizeBit 指向的位置不关键：decodeOwnerLayer 失败容忍）
-	h := objHeader{rec: &objectRecord{size: uint32(len(w.Bytes())), r2010Plus: true,
-		handleSizeFieldBits: 8, handleStreamSizeBits: 8, body: w.Bytes()}}
+	h := objrec.ObjHeader{Rec: &objrec.ObjectRecord{Size: uint32(len(w.Bytes())), R2010Plus: true,
+		HandleSizeFieldBits: 8, HandleStreamSizeBits: 8, Body: w.Bytes()}}
 	_ = h
 	r := bitstream.NewBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.ReadUMC()
@@ -323,7 +324,7 @@ func TestReadHandleReferenceAllCodes(t *testing.T) {
 	}
 	for _, c := range cases {
 		r := bitstream.NewBitStream(testsupport.NewBitWriter().H(c.code, c.val).Bytes())
-		got, err := readHandleReference(r, c.base)
+		got, err := objrec.ReadHandleReference(r, c.base)
 		if err != nil {
 			t.Fatalf("code=%#x: %v", c.code, err)
 		}
@@ -333,7 +334,7 @@ func TestReadHandleReferenceAllCodes(t *testing.T) {
 	}
 	// base=0 时 -1 钳位到 0
 	r := bitstream.NewBitStream(testsupport.NewBitWriter().H(0x08, 0).Bytes())
-	if got, _ := readHandleReference(r, 0); got != 0 {
+	if got, _ := objrec.ReadHandleReference(r, 0); got != 0 {
 		t.Fatalf("base=0 -1 应钳位 0，得到 %d", got)
 	}
 }

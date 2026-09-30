@@ -8,6 +8,7 @@ package cad
 import (
 	"fmt"
 	"github.com/unitedrhino/go-cad/internal/bitstream"
+	"github.com/unitedrhino/go-cad/internal/objrec"
 )
 
 // entImage 栅格图像实体（AcDbRasterImage）。
@@ -113,10 +114,10 @@ func decodeImageVer(r *bitstream.BitStream, head *commonEntityHead, ver dwgVersi
 	if _, layer2, e := parseCommonEntityHandles(r, head); e == nil {
 		img.layer = layer2
 	}
-	if h, e := readHandleReference(r, head.handle); e == nil && h != 0 {
+	if h, e := objrec.ReadHandleReference(r, head.handle); e == nil && h != 0 {
 		img.imageDef = h
 	}
-	if h, e := readHandleReference(r, head.handle); e == nil && h != 0 {
+	if h, e := objrec.ReadHandleReference(r, head.handle); e == nil && h != 0 {
 		img.imageDefReactor = h
 	}
 	return img, nil
@@ -264,7 +265,7 @@ func decodeProxyEntityVer(r *bitstream.BitStream, head *commonEntityHead, dataEn
 	r.SetBitPos(head.objSizeBit)
 	if _, _, e := parseCommonEntityHandles(r, head); e == nil {
 		for r.TellBits()+8 <= dataEnd {
-			h, e := readHandleReference(r, head.handle)
+			h, e := objrec.ReadHandleReference(r, head.handle)
 			if e != nil {
 				break
 			}
@@ -405,7 +406,7 @@ func decodeUnderlayVer(r *bitstream.BitStream, head *commonEntityHead) (any, err
 	if _, layer2, e := parseCommonEntityHandles(r, head); e == nil {
 		u.layer = layer2
 	}
-	if h, e := readHandleReference(r, head.handle); e == nil {
+	if h, e := objrec.ReadHandleReference(r, head.handle); e == nil {
 		u.definitionID = h
 	}
 	return u, nil
