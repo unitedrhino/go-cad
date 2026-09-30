@@ -7,6 +7,7 @@ package cad
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"sort"
 	"strings"
@@ -42,7 +43,7 @@ func TestAllObjectsRoundTrip(t *testing.T) {
 }
 
 func roundTripAll(t *testing.T, sample string, ver dwgVersion) {
-	dir := libredwgTestDataDir()
+	dir := testsupport.LibredwgTestDataDir()
 	data, err := os.ReadFile(dir + "/" + sample)
 	if err != nil {
 		t.Skipf("样本不可用: %v", err)
@@ -302,7 +303,7 @@ func roundTripAllEntities(t *testing.T, doc *Document, data []byte, sample strin
 // 按 gold handle 分桶返回；样本 JSON 不存在时返回 nil。
 func loadGoldEntityFlats(sample string) map[uint64]map[string]any {
 	base := strings.TrimSuffix(sample, ".dwg")
-	jsonPath := libredwgGoldJSONPath(strings.TrimPrefix(base, "example_"))
+	jsonPath := testsupport.LibredwgGoldJSONPath(strings.TrimPrefix(base, "example_"))
 	raw, err := os.ReadFile(jsonPath)
 	if err != nil {
 		return nil

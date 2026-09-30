@@ -5,7 +5,10 @@
 // rotation/color/transform 七个 dat 流字段，以及不误读后续 base 组。
 package cad
 
-import "testing"
+import (
+	"github.com/unitedrhino/go-cad/internal/testsupport"
+	"testing"
+)
 
 // TestMLeaderContextBlkContent blk 内容分支合成验证（verR2000 布局：
 // CMC 为 BS 索引单形态、无字符串流）。
@@ -52,25 +55,25 @@ func TestMLeaderContextBlkContent(t *testing.T) {
 		t.Fatalf("内容分支: hasTxt=%v hasBlk=%v（应为 blk 分支）", c.hasContentTxt, c.hasContentBlk)
 	}
 	b := &c.blk
-	if !nearEq(b.normal.z, 1) || !nearEq(b.location.x, 5) || !nearEq(b.location.y, 6) || !nearEq(b.location.z, 7) {
+	if !testsupport.NearEq(b.normal.z, 1) || !testsupport.NearEq(b.location.x, 5) || !testsupport.NearEq(b.location.y, 6) || !testsupport.NearEq(b.location.z, 7) {
 		t.Errorf("blk normal/location = %v / %v", b.normal, b.location)
 	}
-	if !nearEq(b.scale.x, 2) || !nearEq(b.scale.z, 2) {
+	if !testsupport.NearEq(b.scale.x, 2) || !testsupport.NearEq(b.scale.z, 2) {
 		t.Errorf("blk scale = %v", b.scale)
 	}
-	if !nearEq(b.rotation, 1.5708) {
+	if !testsupport.NearEq(b.rotation, 1.5708) {
 		t.Errorf("blk rotation = %v", b.rotation)
 	}
 	if b.color.index != 3 {
 		t.Errorf("blk color index = %d", b.color.index)
 	}
 	for i := 0; i < 16; i++ {
-		if !nearEq(b.transform[i], float64(i)*0.25) {
+		if !testsupport.NearEq(b.transform[i], float64(i)*0.25) {
 			t.Fatalf("transform[%d] = %v", i, b.transform[i])
 		}
 	}
 	// 联合段后的 base 组必须精确对齐（位序无误的证据）
-	if !nearEq(c.base.x, 9) || !nearEq(c.base.y, 8) || !nearEq(c.base.z, 7) {
+	if !testsupport.NearEq(c.base.x, 9) || !testsupport.NearEq(c.base.y, 8) || !testsupport.NearEq(c.base.z, 7) {
 		t.Errorf("base = %v（blk 段消费错位）", c.base)
 	}
 	if !c.isNormalReversed {

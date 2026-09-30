@@ -4,6 +4,7 @@ package cad
 
 import (
 	"bytes"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +16,7 @@ import (
 // 沿用前文对象的 owner），重编码需要 handle 继承解析（dwg_resolve_
 // handleref）支持，待实现后启用本测试。
 func TestPlaceHolderRoundTrip(t *testing.T) {
-	dir := libredwgTestDataDir()
+	dir := testsupport.LibredwgTestDataDir()
 	data, err := os.ReadFile(dir + "/example_2000.dwg")
 	if err != nil {
 		t.Skipf("样本不可用: %v", err)

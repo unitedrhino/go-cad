@@ -7,6 +7,7 @@ package cad
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"path/filepath"
 	"sort"
@@ -20,7 +21,7 @@ func TestEntityAuditDump(t *testing.T) {
 	if out == "" {
 		t.Skip("CAD_AUDIT_DUMP 未设置")
 	}
-	dir := libredwgTestDataDir()
+	dir := testsupport.LibredwgTestDataDir()
 	candidates := []string{
 		"exr13", "exr14", "ex2000", "ex2004", "ex2007", "ex2013", "ex2018",
 		"sample2000", "sample2018",
@@ -166,7 +167,7 @@ func TestEntityScanDebug(t *testing.T) {
 	parts := strings.SplitN(spec, "#", 2)
 	var wantH uint64
 	fmt.Sscanf(parts[1], "%d", &wantH)
-	data, err := os.ReadFile(filepath.Join(libredwgTestDataDir(), parts[0]))
+	data, err := os.ReadFile(filepath.Join(testsupport.LibredwgTestDataDir(), parts[0]))
 	if err != nil {
 		t.Fatal(err)
 	}

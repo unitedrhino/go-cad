@@ -8,6 +8,7 @@ package cad
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
 	"path/filepath"
@@ -184,8 +185,8 @@ func maxAbs(a, b float64) float64 {
 
 // TestInternalObjectsGold 对照通用内部对象与 dwgread JSON 字段
 func TestInternalObjectsGold(t *testing.T) {
-	dir := libredwgTestDataDir()
-	jsonPath := libredwgGoldJSONPath("2018")
+	dir := testsupport.LibredwgTestDataDir()
+	jsonPath := testsupport.LibredwgGoldJSONPath("2018")
 	sample := os.Getenv("CAD_LIBREDWG_SAMPLE")
 	if sample == "" {
 		// 从 gold JSON 文件名推导同源样本（保证解析样本与 gold 一致）：

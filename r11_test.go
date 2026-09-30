@@ -7,8 +7,8 @@ package cad
 import (
 	"bytes"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"image/png"
-	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,7 +18,7 @@ import (
 // requirePreR13Sample 返回样本字节；语料不可用时跳过测试。
 func requirePreR13Sample(t *testing.T, rel string) []byte {
 	t.Helper()
-	path := filepath.Join(libredwgTestDataDir(), rel)
+	path := filepath.Join(testsupport.LibredwgTestDataDir(), rel)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Skipf("pre-R13 样本不可用: %v", err)
@@ -45,11 +45,6 @@ func parsePreR13Gold(t *testing.T, dwgPath string) string {
 		t.Skipf("读取 gold 失败: %v", err)
 	}
 	return string(data)
-}
-
-// nearEq 浮点相等（1e-9 绝对 + 相对容差）。
-func nearEq(a, b float64) bool {
-	return math.Abs(a-b) <= 1e-9*math.Max(1, math.Max(math.Abs(a), math.Abs(b)))
 }
 
 // TestPreR13ParseR10Gold R10 样本实体几何与 gold 值级对照
@@ -79,8 +74,8 @@ func TestPreR13ParseR10Gold(t *testing.T) {
 	}
 	findLine := func(x1, y1, x2, y2 float64) *entLine {
 		for _, l := range lines {
-			if nearEq(l.start.x, x1) && nearEq(l.start.y, y1) &&
-				nearEq(l.end.x, x2) && nearEq(l.end.y, y2) {
+			if testsupport.NearEq(l.start.x, x1) && testsupport.NearEq(l.start.y, y1) &&
+				testsupport.NearEq(l.end.x, x2) && testsupport.NearEq(l.end.y, y2) {
 				return l
 			}
 		}
@@ -130,22 +125,22 @@ func TestPreR13ParseR11Gold(t *testing.T) {
 	for _, e := range doc.modelSpace {
 		switch v := e.(type) {
 		case *entPoint:
-			if nearEq(v.location.x, wantPoint.x) && nearEq(v.location.y, wantPoint.y) && nearEq(v.location.z, wantPoint.z) {
+			if testsupport.NearEq(v.location.x, wantPoint.x) && testsupport.NearEq(v.location.y, wantPoint.y) && testsupport.NearEq(v.location.z, wantPoint.z) {
 				gotPoint = true
 			}
 		case *entLine:
-			if nearEq(v.start.x, wantLine[0]) && nearEq(v.start.y, wantLine[1]) && nearEq(v.start.z, wantLine[2]) &&
-				nearEq(v.end.x, wantLine[3]) && nearEq(v.end.y, wantLine[4]) && nearEq(v.end.z, wantLine[5]) {
+			if testsupport.NearEq(v.start.x, wantLine[0]) && testsupport.NearEq(v.start.y, wantLine[1]) && testsupport.NearEq(v.start.z, wantLine[2]) &&
+				testsupport.NearEq(v.end.x, wantLine[3]) && testsupport.NearEq(v.end.y, wantLine[4]) && testsupport.NearEq(v.end.z, wantLine[5]) {
 				gotLine = true
 			}
 		case *entArc:
 			// gold: elevation_r11=5, center=(5,5), r=1, start=4.712(rad 270°), end=0
-			if nearEq(v.center.x, 5) && nearEq(v.center.y, 5) && nearEq(v.center.z, 5) &&
-				nearEq(v.radius, 1) && nearEq(v.angleStart, 4.71238898038469) && nearEq(v.angleEnd, 0) {
+			if testsupport.NearEq(v.center.x, 5) && testsupport.NearEq(v.center.y, 5) && testsupport.NearEq(v.center.z, 5) &&
+				testsupport.NearEq(v.radius, 1) && testsupport.NearEq(v.angleStart, 4.71238898038469) && testsupport.NearEq(v.angleEnd, 0) {
 				wantArc = true
 			}
 		case *entCircle:
-			if nearEq(v.center.x, 3) && nearEq(v.center.y, 1) && nearEq(v.center.z, 2) && nearEq(v.radius, 1) {
+			if testsupport.NearEq(v.center.x, 3) && testsupport.NearEq(v.center.y, 1) && testsupport.NearEq(v.center.z, 2) && testsupport.NearEq(v.radius, 1) {
 				wantCircle = true
 			}
 		case *entText:
@@ -169,13 +164,13 @@ func TestPreR13ParseR11Gold(t *testing.T) {
 	if fooText == nil {
 		t.Errorf("R11 未找到 gold TEXT \"FOO\"")
 	} else {
-		if !nearEq(fooText.height, 0.75) {
+		if !testsupport.NearEq(fooText.height, 0.75) {
 			t.Errorf("TEXT height = %v, want 0.75", fooText.height)
 		}
-		if !nearEq(fooText.insertion.x, 1) || !nearEq(fooText.insertion.y, 4) {
+		if !testsupport.NearEq(fooText.insertion.x, 1) || !testsupport.NearEq(fooText.insertion.y, 4) {
 			t.Errorf("TEXT insertion = (%v,%v), want (1,4)", fooText.insertion.x, fooText.insertion.y)
 		}
-		if fooText.alignPt == nil || !nearEq(fooText.alignPt.x, 3) || !nearEq(fooText.alignPt.y, 4) {
+		if fooText.alignPt == nil || !testsupport.NearEq(fooText.alignPt.x, 3) || !testsupport.NearEq(fooText.alignPt.y, 4) {
 			t.Errorf("TEXT alignPt = %v, want (3,4)", fooText.alignPt)
 		}
 	}
@@ -254,16 +249,16 @@ func TestPreR13F2Shape(t *testing.T) {
 			t.Errorf("%s: 未解出 SHAPE", rel)
 			continue
 		}
-		if !nearEq(shape.insertion.x, 6) || !nearEq(shape.insertion.y, 6) {
+		if !testsupport.NearEq(shape.insertion.x, 6) || !testsupport.NearEq(shape.insertion.y, 6) {
 			t.Errorf("%s: SHAPE insertion = (%v,%v), want (6,6)", rel, shape.insertion.x, shape.insertion.y)
 		}
-		if !nearEq(shape.scale, 1) {
+		if !testsupport.NearEq(shape.scale, 1) {
 			t.Errorf("%s: SHAPE scale = %v, want 1", rel, shape.scale)
 		}
 		if shape.shapeNo != 131 {
 			t.Errorf("%s: SHAPE style_id = %d, want 131", rel, shape.shapeNo)
 		}
-		if !nearEq(shape.rotation, 0.5235987755983) {
+		if !testsupport.NearEq(shape.rotation, 0.5235987755983) {
 			t.Errorf("%s: SHAPE rotation = %v, want 0.5236", rel, shape.rotation)
 		}
 	}
@@ -302,16 +297,16 @@ func TestPreR13F2Attrib(t *testing.T) {
 		if a1.text != "3" || a1.prompt != "PROMPT" || a1.tag != "ATTR1" {
 			t.Errorf("%s: ATTDEF text/prompt/tag = %q/%q/%q, want 3/PROMPT/ATTR1", rel, a1.text, a1.prompt, a1.tag)
 		}
-		if !nearEq(a1.insertion.x, 9) || !nearEq(a1.insertion.y, 5) || !nearEq(a1.height, 0.2) {
+		if !testsupport.NearEq(a1.insertion.x, 9) || !testsupport.NearEq(a1.insertion.y, 5) || !testsupport.NearEq(a1.height, 0.2) {
 			t.Errorf("%s: ATTDEF ins/h = (%v,%v,%v), want (9,5,0.2)", rel, a1.insertion.x, a1.insertion.y, a1.height)
 		}
-		if !nearEq(a1.rotation, 1.0471975511966) {
+		if !testsupport.NearEq(a1.rotation, 1.0471975511966) {
 			t.Errorf("%s: ATTDEF rotation = %v, want 1.0472", rel, a1.rotation)
 		}
 		if rel == filepath.Join("r11", "entities-2d.dwg") {
 			// 仅 R11 样本该实体带 HAS_ELEVATION 位（gold elevation_r11=2）；
 			// R9/R10 的 flag_r11=0 无 elevation，z 恒 0
-			if !nearEq(a1.insertion.z, 2) {
+			if !testsupport.NearEq(a1.insertion.z, 2) {
 				t.Errorf("%s: ATTDEF ins.z = %v, want 2 (elevation_r11)", rel, a1.insertion.z)
 			}
 		}
@@ -323,7 +318,7 @@ func TestPreR13F2Attrib(t *testing.T) {
 		}
 		if a2 == nil {
 			t.Errorf("%s: 未找到已删除 ATTDEF（tag ATTR2）", rel)
-		} else if !nearEq(a2.insertion.x, 1) || !nearEq(a2.insertion.y, 2) {
+		} else if !testsupport.NearEq(a2.insertion.x, 1) || !testsupport.NearEq(a2.insertion.y, 2) {
 			t.Errorf("%s: 已删除 ATTDEF ins = (%v,%v), want (1,2)", rel, a2.insertion.x, a2.insertion.y)
 		}
 		if attrib == nil {
@@ -333,10 +328,10 @@ func TestPreR13F2Attrib(t *testing.T) {
 		if attrib.text != "4" || attrib.tag != "ATTR2" {
 			t.Errorf("%s: ATTRIB text/tag = %q/%q, want 4/ATTR2", rel, attrib.text, attrib.tag)
 		}
-		if !nearEq(attrib.insertion.x, 2) || !nearEq(attrib.insertion.y, 2) || !nearEq(attrib.height, 0.1) {
+		if !testsupport.NearEq(attrib.insertion.x, 2) || !testsupport.NearEq(attrib.insertion.y, 2) || !testsupport.NearEq(attrib.height, 0.1) {
 			t.Errorf("%s: ATTRIB ins/h = (%v,%v,%v), want (2,2,0.1)", rel, attrib.insertion.x, attrib.insertion.y, attrib.height)
 		}
-		if !nearEq(attrib.rotation, 1.5707963267949) {
+		if !testsupport.NearEq(attrib.rotation, 1.5707963267949) {
 			t.Errorf("%s: ATTRIB rotation = %v, want 1.5708", rel, attrib.rotation)
 		}
 	}
@@ -385,8 +380,8 @@ func TestPreR13F23DLine(t *testing.T) {
 			t.Errorf("%s: 未解出 3DLINE", tc.rel)
 			continue
 		}
-		if !nearEq(line.start.x, tc.sx) || !nearEq(line.start.y, tc.sy) || !nearEq(line.start.z, tc.sz) ||
-			!nearEq(line.end.x, tc.ex) || !nearEq(line.end.y, tc.ey) || !nearEq(line.end.z, tc.ez) {
+		if !testsupport.NearEq(line.start.x, tc.sx) || !testsupport.NearEq(line.start.y, tc.sy) || !testsupport.NearEq(line.start.z, tc.sz) ||
+			!testsupport.NearEq(line.end.x, tc.ex) || !testsupport.NearEq(line.end.y, tc.ey) || !testsupport.NearEq(line.end.z, tc.ez) {
 			t.Errorf("%s: 3DLINE = (%v,%v,%v)-(%v,%v,%v), want (%g,%g,%g)-(%g,%g,%g)",
 				tc.rel, line.start.x, line.start.y, line.start.z, line.end.x, line.end.y, line.end.z,
 				tc.sx, tc.sy, tc.sz, tc.ex, tc.ey, tc.ez)
@@ -421,7 +416,7 @@ func TestPreR13F23DFace(t *testing.T) {
 		}
 		got := [4]point2{{face.p1.x, face.p1.y}, {face.p2.x, face.p2.y}, {face.p3.x, face.p3.y}, {face.p4.x, face.p4.y}}
 		for i := 0; i < 4; i++ {
-			if !nearEq(got[i].x, want[i].x) || !nearEq(got[i].y, want[i].y) {
+			if !testsupport.NearEq(got[i].x, want[i].x) || !testsupport.NearEq(got[i].y, want[i].y) {
 				t.Errorf("%s: 3DFACE corner%d = (%v,%v), want (%g,%g)", rel, i+1, got[i].x, got[i].y, want[i].x, want[i].y)
 			}
 		}
@@ -445,13 +440,13 @@ func TestPreR13F2Viewport(t *testing.T) {
 	if vp == nil {
 		t.Fatalf("pspaceSpace 未解出 VIEWPORT（共 %d 实体）", len(doc.pspaceSpace))
 	}
-	if !nearEq(vp.center.x, 28.56607142857143) || !nearEq(vp.center.y, 17) || !nearEq(vp.center.z, 0) {
+	if !testsupport.NearEq(vp.center.x, 28.56607142857143) || !testsupport.NearEq(vp.center.y, 17) || !testsupport.NearEq(vp.center.z, 0) {
 		t.Errorf("VIEWPORT center = (%v,%v,%v), want (28.566,17,0)", vp.center.x, vp.center.y, vp.center.z)
 	}
-	if !nearEq(vp.width, 57.13214285714286) {
+	if !testsupport.NearEq(vp.width, 57.13214285714286) {
 		t.Errorf("VIEWPORT width = %v, want 57.132", vp.width)
 	}
-	if !nearEq(vp.height, 34) {
+	if !testsupport.NearEq(vp.height, 34) {
 		t.Errorf("VIEWPORT height = %v, want 34", vp.height)
 	}
 	if id, _ := vp.extra["id"].(uint16); id != 1 {
@@ -494,13 +489,13 @@ func TestPreR13F2Dimension(t *testing.T) {
 		if dim.dimFlag != 1 {
 			t.Errorf("%s: DIMENSION flag = %d, want 1 (aligned)", tc.rel, dim.dimFlag)
 		}
-		if !nearEq(dim.point10.x, 8) || !nearEq(dim.point10.y, 8) || !nearEq(dim.point10.z, 0) {
+		if !testsupport.NearEq(dim.point10.x, 8) || !testsupport.NearEq(dim.point10.y, 8) || !testsupport.NearEq(dim.point10.z, 0) {
 			t.Errorf("%s: def_pt = (%v,%v,%v), want (8,8,0)", tc.rel, dim.point10.x, dim.point10.y, dim.point10.z)
 		}
-		if !nearEq(dim.point13.x, 6) || !nearEq(dim.point13.y, 8) || !nearEq(dim.point13.z, tc.z13) {
+		if !testsupport.NearEq(dim.point13.x, 6) || !testsupport.NearEq(dim.point13.y, 8) || !testsupport.NearEq(dim.point13.z, tc.z13) {
 			t.Errorf("%s: xline1_pt = (%v,%v,%v), want (6,8,%g)", tc.rel, dim.point13.x, dim.point13.y, dim.point13.z, tc.z13)
 		}
-		if !nearEq(dim.point14.x, 7) || !nearEq(dim.point14.y, 7) || !nearEq(dim.point14.z, tc.z14) {
+		if !testsupport.NearEq(dim.point14.x, 7) || !testsupport.NearEq(dim.point14.y, 7) || !testsupport.NearEq(dim.point14.z, tc.z14) {
 			t.Errorf("%s: xline2_pt = (%v,%v,%v), want (7,7,%g)", tc.rel, dim.point14.x, dim.point14.y, dim.point14.z, tc.z14)
 		}
 		if dim.userText != " " {
@@ -527,19 +522,19 @@ func TestPreR13F2Dimension(t *testing.T) {
 		if d.dimFlag != 0 {
 			t.Errorf("ACEB10 DIMENSION flag = %d, want 0 (linear)", d.dimFlag)
 		}
-		if !nearEq(d.point10.x, 13.62245609657801) || !nearEq(d.point10.y, 4.1236674739085) {
+		if !testsupport.NearEq(d.point10.x, 13.62245609657801) || !testsupport.NearEq(d.point10.y, 4.1236674739085) {
 			t.Errorf("ACEB10 def_pt = (%v,%v), want (13.6225,4.1237)", d.point10.x, d.point10.y)
 		}
-		if !nearEq(d.point13.x, 12.62245609657801) || !nearEq(d.point13.y, 4.1236674739085) {
+		if !testsupport.NearEq(d.point13.x, 12.62245609657801) || !testsupport.NearEq(d.point13.y, 4.1236674739085) {
 			t.Errorf("ACEB10 xline1_pt = (%v,%v), want (12.6225,4.1237)", d.point13.x, d.point13.y)
 		}
-		if !nearEq(d.point14.x, 13.62245609657801) || !nearEq(d.point14.y, 4.1236674739085) {
+		if !testsupport.NearEq(d.point14.x, 13.62245609657801) || !testsupport.NearEq(d.point14.y, 4.1236674739085) {
 			t.Errorf("ACEB10 xline2_pt = (%v,%v), want (13.6225,4.1237)", d.point14.x, d.point14.y)
 		}
-		if !nearEq(d.textMidpoint.x, 12.62245609657801) || !nearEq(d.textMidpoint.y, 4.2356674739085) {
+		if !testsupport.NearEq(d.textMidpoint.x, 12.62245609657801) || !testsupport.NearEq(d.textMidpoint.y, 4.2356674739085) {
 			t.Errorf("ACEB10 text_midpt = (%v,%v), want (12.6225,4.2357)", d.textMidpoint.x, d.textMidpoint.y)
 		}
-		if !d.hasInsertPoint || !nearEq(d.insertPoint.x, -6.72735672389388) || !nearEq(d.insertPoint.y, 1.79539575241016) {
+		if !d.hasInsertPoint || !testsupport.NearEq(d.insertPoint.x, -6.72735672389388) || !testsupport.NearEq(d.insertPoint.y, 1.79539575241016) {
 			t.Errorf("ACEB10 clone_ins_pt = (%v,%v,%v), want (-6.7274,1.7954)", d.insertPoint.x, d.insertPoint.y, d.insertPoint.z)
 		}
 	}
@@ -640,7 +635,7 @@ func assertPolylineVerts(t *testing.T, name string, doc *Document, wantN int, wa
 			continue
 		}
 		w := wantVerts[i]
-		if !nearEq(v.position.x, w[0]) || !nearEq(v.position.y, w[1]) || !nearEq(v.position.z, w[2]) {
+		if !testsupport.NearEq(v.position.x, w[0]) || !testsupport.NearEq(v.position.y, w[1]) || !testsupport.NearEq(v.position.z, w[2]) {
 			t.Errorf("%s: 顶点 %d = (%v,%v,%v), want (%g,%g,%g)", name, i, v.position.x, v.position.y, v.position.z, w[0], w[1], w[2])
 		}
 	}
@@ -851,7 +846,7 @@ func TestPreR13DWGReadCross(t *testing.T) {
 		filepath.Join("r11", "entities-2d.dwg"),
 	}
 	for _, rel := range samples {
-		path := filepath.Join(libredwgTestDataDir(), rel)
+		path := filepath.Join(testsupport.LibredwgTestDataDir(), rel)
 		_ = parsePreR13Gold(t, path)
 		data := requirePreR13Sample(t, rel)
 		doc, err := Parse(data)

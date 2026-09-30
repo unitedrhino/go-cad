@@ -3,13 +3,14 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"strings"
 	"testing"
 )
 
 // TestDecodeAcisEmpty 空的 3DSOLID（290=1）：仅公共头 + handle 流。
 func TestDecodeAcisEmpty(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x20)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x20)
 	writeCommonHead(w, 300, 2)
 	w.B(1) // acis_empty=1
 	w.B(0) // wireframe_data_present=0（COMMON_3DSOLID 无条件读）
@@ -24,7 +25,7 @@ func TestDecodeAcisEmpty(t *testing.T) {
 		w.RC(byte(i + 1)) // revision_bytes
 	}
 	w.BL(0) // end_marker
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -55,7 +56,7 @@ func TestDecodeAcisSATBlocks(t *testing.T) {
 		}
 		return 159 - b
 	}
-	w := writeEntityPrefix(newBitWriter(), 0x1F)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x1F)
 	writeCommonHead(w, 301, 2)
 	w.B(0) // acis_empty=0
 	w.B(0) // unknown
@@ -78,7 +79,7 @@ func TestDecodeAcisSATBlocks(t *testing.T) {
 		w.RC(0) // revision_bytes
 	}
 	w.BL(0) // end_marker
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)

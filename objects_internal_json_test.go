@@ -7,6 +7,7 @@ package cad
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
 	"path/filepath"
@@ -35,8 +36,8 @@ func jsonNum(v any) int {
 
 // TestDictionaryXrecordFullJSON 对照全部 DICTIONARY/XRECORD 与 dwgread JSON
 func TestDictionaryXrecordFullJSON(t *testing.T) {
-	dir := libredwgTestDataDir()
-	jsonPath := libredwgGoldJSONPath("2018")
+	dir := testsupport.LibredwgTestDataDir()
+	jsonPath := testsupport.LibredwgGoldJSONPath("2018")
 	// 样本路径：优先 CAD_LIBREDWG_SAMPLE；否则从 gold JSON 名推导
 	// 保证解析样本与 gold 同源（ex2018.json → example_2018.dwg；
 	// sample2018.json → sample_2018.dwg）

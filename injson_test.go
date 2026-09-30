@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"path/filepath"
 	"strings"
@@ -652,7 +653,7 @@ func jsonTestValueMatch(got, want any) bool {
 // TestParseJSONHeaderVars HEADER 段消费：全量键入 HeaderVars、渲染相关键
 // 提升结构化字段、HeaderVar 的 $ 前缀容错与缺键返回。
 func TestParseJSONHeaderVars(t *testing.T) {
-	goldPath := libredwgGoldJSONPath("2018")
+	goldPath := testsupport.LibredwgGoldJSONPath("2018")
 	raw, err := os.ReadFile(goldPath)
 	if err != nil {
 		t.Skipf("gold JSON 缺失: %v", err)

@@ -3,24 +3,27 @@
 // 捕获与 handle 流剩余句柄收集。位长按 MSB 序手工推算并断言。
 package cad
 
-import "testing"
+import (
+	"github.com/unitedrhino/go-cad/internal/testsupport"
+	"testing"
+)
 
 // TestDecodeProxyEntityFromBits R2013 口径：proxy_id BL + version BLx（拆分
 // maint/dwg）+ from_dxf B + 16 位填充（原始数据捕获区）+ handle 流
 // （xdic+layer 消耗 2 句柄，剩余 2 句柄记为 objids）。
 func TestDecodeProxyEntityFromBits(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x1F2) // 18 位
-	writeCommonHead(w, 500, 2)                    // 48 位 → 累计 66
-	w.BL(499)                                     // proxy_id：34 位 → 100
-	w.BL(0x0201)                                  // version：34 位 → 134（maint=2 dwg=1）
-	w.B(0)                                        // from_dxf：1 位 → 135
-	w.RCS([]byte{0xAB, 0xCD})                     // 原始数据填充：16 位 → 151
-	w.H(5, 20)                                    // xdic
-	w.H(5, 21)                                    // layer
-	w.H(5, 22)                                    // objids[0]
-	w.H(5, 23)                                    // objids[1] → dataEnd=215
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x1F2) // 18 位
+	writeCommonHead(w, 500, 2)                                // 48 位 → 累计 66
+	w.BL(499)                                                 // proxy_id：34 位 → 100
+	w.BL(0x0201)                                              // version：34 位 → 134（maint=2 dwg=1）
+	w.B(0)                                                    // from_dxf：1 位 → 135
+	w.RCS([]byte{0xAB, 0xCD})                                 // 原始数据填充：16 位 → 151
+	w.H(5, 20)                                                // xdic
+	w.H(5, 21)                                                // layer
+	w.H(5, 22)                                                // objids[0]
+	w.H(5, 23)                                                // objids[1] → dataEnd=215
 	const objSizeBit, dataEnd = uint64(151), uint64(215)
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -54,17 +57,17 @@ func TestDecodeProxyEntityFromBits(t *testing.T) {
 // TestDecodeProxyEntityR2018FromBits R2018 口径：dwg_version 与 maint_version
 // 为独立 BL 字段（不再合并为 version）。
 func TestDecodeProxyEntityR2018FromBits(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x1F2) // 18 位
-	writeCommonHead(w, 501, 2)                    // → 66
-	w.BL(499)                                     // → 100
-	w.BL(30)                                      // dwg_version：10 位 → 110
-	w.BL(7)                                       // maint_version：10 位 → 120
-	w.B(1)                                        // from_dxf → 121
-	w.RCS([]byte{0x11})                           // 填充 8 位 → 129
-	w.H(5, 20)                                    // xdic
-	w.H(5, 21)                                    // layer → dataEnd=161
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x1F2) // 18 位
+	writeCommonHead(w, 501, 2)                                // → 66
+	w.BL(499)                                                 // → 100
+	w.BL(30)                                                  // dwg_version：10 位 → 110
+	w.BL(7)                                                   // maint_version：10 位 → 120
+	w.B(1)                                                    // from_dxf → 121
+	w.RCS([]byte{0x11})                                       // 填充 8 位 → 129
+	w.H(5, 20)                                                // xdic
+	w.H(5, 21)                                                // layer → dataEnd=161
 	const objSizeBit, dataEnd = uint64(129), uint64(161)
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -90,32 +93,32 @@ func TestDecodeProxyEntityR2018FromBits(t *testing.T) {
 // proxy_data_size 取 preview_size，proxy_data TF 从主体读取同长字节。
 // 头部手工构造（pic=1 布局），位长手工推算。
 func TestDecodeProxyEntityPreviewFromBits(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x1F2) // 18
-	w.H(0, 600)                                   // 24 → 42
-	w.BS(0)                                       // EED → 44
-	w.B(1)                                        // pic=1 → 45
-	w.BLL(4)                                      // preview_size（BLL，pictureRL=false）→ 49
-	w.RCS([]byte{0xDE, 0xAD, 0xBE, 0xEF})         // preview → 81
-	w.BB(2)                                       // entmode=2 → 83
-	w.BL(0)                                       // reactors → 85
-	w.B(0)                                        // xdic → 86
-	w.B(0)                                        // ds → 87
-	w.B(1)                                        // nolinks → 88
-	w.B(0)                                        // color unknown → 89
-	w.BD(1.0)                                     // ltscale → 91
-	w.BB(0)                                       // ltype → 93
-	w.BB(0)                                       // plot → 95
-	w.BB(0)                                       // mat → 97
-	w.B(0).B(0).B(0)                              // visuals → 100
-	w.BS(0)                                       // invis → 102
-	w.BL(499)                                     // proxy_id → 136
-	w.BL(0x0301)                                  // version → 170
-	w.B(0)                                        // from_dxf → 171
-	w.RCS([]byte{0x01, 0x02, 0x03, 0x04})         // proxy_data TF（4 字节）→ 203
-	w.H(5, 20)                                    // xdic
-	w.H(5, 21)                                    // layer → dataEnd=235
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x1F2) // 18
+	w.H(0, 600)                                               // 24 → 42
+	w.BS(0)                                                   // EED → 44
+	w.B(1)                                                    // pic=1 → 45
+	w.BLL(4)                                                  // preview_size（BLL，pictureRL=false）→ 49
+	w.RCS([]byte{0xDE, 0xAD, 0xBE, 0xEF})                     // preview → 81
+	w.BB(2)                                                   // entmode=2 → 83
+	w.BL(0)                                                   // reactors → 85
+	w.B(0)                                                    // xdic → 86
+	w.B(0)                                                    // ds → 87
+	w.B(1)                                                    // nolinks → 88
+	w.B(0)                                                    // color unknown → 89
+	w.BD(1.0)                                                 // ltscale → 91
+	w.BB(0)                                                   // ltype → 93
+	w.BB(0)                                                   // plot → 95
+	w.BB(0)                                                   // mat → 97
+	w.B(0).B(0).B(0)                                          // visuals → 100
+	w.BS(0)                                                   // invis → 102
+	w.BL(499)                                                 // proxy_id → 136
+	w.BL(0x0301)                                              // version → 170
+	w.B(0)                                                    // from_dxf → 171
+	w.RCS([]byte{0x01, 0x02, 0x03, 0x04})                     // proxy_data TF（4 字节）→ 203
+	w.H(5, 20)                                                // xdic
+	w.H(5, 21)                                                // layer → dataEnd=235
 	const objSizeBit, dataEnd = uint64(203), uint64(235)
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)

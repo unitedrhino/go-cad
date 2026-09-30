@@ -4,6 +4,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
 	"testing"
@@ -11,11 +12,11 @@ import (
 
 // TestDecodeVertexPfaceFromBits VERTEX_PFACE：RC flag + 3BD point。
 func TestDecodeVertexPfaceFromBits(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x0D)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x0D)
 	writeCommonHead(w, 1253, 0)
 	w.RC(0xc0)                // flag：MESH|PFACE_MESH 位
 	w.B3BD(10.5, -2.25, 0.75) // point
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -38,10 +39,10 @@ func TestDecodeVertexPfaceFromBits(t *testing.T) {
 // TestDecodeVertexPfaceFaceFromBits VERTEX_PFACE_FACE：4×BSd vertind，
 // flag 恒 128 不从流读取。
 func TestDecodeVertexPfaceFaceFromBits(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x0E)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x0E)
 	writeCommonHead(w, 1259, 0)
 	w.BS(2).BS(0).BS(0).BS(0) // vertind[0..3]
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)

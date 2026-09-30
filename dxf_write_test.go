@@ -11,6 +11,7 @@ package cad
 
 import (
 	"bufio"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
 	"os/exec"
@@ -533,7 +534,7 @@ func dxfCollectNamesFromGroups(codes []int, vals []string) (layers, blocks, inse
 // 应替换合成名出现在 DXF 中（R2004+ 的图层真名与 DWG/JSON 的块真名），
 // 且 INSERT 引用与 BLOCKS 段定义按名字配对。
 func TestWriteDXFRealSymbolNames(t *testing.T) {
-	dir := libredwgTestDataDir()
+	dir := testsupport.LibredwgTestDataDir()
 	cases := []struct {
 		sample  string
 		wantLay string // 期望出现的图层真名（解析路径可得的代表）
@@ -600,7 +601,7 @@ func TestWriteDXFRealSymbolNames(t *testing.T) {
 
 // TestWriteDXFJSONSourceNames JSON 来源（gold name 键）的符号真名写出。
 func TestWriteDXFJSONSourceNames(t *testing.T) {
-	goldPath := libredwgGoldJSONPath("2018")
+	goldPath := testsupport.LibredwgGoldJSONPath("2018")
 	raw, err := os.ReadFile(goldPath)
 	if err != nil {
 		t.Skipf("gold JSON 缺失: %v", err)

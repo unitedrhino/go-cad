@@ -3,12 +3,13 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"testing"
 )
 
 // writeEntityPrefix 写记录前缀：UMC handle-stream-size（1 字节）+ OT 类型码。
-func writeEntityPrefix(w *bitWriter, typeCode uint16) *bitWriter {
+func writeEntityPrefix(w *testsupport.BitWriter, typeCode uint16) *testsupport.BitWriter {
 	return w.UMC(8).OT(typeCode)
 }
 
@@ -17,7 +18,7 @@ func writeEntityPrefix(w *bitWriter, typeCode uint16) *bitWriter {
 // color unknown 位 + ltscale + ltype + plot + mat + visual×3 + invis。
 // 与读取侧特征位（featMaterialFlags|featVisualStyles|featDSBinary，noShadow-noLW 变体）严格对称。
 // nolinks=1（ByLayer 颜色）路径：color 为 1 位 unknown。
-func writeCommonHead(w *bitWriter, handle uint64, entmode uint8) *bitWriter {
+func writeCommonHead(w *testsupport.BitWriter, handle uint64, entmode uint8) *testsupport.BitWriter {
 	w.H(0, handle)
 	w.BS(0)          // EED 结束
 	w.B(0)           // pic 无
@@ -39,7 +40,7 @@ func writeCommonHead(w *bitWriter, handle uint64, entmode uint8) *bitWriter {
 
 func TestDecodeLineFromBits(t *testing.T) {
 	// 公共头 + z_is_zero=1 + xs RD + xe DD + ys RD + ye DD + thickness + extrusion
-	w := writeEntityPrefix(newBitWriter(), 0x13)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x13)
 	writeCommonHead(w, 100, 2)
 	w.B(1) // z 全零
 	w.RD(10.0)
@@ -49,10 +50,10 @@ func TestDecodeLineFromBits(t *testing.T) {
 	w.BT(0)
 	w.BE(0, 0, 1)
 	// handle 流（objSizeBit 指向的位置不关键：decodeOwnerLayer 失败容忍）
-	h := objHeader{rec: &objectRecord{size: uint32(len(w.bytes())), r2010Plus: true,
-		handleSizeFieldBits: 8, handleStreamSizeBits: 8, body: w.bytes()}}
+	h := objHeader{rec: &objectRecord{size: uint32(len(w.Bytes())), r2010Plus: true,
+		handleSizeFieldBits: 8, handleStreamSizeBits: 8, body: w.Bytes()}}
 	_ = h
-	r := newBitStream(w.bytes()) // 位 0 = UMC → OT → 公共头
+	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -76,13 +77,13 @@ func TestDecodeLineFromBits(t *testing.T) {
 }
 
 func TestDecodeCircleFromBits(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x12)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x12)
 	writeCommonHead(w, 7, 2)
 	w.B3BD(1.0, 2.0, 0) // center
 	w.BD(5.0)           // radius
 	w.BT(0)
 	w.BE(0, 0, 1)
-	r := newBitStream(w.bytes()) // 位 0 = UMC → OT → 公共头
+	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -100,7 +101,7 @@ func TestDecodeCircleFromBits(t *testing.T) {
 }
 
 func TestDecodeArcFromBits(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x11)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x11)
 	writeCommonHead(w, 8, 2)
 	w.B3BD(0, 0, 0)
 	w.BD(10.0)
@@ -108,7 +109,7 @@ func TestDecodeArcFromBits(t *testing.T) {
 	w.BE(0, 0, 1)
 	w.BD(0.0)                    // angle start
 	w.BD(math.Pi / 2)            // angle end
-	r := newBitStream(w.bytes()) // 位 0 = UMC → OT → 公共头
+	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -123,13 +124,13 @@ func TestDecodeArcFromBits(t *testing.T) {
 }
 
 func TestDecodePointFromBits(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x1B)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x1B)
 	writeCommonHead(w, 9, 2)
 	w.B3BD(3.0, 4.0, 5.0)
 	w.BT(0) // thickness（BT：1 位标志）
 	w.BE(0, 0, 1)
 	w.BD(0)                      // angle
-	r := newBitStream(w.bytes()) // 位 0 = UMC → OT → 公共头
+	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -144,7 +145,7 @@ func TestDecodePointFromBits(t *testing.T) {
 }
 
 func TestDecodeEllipseFromBits(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x23)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x23)
 	writeCommonHead(w, 10, 2)
 	w.B3BD(1, 1, 0) // center
 	w.B3BD(2, 0, 0) // major axis
@@ -153,7 +154,7 @@ func TestDecodeEllipseFromBits(t *testing.T) {
 	w.BD(0)         // start
 	w.BD(math.Pi)   // end
 	// ELLIPSE 无尾部 thickness/extrusion 读取
-	r := newBitStream(w.bytes()) // 位 0 = UMC → OT → 公共头
+	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -168,7 +169,7 @@ func TestDecodeEllipseFromBits(t *testing.T) {
 }
 
 func TestDecodeLwPolylineFromBits(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x4D)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x4D)
 	writeCommonHead(w, 11, 2)
 	w.BS(0) // flags：无可选段
 	w.BL(3) // 顶点数
@@ -179,7 +180,7 @@ func TestDecodeLwPolylineFromBits(t *testing.T) {
 	w.DD(10, 10)
 	w.DD(10, 0)
 	// 无 bulges/ids/widths
-	r := newBitStream(w.bytes()) // 位 0 = UMC → OT → 公共头
+	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -194,7 +195,7 @@ func TestDecodeLwPolylineFromBits(t *testing.T) {
 }
 
 func TestDecodeLwPolylineClosedWithBulges(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x4D)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x4D)
 	writeCommonHead(w, 12, 2)
 	w.BS(lwFlagHasNormal | lwFlagHasBulges) // extrusion + bulges
 	w.B3BD(0, 0, 1)                         // extrusion（spec FIELD_3BD，无 BE 默认前缀位）
@@ -210,7 +211,7 @@ func TestDecodeLwPolylineClosedWithBulges(t *testing.T) {
 	w.BD(0.5)
 	w.BD(-0.5)
 	w.BD(0)
-	r := newBitStream(w.bytes()) // 位 0 = UMC → OT → 公共头
+	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -233,7 +234,7 @@ func TestDecodeLwPolylineClosedWithBulges(t *testing.T) {
 }
 
 func TestDecodeTextFromBits(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x01)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x01)
 	writeCommonHead(w, 13, 2)
 	flags := uint8(textFlagNoElevation | textFlagNoAlign | textFlagNoOblique | textFlagNoWidth |
 		textFlagNoGen | textFlagNoHAlign | textFlagNoVAlign) // 仅 rotation + 必要字段
@@ -249,7 +250,7 @@ func TestDecodeTextFromBits(t *testing.T) {
 	// 无 width
 	// R21 文本尾：无 gen/halign/valign 位 → 直接 TU 串
 	w.TU("Hello")
-	r := newBitStream(w.bytes()) // 位 0 = UMC → OT → 公共头
+	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -268,7 +269,7 @@ func TestDecodeTextFromBits(t *testing.T) {
 }
 
 func TestDecodeInsertFromBits(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x07)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x07)
 	writeCommonHead(w, 14, 2)
 	w.B3BD(5, 6, 0) // position
 	w.BB(0x03)      // scale 全 1
@@ -277,14 +278,14 @@ func TestDecodeInsertFromBits(t *testing.T) {
 	w.B(0)          // 无 attribs
 	// handle 流（entmode=2 无 owner、无 reactors）：xdic + layer + 块头，
 	// 起点 = 几何结束位（与真实记录的 dataEndBit→handle 流布局一致）
-	dataEndBit := uint64(len(w.data)) * 8
-	if w.bit > 0 {
-		dataEndBit = uint64((len(w.data)-1)*8 + w.bit)
+	dataEndBit := uint64(len(w.Data)) * 8
+	if w.Bit > 0 {
+		dataEndBit = uint64((len(w.Data)-1)*8 + w.Bit)
 	}
 	w.H(0x05, 901)               // xdic
 	w.H(0x05, 902)               // layer
 	w.H(0x05, 77)                // 块头句柄
-	r := newBitStream(w.bytes()) // 位 0 = UMC → OT → 公共头
+	r := newBitStream(w.Bytes()) // 位 0 = UMC → OT → 公共头
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, dataEndBit, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -320,7 +321,7 @@ func TestReadHandleReferenceAllCodes(t *testing.T) {
 		{0x04, 9, 100, 9},   // 默认绝对
 	}
 	for _, c := range cases {
-		r := newBitStream(newBitWriter().H(c.code, c.val).bytes())
+		r := newBitStream(testsupport.NewBitWriter().H(c.code, c.val).Bytes())
 		got, err := readHandleReference(r, c.base)
 		if err != nil {
 			t.Fatalf("code=%#x: %v", c.code, err)
@@ -330,7 +331,7 @@ func TestReadHandleReferenceAllCodes(t *testing.T) {
 		}
 	}
 	// base=0 时 -1 钳位到 0
-	r := newBitStream(newBitWriter().H(0x08, 0).bytes())
+	r := newBitStream(testsupport.NewBitWriter().H(0x08, 0).Bytes())
 	if got, _ := readHandleReference(r, 0); got != 0 {
 		t.Fatalf("base=0 -1 应钳位 0，得到 %d", got)
 	}

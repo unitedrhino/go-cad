@@ -3,12 +3,13 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"testing"
 )
 
 // writeMTextR2004Body 构造 R2004 版 MTEXT 专属字段（无背景/rect_height、TV 文本）。
-func writeMTextR2004Body(w *bitWriter, text string) {
+func writeMTextR2004Body(w *testsupport.BitWriter, text string) {
 	w.B3BD(1, 2, 0) // insertion
 	w.B3BD(0, 0, 1) // extrusion
 	w.B3BD(1, 0, 0) // x-axis dir
@@ -25,10 +26,10 @@ func writeMTextR2004Body(w *bitWriter, text string) {
 }
 
 func TestDecodeMTextR2004FromBits(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x2C)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x2C)
 	writeCommonHead(w, 21, 2)
 	writeMTextR2004Body(w, "Hello MText")
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -44,7 +45,7 @@ func TestDecodeMTextR2004FromBits(t *testing.T) {
 
 func TestDecodeMTextR2018FromBits(t *testing.T) {
 	// R2007+ 布局：rect_height + TU 文本 + 行距 + 背景标志
-	w := writeEntityPrefix(newBitWriter(), 0x2C)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x2C)
 	writeCommonHead(w, 22, 2)
 	w.B3BD(1, 2, 0)
 	w.B3BD(0, 0, 1)
@@ -61,7 +62,7 @@ func TestDecodeMTextR2018FromBits(t *testing.T) {
 	w.BD(1) // linespacing factor
 	w.B(0)  // unknown bit
 	w.BL(0) // background flags = 0
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -77,7 +78,7 @@ func TestDecodeMTextR2018FromBits(t *testing.T) {
 
 func TestDecodeAttribFromBits(t *testing.T) {
 	// ATTRIB 复用 TEXT 布局 + 尾部 tag 串
-	w := writeEntityPrefix(newBitWriter(), 0x02)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x02)
 	writeCommonHead(w, 23, 2)
 	flags := uint8(textFlagNoElevation | textFlagNoAlign | textFlagNoOblique | textFlagNoWidth |
 		textFlagNoGen | textFlagNoHAlign | textFlagNoVAlign)
@@ -90,7 +91,7 @@ func TestDecodeAttribFromBits(t *testing.T) {
 	w.RD(1.5) // height
 	w.TU("ATTR-VALUE")
 	w.TV("TAG-NAME") // tag
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, _ := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -106,7 +107,7 @@ func TestDecodeAttribFromBits(t *testing.T) {
 
 // TestDecodeInsertWithHandleStream INSERT 完整测试：几何 + handle 流（owner/xdic/layer/块头）。
 func TestDecodeInsertWithHandleStream(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x07)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x07)
 	writeCommonHead(w, 30, 0) // entmode=0 → 有 owner 句柄
 	w.B3BD(1, 1, 0)           // position（短格式 BD：1→2 位、0→2 位）
 	w.BB(0x03)                // scale 全 1
@@ -122,7 +123,7 @@ func TestDecodeInsertWithHandleStream(t *testing.T) {
 	w.H(0x05, 902) // layer
 	w.H(0x05, 77)  // 块头句柄
 
-	body := w.bytes()
+	body := w.Bytes()
 	rec := &objectRecord{
 		body: body, size: uint32(len(body)),
 		r2010Plus: true, handleSizeFieldBits: 8, handleStreamSizeBits: uint32(len(body)*8 - int(dataEndBit)),
@@ -247,7 +248,7 @@ func TestRad2Deg(t *testing.T) {
 
 func TestParseCommonEntityHeadLayoutVariants(t *testing.T) {
 	// 布局候选应能解析 writeCommonHead 构造的标准流
-	w := writeEntityPrefix(newBitWriter(), 0x13)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x13)
 	writeCommonHead(w, 55, 2)
 	w.B(1)
 	w.RD(1)
@@ -256,7 +257,7 @@ func TestParseCommonEntityHeadLayoutVariants(t *testing.T) {
 	w.DD(3, 3)
 	w.BT(0)
 	w.BE(0, 0, 1)
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	// 第一个候选布局应成功且字段正确

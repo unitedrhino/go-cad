@@ -54,16 +54,17 @@ package cad
 
 import (
 	"bytes"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"testing"
 )
 
 // corpusSDataDir 返回 LibreDWG corpus-s 语料目录（大样本档专用）：
-// 优先 libredwgTestDataDir() 下的 corpus-s 子目录；缺失时回落历史位置
+// 优先 testsupport.LibredwgTestDataDir() 下的 corpus-s 子目录；缺失时回落历史位置
 // /tmp/libredwg/test/test-data/corpus-s。目录不存在时仍返回后者，
 // 由调用方按"样本不可用"口径跳过，与 libredwgTestDataDir 一致。
 func corpusSDataDir() string {
-	dir := libredwgTestDataDir()
+	dir := testsupport.LibredwgTestDataDir()
 	if info, err := os.Stat(dir + "/corpus-s"); err == nil && info.IsDir() {
 		return dir + "/corpus-s"
 	}
@@ -85,11 +86,11 @@ func benchSample(b *testing.B, paths ...string) ([]byte, string) {
 }
 
 // 四档样本路径：仓内 testdata 直接相对路径；LibreDWG 语料走
-// libredwgTestDataDir()/corpusSDataDir() 的缺省 skip 口径。
+// testsupport.LibredwgTestDataDir()/corpusSDataDir() 的缺省 skip 口径。
 func benchSmallPath() string  { return "testdata/line_2000.dwg" }
-func benchMediumPath() string { return libredwgTestDataDir() + "/example_2013.dwg" }
+func benchMediumPath() string { return testsupport.LibredwgTestDataDir() + "/example_2013.dwg" }
 func benchLargePath() string  { return corpusSDataDir() + "/fzw.dwg" }
-func benchXLargePath() string { return libredwgTestDataDir() + "/2018/Dynblocks.dwg" }
+func benchXLargePath() string { return testsupport.LibredwgTestDataDir() + "/2018/Dynblocks.dwg" }
 
 // benchSink 防止编译器把被测调用优化掉：结果统一写入包级弃置变量。
 var (

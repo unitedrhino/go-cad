@@ -3,13 +3,14 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"testing"
 )
 
 // TestDecodeDimLinearR2018 R2018 DIM_LINEAR：版本字节 + 3BD 挤出 + 中点 + ...
 func TestDecodeDimLinearR2018(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x15)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x15)
 	writeCommonHead(w, 700, 2)
 	w.RC(1)             // dimension version（变体 hasDimensionVersion）
 	w.B3BD(0, 0, 1)     // extrusion（3BD，非 BE）
@@ -33,7 +34,7 @@ func TestDecodeDimLinearR2018(t *testing.T) {
 	w.B3BD(30, 50, 0)
 	w.BD(0)
 	w.BD(0)
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -58,7 +59,7 @@ func TestDecodeDimLinearR2018(t *testing.T) {
 
 // TestDecodeHatchPolylinePath HATCH 多段线路径。
 func TestDecodeHatchPolylinePath(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x4F)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x4F)
 	writeCommonHead(w, 800, 2)
 	// R2004+ 渐变段（无渐变填充：固定字段 + 2 个默认色；R2007+ 渐变名在字符串区）
 	w.BL(0) // is_gradient_fill
@@ -92,7 +93,7 @@ func TestDecodeHatchPolylinePath(t *testing.T) {
 	w.BS(0)
 	w.BS(0)
 	w.BL(0)
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)

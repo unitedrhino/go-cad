@@ -6,6 +6,7 @@ package cad
 import (
 	"bytes"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
 	"os/exec"
@@ -305,10 +306,10 @@ func TestWriteForwardJSONGoldRoundtrip(t *testing.T) {
 		{"r13", "example_r13.dwg"},
 		{"r14", "example_r14.dwg"},
 	}
-	dataDir := libredwgTestDataDir()
+	dataDir := testsupport.LibredwgTestDataDir()
 	for _, tc := range cases {
 		t.Run(tc.ver, func(t *testing.T) {
-			goldPath := libredwgGoldJSONPath(tc.ver)
+			goldPath := testsupport.LibredwgGoldJSONPath(tc.ver)
 			gold, err := os.ReadFile(goldPath)
 			if err != nil {
 				t.Skipf("gold JSON 不可用: %v", err)
@@ -565,7 +566,7 @@ func TestWriteForwardDXFCross(t *testing.T) {
 	if _, err := os.Stat(dwgread); err != nil {
 		t.Skipf("dwgread 不可用: %v", err)
 	}
-	sample := filepath.Join(libredwgTestDataDir(), "example_2000.dxf")
+	sample := filepath.Join(testsupport.LibredwgTestDataDir(), "example_2000.dxf")
 	if _, err := os.Stat(sample); err != nil {
 		t.Skipf("DXF 样本不可用: %v", err)
 	}

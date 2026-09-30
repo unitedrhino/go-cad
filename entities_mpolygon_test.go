@@ -5,11 +5,14 @@
 // 构造并验证解码一致性。
 package cad
 
-import "testing"
+import (
+	"github.com/unitedrhino/go-cad/internal/testsupport"
+	"testing"
+)
 
 // writeMpolygonHead 写 R2004+ 公共头与 MPOLYGON 主体首段（style + 渐变段 +
 // 高程/挤出/名称占位/填充标志）。R2013 口径（streamName，名称零占位）。
-func writeMpolygonHead(w *bitWriter, handle uint64, style uint16) {
+func writeMpolygonHead(w *testsupport.BitWriter, handle uint64, style uint16) {
 	writeEntityPrefix(w, 500)
 	writeCommonHead(w, handle, 2)
 	w.BS(style)     // 主体首 style
@@ -29,7 +32,7 @@ func writeMpolygonHead(w *bitWriter, handle uint64, style uint16) {
 // TestDecodeMpolygonFromBits solid 填充 + 边集路径（四种 seg 类型齐备）+
 // 多段线路径，验证 HATCH 路径解析复用与 MPOLYGON 专属字段。
 func TestDecodeMpolygonFromBits(t *testing.T) {
-	w := newBitWriter()
+	w := testsupport.NewBitWriter()
 	writeMpolygonHead(w, 700, 1)
 	w.BL(2) // num_paths
 	// 路径 1：边集路径，四种曲线类型各一段
@@ -82,7 +85,7 @@ func TestDecodeMpolygonFromBits(t *testing.T) {
 	w.H(5, 30)
 	w.H(5, 31)
 	const objSizeBit = uint64(0) // 由解码断言单独核对路径，不依赖 objSizeBit
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -143,7 +146,7 @@ func TestDecodeMpolygonFromBits(t *testing.T) {
 // 渐变段全零 + 图案定义线段（angle/scale/double/定义线含划线数组）。
 // 用 R2007 口径（名称走字符串区，主流程零占位）。
 func TestDecodeMpolygonPatternFromBits(t *testing.T) {
-	w2 := writeEntityPrefix(newBitWriter(), 500)
+	w2 := writeEntityPrefix(testsupport.NewBitWriter(), 500)
 	writeCommonHead(w2, 701, 2)
 	w2.BS(0)         // style=0
 	w2.BL(0)         // is_gradient_fill
@@ -176,7 +179,7 @@ func TestDecodeMpolygonPatternFromBits(t *testing.T) {
 	w2.BL(0)       // 总边界句柄数
 	w2.H(5, 30)    // xdic
 	w2.H(5, 31)    // layer
-	r := newBitStream(w2.bytes())
+	r := newBitStream(w2.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)

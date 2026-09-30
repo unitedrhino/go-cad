@@ -5,6 +5,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,7 +21,7 @@ var uhengshenhuaFixHandles = []uint64{
 
 // TestUhengshenhuaHatchFit 样本整文档零跳过 + 修复句柄全部可取且为 HATCH。
 func TestUhengshenhuaHatchFit(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(libredwgTestDataDir(), "corpus-hunt2/uhengshenhua.dwg"))
+	data, err := os.ReadFile(filepath.Join(testsupport.LibredwgTestDataDir(), "corpus-hunt2/uhengshenhua.dwg"))
 	if err != nil {
 		t.Skip("uhengshenhua 样本不可用")
 	}

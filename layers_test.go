@@ -4,6 +4,7 @@ package cad
 
 import (
 	"encoding/binary"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"testing"
 )
 
@@ -93,14 +94,14 @@ func TestParseR2000SectionDirectory(t *testing.T) {
 func TestParseObjectRecordR2010Layout(t *testing.T) {
 	// 构造：MS size + UMC hss + OT + 数据（hss 位=0 全数据）
 	// MS(30) + UMC(0) + OT(0x13) + 数据
-	w := newBitWriter()
+	w := testsupport.NewBitWriter()
 	w.MS(8)
 	w.UMC(0)
 	w.OT(0x13)
 	payload := []byte{0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04}
 	w.RCS(payload)
 	w.RCS(make([]byte, 8)) // CRC + 余量
-	data := w.bytes()
+	data := w.Bytes()
 
 	objects := append([]byte{}, data...)
 	refs := []objectRef{{handle: 1, offset: 0}}
@@ -130,11 +131,11 @@ func TestParseObjectRecordR2010Layout(t *testing.T) {
 
 func TestParseObjHeaderR2000Layout(t *testing.T) {
 	// 非 R2010+：MS size + BS 类型码
-	w := newBitWriter()
+	w := testsupport.NewBitWriter()
 	w.MS(8)
 	w.BS(0x13)
 	w.RCS(make([]byte, 16))
-	objects := w.bytes()
+	objects := w.Bytes()
 	rec, err := parseObjectRecord(objects, objectRef{handle: 2, offset: 0}, false)
 	if err != nil {
 		t.Fatal(err)
@@ -189,7 +190,7 @@ func TestParseObjectMapHandlesTerminator(t *testing.T) {
 
 func TestParseClassesSectionR13R15(t *testing.T) {
 	// 哨兵 + RL size + 条目（BS classNumber + BS proxy + TV app + TV cpp + TV dxf + B zombie + BS itemID）
-	w := newBitWriter()
+	w := testsupport.NewBitWriter()
 	w.RCS(sentinelClassesBefore[:])
 	w.RL(0x1000) // 数据长度（足够大让循环按 maxClass 终止）
 	// 条目 1：classNumber=500 dxfName=ACDBXYZ
@@ -210,7 +211,7 @@ func TestParseClassesSectionR13R15(t *testing.T) {
 	w.BS(0x1F3)
 	w.RCS(sentinelClassesAfter[:])
 
-	out, err := parseClassesSectionR13R15(w.bytes())
+	out, err := parseClassesSectionR13R15(w.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}

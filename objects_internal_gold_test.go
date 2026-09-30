@@ -6,6 +6,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"path/filepath"
 	"testing"
@@ -58,7 +59,7 @@ var goldXrecord2018 = struct {
 
 // TestDictionaryXrecordGold2018 对照 example_2018.dwg 的 DICTIONARY/XRECORD 解码结果
 func TestDictionaryXrecordGold2018(t *testing.T) {
-	dir := libredwgTestDataDir()
+	dir := testsupport.LibredwgTestDataDir()
 	data, err := os.ReadFile(filepath.Join(dir, "example_2018.dwg"))
 	if err != nil {
 		t.Skipf("样本不可用: %v", err)

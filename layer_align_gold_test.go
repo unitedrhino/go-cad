@@ -7,6 +7,7 @@ package cad
 
 import (
 	"encoding/json"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,7 +31,7 @@ var layerAlignSamples = []string{
 // R2004+ 为 {index, rgb}，index 是调色板反查派生值，真彩以 rgb 低 24 位为准。
 // 名称三版本统一与 gold name 键逐字对照。
 func TestLayerAlignGold(t *testing.T) {
-	dir := libredwgTestDataDir()
+	dir := testsupport.LibredwgTestDataDir()
 	checked := 0
 	for _, alias := range layerAlignSamples {
 		raw, err := os.ReadFile("/tmp/" + alias + ".json")

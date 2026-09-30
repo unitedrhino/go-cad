@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"image/png"
 	"os"
 	"os/exec"
@@ -316,7 +317,7 @@ type corpusStats struct {
 
 // TestReliabilityCorpusThroughput 全语料 .dwg 吞吐主测试。
 func TestReliabilityCorpusThroughput(t *testing.T) {
-	dir := libredwgTestDataDir()
+	dir := testsupport.LibredwgTestDataDir()
 	if _, err := os.Stat(dir); err != nil {
 		t.Skipf("LibreDWG 语料缺失（%s）: %v", dir, err)
 	}
@@ -426,7 +427,7 @@ func TestReliabilityCorpusThroughput(t *testing.T) {
 // dwgread 仲裁，损坏样本跳过；dwgread 成功而我们失败的样本仅记录清单
 // 不判失败（bug 修复由 WR 批次/主会话协调，避免本测试红阻断批次收口）。
 func TestReliabilityCorpusDXF(t *testing.T) {
-	dir := libredwgTestDataDir()
+	dir := testsupport.LibredwgTestDataDir()
 	if _, err := os.Stat(dir); err != nil {
 		t.Skipf("LibreDWG 语料缺失（%s）: %v", dir, err)
 	}

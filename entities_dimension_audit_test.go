@@ -6,6 +6,7 @@ package cad
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"sort"
 	"strings"
@@ -46,7 +47,7 @@ func TestDimensionEntityAudit(t *testing.T) {
 		case strings.HasPrefix(c, "sample"):
 			sample = "sample_" + c[6:] + ".dwg"
 		}
-		data, err := os.ReadFile(libredwgTestDataDir() + "/" + sample)
+		data, err := os.ReadFile(testsupport.LibredwgTestDataDir() + "/" + sample)
 		if err != nil {
 			t.Logf("%s: 样本不可用，跳过", c)
 			continue

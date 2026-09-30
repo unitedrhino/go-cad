@@ -78,7 +78,7 @@ func TestTextMiddleAlignExtentCenter(t *testing.T) {
 // TestTextBaselineAnchoring TEXT vAlign=0 回归：基线锚定语义为字形坐在
 // 锚点基线上——墨带底部应落在锚点 +0.15×em 内、字面高 ≈0.6~1.15×em。
 // 旧 blitGlyph 口径 Cv=asc−dy 多计一段上延，全部文字整体抬高 ~1em
-//（vAlign=0 实测墨带整体悬于基线上方 ~0.96em，红色注释错位实证）。
+// （vAlign=0 实测墨带整体悬于基线上方 ~0.96em，红色注释错位实证）。
 func TestTextBaselineAnchoring(t *testing.T) {
 	requireRenderFont(t)
 	const w, h, em = 320, 240, 48.0
@@ -167,7 +167,7 @@ func TestMTextLineAdvanceFactor(t *testing.T) {
 
 // TestMTextBlockBounds MTEXT 包围盒方向回归：附着 1-3（顶排）块体自锚点
 // 向下、7-9（底排）向上，primitivesBounds 应覆盖块体而非仅锚点上方整字高
-//（修复前单 MTEXT 样本墨迹全部落在视口外渲染空，reliability_corpus
+// （修复前单 MTEXT 样本墨迹全部落在视口外渲染空，reliability_corpus
 // Text.dwg 六版本实证）。
 func TestMTextBlockBounds(t *testing.T) {
 	newPrim := func(att uint16) primitive {

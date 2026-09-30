@@ -8,6 +8,7 @@ package cad
 
 import (
 	"encoding/json"
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"os"
 	"testing"
 )
@@ -75,14 +76,14 @@ func TestOle2FrameEntityAudit(t *testing.T) {
 // TestDecodeOle2FrameFromBits 合成位流：R2000+ 布局 type/mode/data_size/data/
 // lock_aspect 逐字段解码验证。
 func TestDecodeOle2FrameFromBits(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x4A)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x4A)
 	writeCommonHead(w, 300, 2)
 	w.BS(2)                    // type=2 Embedded
 	w.BS(1)                    // mode=1 pspace
 	w.BL(9)                    // data_size
 	w.RCS([]byte("OLEDATA!!")) // data（9 字节）
 	w.RC(1)                    // lock_aspect
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -104,12 +105,12 @@ func TestDecodeOle2FrameFromBits(t *testing.T) {
 
 // TestDecodeOleFrameFromBits 合成位流：R13/R14 布局（无 mode）flag/data_size/data。
 func TestDecodeOleFrameFromBits(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x2B)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x2B)
 	writeCommonHead(w, 400, 2)
 	w.BS(0) // flag
 	w.BL(4) // data_size
 	w.RCS([]byte("OLE1"))
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -131,13 +132,13 @@ func TestDecodeOleFrameFromBits(t *testing.T) {
 
 // TestDecodeOleFrameR2000FromBits R2000+ 布局补验：flag 后有 mode 字段。
 func TestDecodeOleFrameR2000FromBits(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x2B)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x2B)
 	writeCommonHead(w, 401, 2)
 	w.BS(1) // flag
 	w.BS(0) // mode
 	w.BL(2) // data_size
 	w.RCS([]byte{0xDE, 0xAD})
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)

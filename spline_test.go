@@ -3,6 +3,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"testing"
 )
@@ -10,7 +11,7 @@ import (
 // TestDecodeSplineControlMode 控制点模式（scenario=1）：
 // scenario + degree + 标志位 + 容差 + 节点数组 + 控制点数组。
 func TestDecodeSplineControlMode(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x28)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x28)
 	writeCommonHead(w, 900, 2)
 	w.BL(1)    // scenario=1（控制点）
 	w.BL(3)    // degree
@@ -25,10 +26,10 @@ func TestDecodeSplineControlMode(t *testing.T) {
 	w.BD(0).BD(0).BD(1).BD(1)
 	w.B3BD(0, 0, 0)
 	w.B3BD(10, 20, 0)
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
-	head, err := parseEntityHead(r, uint64(len(w.bytes()))*8, featMaterialFlags|featVisualStyles|featDSBinary)
+	head, err := parseEntityHead(r, uint64(len(w.Bytes()))*8, featMaterialFlags|featVisualStyles|featDSBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +59,7 @@ func TestDecodeSplineControlMode(t *testing.T) {
 
 // TestDecodeSplineFitMode 拟合点模式（scenario=2）。
 func TestDecodeSplineFitMode(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x28)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x28)
 	writeCommonHead(w, 901, 2)
 	w.BL(2) // scenario=2（拟合点）
 	w.BL(3) // degree
@@ -68,10 +69,10 @@ func TestDecodeSplineFitMode(t *testing.T) {
 	w.BL(2)         // 拟合点数
 	w.B3BD(0, 0, 0)
 	w.B3BD(5, 5, 0)
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
-	head, _ := parseEntityHead(r, uint64(len(w.bytes()))*8, featMaterialFlags|featVisualStyles|featDSBinary)
+	head, _ := parseEntityHead(r, uint64(len(w.Bytes()))*8, featMaterialFlags|featVisualStyles|featDSBinary)
 	ent, err := decodeSpline(r, &head, false)
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +93,7 @@ func TestDecodeSplineFitMode(t *testing.T) {
 
 // TestDecodeSplineR2013 R2013+ 扩展头（flags + 节点参数 BL）。
 func TestDecodeSplineR2013(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x28)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x28)
 	writeCommonHead(w, 902, 2)
 	w.BL(1) // scenario
 	w.BL(7) // spline flags1
@@ -105,10 +106,10 @@ func TestDecodeSplineR2013(t *testing.T) {
 	w.B(0)  // weight 回显位
 	w.B3BD(0, 0, 0)
 	w.B3BD(1, 1, 0)
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
-	head, _ := parseEntityHead(r, uint64(len(w.bytes()))*8, featMaterialFlags|featVisualStyles|featDSBinary)
+	head, _ := parseEntityHead(r, uint64(len(w.Bytes()))*8, featMaterialFlags|featVisualStyles|featDSBinary)
 	ent, err := decodeSpline(r, &head, true)
 	if err != nil {
 		t.Fatal(err)

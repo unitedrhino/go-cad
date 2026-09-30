@@ -4,6 +4,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"os"
 	"testing"
@@ -13,7 +14,7 @@ import (
 // COMMON_ENTITY_DIMENSION 公共段 + 弧长专属 10 字段。注意 R2007+ 的
 // user_text 走字符串流，主位流不占位，构造时不写 TV。
 func TestDecodeArcDimensionR2018(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x20) // 类型码仅占位，走直接分发
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x20) // 类型码仅占位，走直接分发
 	writeCommonHead(w, 921, 2)
 	w.RC(0)          // R2010b class_version
 	w.B3BD(0, 0, 1)  // extrusion
@@ -43,7 +44,7 @@ func TestDecodeArcDimensionR2018(t *testing.T) {
 	w.B(1)           // has_leader
 	w.B3BD(9, 10, 0) // leader1_pt
 	w.B3BD(11, 12, 0)
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)

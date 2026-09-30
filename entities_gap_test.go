@@ -3,15 +3,16 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"testing"
 )
 
 // decodeEntityByName 经 decodeEntityByType 分发解码合成位流实体，
 // 同时覆盖类型码 → 类型名 → 解码器分发的完整链路。
-func decodeEntityByName(t *testing.T, w *bitWriter, typeCode uint16, dynamic map[uint16]string) any {
+func decodeEntityByName(t *testing.T, w *testsupport.BitWriter, typeCode uint16, dynamic map[uint16]string) any {
 	t.Helper()
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)
@@ -30,7 +31,7 @@ func decodeEntityByName(t *testing.T, w *bitWriter, typeCode uint16, dynamic map
 // COMMON_ENTITY_DIMENSION 公共段 + def_pt/chord_pt/jog_angle/ovr_center/
 // jog_pt 专属尾部，经 decodeEntityByType 动态类名分发链路解码。
 func TestDecodeLargeRadialDimR2018(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x1F4)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x1F4)
 	writeCommonHead(w, 900, 2)
 	w.RC(0)          // class_version
 	w.B3BD(0, 0, 1)  // extrusion
@@ -85,7 +86,7 @@ func TestDecodeLargeRadialDimR2018(t *testing.T) {
 // TestDecodeLargeRadialDimR2000 R2000 布局：无 class_version 字节、
 // 无 R2007+ 三标志位，attachment 段存在，TV 文本在主位流。
 func TestDecodeLargeRadialDimR2000(t *testing.T) {
-	w := writeEntityPrefix(newBitWriter(), 0x1F4)
+	w := writeEntityPrefix(testsupport.NewBitWriter(), 0x1F4)
 	writeCommonHead(w, 901, 2)
 	w.B3BD(0, 0, 1)     // extrusion（无版本字节）
 	w.RD(1).RD(2)       // text midpoint
@@ -106,7 +107,7 @@ func TestDecodeLargeRadialDimR2000(t *testing.T) {
 	w.BD(0.5)           // jog_angle
 	w.B3BD(1, 1, 0)     // ovr_center
 	w.B3BD(55, 66, 0)   // jog_pt
-	r := newBitStream(w.bytes())
+	r := newBitStream(w.Bytes())
 	_, _ = r.readUMC()
 	_, _ = r.readOT()
 	head, err := parseEntityHead(r, 0, featMaterialFlags|featVisualStyles|featDSBinary)

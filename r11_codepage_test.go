@@ -5,6 +5,7 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"path/filepath"
 	"testing"
@@ -67,7 +68,7 @@ func TestPreR13TextCodepageDecode(t *testing.T) {
 	if e.text != text {
 		t.Errorf("GBK 码页文本=%q, want %q", e.text, text)
 	}
-	if !nearEq(e.insertion.x, 10.0) || !nearEq(e.insertion.y, 20.0) || !nearEq(e.height, 2.5) {
+	if !testsupport.NearEq(e.insertion.x, 10.0) || !testsupport.NearEq(e.insertion.y, 20.0) || !testsupport.NearEq(e.height, 2.5) {
 		t.Errorf("TEXT 几何 = (%v,%v) h=%v", e.insertion.x, e.insertion.y, e.height)
 	}
 

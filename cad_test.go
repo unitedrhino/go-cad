@@ -3,33 +3,10 @@
 package cad
 
 import (
+	"github.com/unitedrhino/go-cad/internal/testsupport"
 	"math"
 	"testing"
 )
-
-// bitsToBytes 按_MSB 位序把位串转为字节串（测试构造用）。
-func bitsToBytes(bits string) []byte {
-	out := make([]byte, 0, len(bits)/8+1)
-	cur := byte(0)
-	n := 0
-	for _, c := range bits {
-		cur <<= 1
-		if c == '1' {
-			cur |= 1
-		}
-		n++
-		if n == 8 {
-			out = append(out, cur)
-			cur = 0
-			n = 0
-		}
-	}
-	if n > 0 {
-		cur <<= 8 - uint(n)
-		out = append(out, cur)
-	}
-	return out
-}
 
 func TestBitReaderReadB(t *testing.T) {
 	r := newBitStream([]byte{0b10110000})
@@ -46,7 +23,7 @@ func TestBitReaderReadB(t *testing.T) {
 
 func TestBitReaderReadBS(t *testing.T) {
 	// BS 前缀 01 → 后续 RC 单字节值 0x2A
-	r := newBitStream(bitsToBytes("01" + "00101010"))
+	r := newBitStream(testsupport.BitsToBytes("01" + "00101010"))
 	v, err := r.readBS()
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +35,7 @@ func TestBitReaderReadBS(t *testing.T) {
 
 func TestBitReaderReadBD(t *testing.T) {
 	// BD 前缀 01 → 1.0；前缀 10 → 0.0
-	r := newBitStream(bitsToBytes("01" + "10"))
+	r := newBitStream(testsupport.BitsToBytes("01" + "10"))
 	v1, err := r.readBD()
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +51,7 @@ func TestBitReaderReadBD(t *testing.T) {
 
 func TestBitReaderReadDD(t *testing.T) {
 	// DD 前缀 00 → 直接使用默认值
-	r := newBitStream(bitsToBytes("00"))
+	r := newBitStream(testsupport.BitsToBytes("00"))
 	v, err := r.readDD(3.14)
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +75,7 @@ func TestBitReaderReadH(t *testing.T) {
 
 func TestBitReaderReadTU(t *testing.T) {
 	// BS 长度=1（前缀 00 + RS 16 位小端 1）+ UTF-16LE 单元 "A"(0x0041)
-	r := newBitStream(bitsToBytes("00" + "00000001" + "00000000" + "01000001" + "00000000"))
+	r := newBitStream(testsupport.BitsToBytes("00" + "00000001" + "00000000" + "01000001" + "00000000"))
 	v, err := r.readTU()
 	if err != nil {
 		t.Fatal(err)
