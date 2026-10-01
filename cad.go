@@ -36,6 +36,9 @@ type Sheet = render.Sheet
 // SheetResult 单图纸渲染产出。
 type SheetResult = render.SheetResult
 
+// SheetText 单条图纸文本及其图框归属（docling 集成的文本导出单元）。
+type SheetText = render.SheetText
+
 // RenderPNG 将文档渲染为 PNG 字节流。
 func RenderPNG(doc *Document, opts RenderOptions) ([]byte, error) {
 	return render.RenderPNG(doc, opts)
@@ -63,6 +66,19 @@ func RenderAllSheets(doc *Document, opts RenderOptions, format string) ([]SheetR
 
 // DetectSheets 检测图纸分幅（图框识别）。
 func DetectSheets(doc *Document) []Sheet { return render.DetectSheets(doc) }
+
+// SheetTexts 收集图纸全部文本并按图框归属（docling 集成入口）：内部先
+// DetectSheets 识别图框再逐条归属，Sheet 为 1-based 图框序号、0 表示不在
+// 任何图框内。无图框图纸 DetectSheets 会兜底返回名为"整图"的整图单张
+// （render 包内部约定），该兜底框不是真实图框、不参与归属——剔除后全部
+// 文本 Sheet=0，与 RenderAllSheets 的兜底判定同口径。
+func SheetTexts(doc *Document) []SheetText {
+	sheets := DetectSheets(doc)
+	if len(sheets) == 1 && sheets[0].Name == "整图" {
+		sheets = nil
+	}
+	return render.SheetTexts(doc, sheets)
+}
 
 // SanitizeSheetName 规范化图纸名（文件名安全口径）。
 func SanitizeSheetName(name string) string { return render.SanitizeSheetName(name) }
