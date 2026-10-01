@@ -31,8 +31,8 @@ expression, aligned bit-by-bit against the LibreDWG specification.
 - 📥 **JSON input** — consumes LibreDWG-style gold JSON directly (41 entity types)
 - 🧱 **Structured forward writing** — any in-memory `Document` (from JSON/DXF/your own code) can be written to DWG without a source file
 - 🛡️ **Industrial reliability** — 147-file official corpus throughput with zero bugs, 1000+ mutation-fuzz variants with zero panics, auto-clarity retry built into rendering
-- 💻 **CLI included** — `dwg2png` renders DWG/DXF to PNG or SVG, with per-sheet splitting; `caddocling` emits the structured manifest consumed by the docling integration
-- 🤝 **docling ecosystem integration** *(unique)* — after `pip install docling-go-cad`, [docling](https://github.com/docling-project/docling)'s `DocumentConverter` parses DWG/DXF directly — one section per sheet frame (sheet title + rendered image + extracted texts), feeding the same RAG/document-pipeline as PDF/Office files
+- 💻 **CLI included** — `dwg2png` renders DWG/DXF to PNG or SVG, with per-sheet splitting; `caddocling` emits a structured manifest (sheets + texts + image list) for AI pipelines and unitedrhino/docling
+- 🤝 **Docling integration** *(unitedrhino's document-parsing library natively supports CAD input)* — [unitedrhino/docling](https://github.com/unitedrhino/docling) integrates go-cad natively, so `.dwg`/`.dxf`/`.dxfb` flow through the same parsing pipeline as PDF/Word
 
 ## Multilingual drawing support
 
@@ -128,8 +128,8 @@ go run ./cmd/dwg2png drawing.dwg -sheets -o s.png      # smart sheet split:
                                                        # orphan content areas (notes, legends) included,
                                                        # full-drawing overview always first
 go run ./cmd/caddocling drawing.dwg -o out             # structured manifest (sheets + texts +
-                                                       # image list) for docling-go-cad
-                                                       # and other AI pipelines
+                                                       # image list) for AI pipelines and
+                                                       # unitedrhino/docling
 ```
 
 ## Example one-command demo
@@ -145,45 +145,29 @@ PNG/DWG/DXF artifacts in the current directory. `-f` selects any sample,
 [example/main.go](example/main.go) — each of the 6 steps is a minimal use of
 a public API.
 
-## Docling integration (AI document pipelines)
+## Docling integration (unitedrhino document parsing)
 
-Lets [docling](https://github.com/docling-project/docling) (IBM's open-source
-document parser for PDF/DOCX/images) ingest CAD drawings: once the integration
-package is installed, `DocumentConverter.convert("drawing.dwg")` returns a
-structured DoclingDocument — **one section per sheet frame** (sheet title as
-heading, per-sheet PNG as a picture item, frame texts as text items), flowing
-through the same RAG pipeline as PDF/Office documents.
+[unitedrhino/docling](https://github.com/unitedrhino/docling), a pure-Go
+document-parsing library from the same organization (PDF/Word/PPT/Excel/HTML/
+Markdown/EML/images/CAD drawings — 13 formats unified into the Docling
+protocol, the engine
+behind the unitedrhino IoT platform knowledge base), integrates go-cad
+natively: `.dwg`/`.dxf`/`.dxfb` are accepted as input formats — **one page per
+sheet frame** (sheet title + rendered image + drawing texts) — flowing into the
+same Markdown/JSON/content_list output and chunking pipeline as PDF/Word.
 
-```bash
-pip install docling-go-cad[docling]        # Python side (includes docling-core)
-go install github.com/unitedrhino/go-cad/cmd/caddocling@latest   # Go side CLI
+```go
+data, _ := os.ReadFile("drawing.dwg")
+
+doc, err := docling.ParseByExt("drawing.dwg", data) // dispatched by extension, one page per sheet
+if err != nil { panic(err) }
+
+md := doc.ToMarkdown() // sheet titles + drawing texts, same protocol as PDF/Word
 ```
 
-```python
-from docling.datamodel.base_models import InputFormat
-from docling.document_converter import DocumentConverter
-from docling_go_cad import CadFormatOption, register_docling
-
-register_docling()  # register .dwg/.dxf/.dxfb formats (idempotent)
-converter = DocumentConverter(format_options={
-    InputFormat.CAD: CadFormatOption(),
-})
-result = converter.convert("fire_protection.dwg")
-print(result.document.export_to_markdown())   # sheet titles + drawing texts
-```
-
-For results without routing, use the convenience API:
-`docling_go_cad.convert_cad("drawing.dwg") -> DoclingDocument`. See
-[integrations/docling-go-cad/README.md](integrations/docling-go-cad/README.md)
-for how it works and its capability boundaries; a one-command demo lives at
-[examples/convert_dwg.py](integrations/docling-go-cad/examples/convert_dwg.py).
-
-**Validated on real drawings**: three production construction drawings
-(fire-protection / low-voltage / outdoor low-voltage, 3.5–4.3 MB) converted
-through the full docling routing, all SUCCESS — 49 sheet frames split into
-sections (23/25/1) and 26k drawing texts carried into markdown/JSON one-to-one
-with the manifest; sheet titles such as "双人间弱电平面图" become searchable
-section headings.
+For the full feature set (other input formats, content_list, RAG chunking,
+LLM enhancement hooks) see
+[unitedrhino/docling](https://github.com/unitedrhino/docling).
 
 ## Real-world validation
 
@@ -246,8 +230,7 @@ DWG write 785 ms, full sheet split (26 SVG) in seconds.
 | `internal/writer/` | DWG writing (bit-level replay + structured forward) |
 | `internal/testsupport/` | test support: test bit-writer / gold path helpers / comparators (no business deps, importable by all sub-package tests) |
 | `example/` / `cmd/dwg2png/` | one-command demo and CLI (facade-only) |
-| `cmd/caddocling/` | docling integration CLI: manifest.json (sheet/text/image inventory) + per-sheet rendering; contract documented in the package README |
-| `integrations/docling-go-cad/` | docling ecosystem integration package (Python): `DocumentConverter` parses DWG/DXF directly |
+| `cmd/caddocling/` | structured manifest CLI: manifest.json (sheet/text/image inventory) + per-sheet rendering, consumed by unitedrhino/docling and other AI pipelines |
 | `testdata/` | official corpus samples (built in, CI runs the full suite) |
 
 One-way dependency flow: `bitstream → objrec → container → entity/object → drawing → render/writer`.

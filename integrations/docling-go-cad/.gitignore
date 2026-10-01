@@ -1,7 +1,0 @@
-# Python 运行与安装产物（不入库）
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-dist/
-build/
