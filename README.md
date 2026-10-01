@@ -36,6 +36,22 @@
 - 渲染使用 CJK 字形引擎，中文标注在 PNG/SVG 中清晰可读
 - 真实验证：4 张中文工程图纸（含 505 个中文 TEXT 的 R2000 图纸）值级对齐 100%
 
+## 渲染效果
+
+以下均为 `dwg2png` 的真实渲染输出（样例取自公开语料中的中文工程图纸，未经任何人工修饰）：
+
+<p align="center">
+  <img src="docs/images/showcase-v-filters.png" width="820" alt="V 型滤池泵房工艺图渲染输出" />
+</p>
+
+V 型滤池泵房工艺图（R2018 容器）：剖面对象、彩色工艺管线、图例表格与标题栏一次成形。
+
+<p align="center">
+  <img src="docs/images/showcase-cjk.png" width="820" alt="中文文本渲染特写" />
+</p>
+
+中文标注特写（机械零件图）：技术要求逐字清晰可读，标题栏中文与表格完整还原——GBK/UTF-16 码页解码 + 内置 CJK 字形引擎，不依赖系统字体。
+
 ## 与 LibreDWG 的对比
 
 | 能力 | LibreDWG | go-cad |

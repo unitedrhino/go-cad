@@ -45,6 +45,27 @@ CJK drawings are first-class citizens, not an afterthought:
 - Verified on 4 real Chinese engineering drawings (incl. an R2000 drawing with
   505 Chinese TEXT entities) at 100% value-level alignment
 
+## Rendering showcase
+
+All images below are real `dwg2png` outputs (Chinese engineering drawings from
+public corpora, no manual touch-ups):
+
+<p align="center">
+  <img src="docs/images/showcase-v-filters.png" width="820" alt="V-filter pump room process drawing rendered" />
+</p>
+
+V-filter pump room process drawing (R2018 container): sections, colored process
+pipelines, legend table and title block rendered in one pass.
+
+<p align="center">
+  <img src="docs/images/showcase-cjk.png" width="820" alt="Chinese text rendering close-up" />
+</p>
+
+Chinese annotation close-up (machining part drawing): technical requirements are
+legible character by character, and the title block table is fully preserved —
+GBK/UTF-16 codepage decoding plus a built-in CJK glyph engine, no system fonts
+required.
+
 ## Comparison with LibreDWG
 
 | Capability | LibreDWG | go-cad |
