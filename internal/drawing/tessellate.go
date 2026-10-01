@@ -7,6 +7,7 @@ package drawing
 import (
 	"math"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/unitedrhino/go-cad/internal/entity"
 )
@@ -238,20 +239,36 @@ func (ts *Tessellator) AppendEntity(out []Primitive, ent any, t Xform, depth int
 			out = append(out, Primitive{Kind: 0, Strokes: strokes, Color: e.Color, Layer: e.Layer, Kind0: "HATCH"})
 		}
 	case *entity.EntDimension:
-		// 标注：连接测量点与文字中点（简化可视表达）
-		var pts []entity.Point2
-		for _, p := range []entity.Point3{e.Point10, e.Point13, e.Point14} {
-			pts = append(pts, t.Apply(entity.Point2{X: p.X, Y: p.Y}))
+		// 标注的真实图形保存在匿名块（*Dxx，AnonymousBlock 引用）中：
+		// 尺寸线、界线、箭头与标注文字均已由 CAD 在保存时算好，AutoCAD
+		// 显示标注即显示该块（几何为世界坐标，恒等变换展开）。按 INSERT
+		// 同款路径展开匿名块，替代早期「测量点+文字中点连线」的简化
+		// 表达——后者在真实图纸（如机械图标注密集处）会产生横贯图面的
+		// 错误飞线。无块或空块时保留简化表达兜底，保证标注始终可见。
+		if e.AnonymousBlock != 0 {
+			if inner := ts.Doc.Blocks[e.AnonymousBlock]; len(inner) > 0 {
+				for _, ent := range inner {
+					out = ts.AppendEntity(out, ent, t, depth+1)
+				}
+				return out
+			}
 		}
-		mid := t.Apply(entity.Point2{X: e.TextMidpoint.X, Y: e.TextMidpoint.Y})
-		var strokes []Stroke
-		for i := 0; i+1 < len(pts); i++ {
-			strokes = append(strokes, Stroke{pts[i].X, pts[i].Y, pts[i+1].X, pts[i+1].Y})
+		{
+			// 标注：连接测量点与文字中点（简化可视表达）
+			var pts []entity.Point2
+			for _, p := range []entity.Point3{e.Point10, e.Point13, e.Point14} {
+				pts = append(pts, t.Apply(entity.Point2{X: p.X, Y: p.Y}))
+			}
+			mid := t.Apply(entity.Point2{X: e.TextMidpoint.X, Y: e.TextMidpoint.Y})
+			var strokes []Stroke
+			for i := 0; i+1 < len(pts); i++ {
+				strokes = append(strokes, Stroke{pts[i].X, pts[i].Y, pts[i+1].X, pts[i+1].Y})
+			}
+			if len(pts) > 0 {
+				strokes = append(strokes, Stroke{pts[len(pts)-1].X, pts[len(pts)-1].Y, mid.X, mid.Y})
+			}
+			out = append(out, Primitive{Kind: 0, Strokes: strokes, Color: e.Color, Layer: e.Layer, Kind0: "DIMENSION"})
 		}
-		if len(pts) > 0 {
-			strokes = append(strokes, Stroke{pts[len(pts)-1].X, pts[len(pts)-1].Y, mid.X, mid.Y})
-		}
-		out = append(out, Primitive{Kind: 0, Strokes: strokes, Color: e.Color, Layer: e.Layer, Kind0: "DIMENSION"})
 	case *entity.EntRay:
 		a := t.Apply(entity.Point2{X: e.Start.X, Y: e.Start.Y})
 		end := entity.Point2{X: e.Start.X + e.UnitVector.X*1e6, Y: e.Start.Y + e.UnitVector.Y*1e6}
@@ -361,6 +378,14 @@ func (ts *Tessellator) AppendEntity(out []Primitive, ent any, t Xform, depth int
 // text 携带剥离格式码后的文本内容、anchor 携带水平锚点（RenderSVG 矢量
 // 输出用；PNG 路径仅消费几何字段，文本为空时 SVG 退化为占位框）。
 func (ts *Tessellator) TextLabel(x, y, h, rot float64, nChars int, t Xform, e entity.EntityCommon, kind, text string, anchor uint8) Primitive {
+	// %% 特殊码在显示层统一翻译（解码数据保持原样，值级对齐口径不受
+	// 影响）：%%c→φ 等翻译后字符数变化，占位宽度按翻译后 rune 数校正
+	if expanded := expandPercentCodes(text); expanded != text {
+		text = expanded
+		if n := utf8.RuneCountInString(text); n > 0 {
+			nChars = n
+		}
+	}
 	if nChars <= 0 {
 		nChars = 1
 	}
@@ -398,6 +423,11 @@ func textWidthFactor(wf float64) float64 {
 // anchor 供 RenderSVG 的 <text> 元素消费；handle 附源实体句柄
 // （<text data-h> AI 元数据）。
 func (ts *Tessellator) TextLabelWith(x, y, h, rot float64, nChars int, t Xform, e entity.EntityCommon, kind string, tx GlyphTextInfo) Primitive {
+	// %% 特殊码显示层翻译：Lines 与 Label.Text 同源应用，保证 PNG 字形
+	// 与 SVG/文本提取口径一致（解码数据保持原样，值级对齐不受影响）
+	for i, line := range tx.Lines {
+		tx.Lines[i] = expandPercentCodes(line)
+	}
 	p := ts.TextLabel(x, y, h, rot, nChars, t, e, kind, "", 0)
 	p.Lb.Handle = e.Common().Handle
 	c, s := math.Cos(rot), math.Sin(rot)

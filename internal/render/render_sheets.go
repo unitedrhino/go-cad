@@ -1477,12 +1477,13 @@ type sheetPipeline struct {
 }
 
 // prepareSheets 构建共享渲染管线：展开/放射线过滤/原点锚定剔除与
-// RenderPNG 完全一致（渲染管线全部复用，金标路径不受影响）。
+// RenderPNG 完全一致（渲染管线全部复用，金标路径不受影响）；基准框
+// 同 RenderPNG 用分位口径（quantileSheetBounds），双峰分布不撑大剔除窗口。
 func prepareSheets(doc *drawing.Document) *sheetPipeline {
 	prim := drawing.NewTessellator(doc)
 	prims := prim.ExpandAll()
 	prims = filterRadiatingStrokes(prims)
-	bbox := drawing.RobustBounds(prims)
+	bbox := quantileSheetBounds(prims)
 	if bbox.Invalid() {
 		bbox = drawing.Box2{MinX: 0, MinY: 0, MaxX: 1, MaxY: 1}
 	}

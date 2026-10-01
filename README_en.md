@@ -58,13 +58,15 @@ V-filter pump room process drawing (R2018 container): sections, colored process
 pipelines, legend table and title block rendered in one pass.
 
 <p align="center">
-  <img src="docs/images/showcase-cjk.png" width="820" alt="Chinese text rendering close-up" />
+  <img src="docs/images/showcase-mechanical.png" width="820" alt="Machined part drawing with dimensions rendered" />
 </p>
 
-Chinese annotation close-up (machining part drawing): technical requirements are
-legible character by character, and the title block table is fully preserved —
-GBK/UTF-16 codepage decoding plus a built-in CJK glyph engine, no system fonts
-required.
+Machined part drawing ("inner walking wheel shaft"): all 32 linear/diameter
+dimensions (φ14–φ25) render with real dimension lines, extension lines, arrows
+and tolerance texts (anonymous-block geometry); surface-finish leader lines
+point correctly; technical requirements and the title block are legible
+character by character — GBK/UTF-16 codepage decoding plus a built-in CJK glyph
+engine, no system fonts required.
 
 ## Comparison with LibreDWG
 

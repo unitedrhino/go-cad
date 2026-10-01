@@ -40,8 +40,10 @@ func RenderPNG(doc *drawing.Document, opts RenderOptions) ([]byte, error) {
 	prims := prim.ExpandAll()
 	prims = filterRadiatingStrokes(prims)
 
-	// 2. 鲁棒包围盒（中位数±分位数，抗错位垃圾坐标干扰）
-	bbox := drawing.RobustBounds(prims)
+	// 2. 稳健包围盒：分位窗口 + 主分量收紧（quantileSheetBounds，与
+	// DetectSheets 兜底口径一致）——「中位数±3×p90」在主体图元+远处
+	// 标注簇的双峰分布下会把视口撑大数倍，主体内容被稀释成中部一条
+	bbox := quantileSheetBounds(prims)
 	if bbox.Invalid() {
 		bbox = drawing.Box2{MinX: 0, MinY: 0, MaxX: 1, MaxY: 1}
 	}
