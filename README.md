@@ -24,7 +24,8 @@
 - 📥 **JSON 输入**：直接消费 LibreDWG 风格 gold JSON（41 种实体）
 - 🧱 **结构化正向写出**：JSON/DXF/内存构造的 Document 均可直接写出 DWG（等价官方 dxf2dwg / dwgwrite -I json 核心能力）
 - 🛡️ **工业级可靠性**：147 个官方语料全量吞吐零 bug、千级变异模糊零 panic、出图自动清晰度保障（不达标自动提升分辨率重渲）
-- 💻 **CLI 内置**：`dwg2png` 支持 DWG/DXF → PNG/SVG，含智能拆图模式
+- 💻 **CLI 内置**：`dwg2png` 支持 DWG/DXF → PNG/SVG，含智能拆图模式；`caddocling` 输出 docling 集成所需的结构化 manifest
+- 🤝 **docling 生态集成**（独有能力）：`pip install docling-go-cad` 后，[docling](https://github.com/docling-project/docling) 的 `DocumentConverter` 可直接解析 DWG/DXF——每张图框一个节（图名标题 + 渲染图 + 图纸文本），无缝进入 RAG/文档理解管线
 
 ## 多语言文本支持
 
@@ -113,6 +114,8 @@ go run ./cmd/dwg2png drawing.dwg -sheets -o s.png      # 智能拆图：
                                                        # 按图框逐张出图（宽度自适应），
                                                        # 无框内容区（设计说明/图例表）兜底切分，
                                                        # 首张固定整图全览
+go run ./cmd/caddocling drawing.dwg -o out             # 结构化 manifest（图框+文本+图片清单），
+                                                       # 供 docling-go-cad 等 AI 管线消费
 ```
 
 ## Example 一键演示
@@ -122,6 +125,32 @@ go run ./example
 ```
 
 零参数即跑全链路（解析→文本→渲染→DWG 回写→再解析校验→DXF 双向→JSON 导出），产物 PNG/DWG/DXF 落当前目录；`-f` 指定任意样本、`-o` 改输出目录、`-width` 改渲染宽度。源码见 [example/main.go](example/main.go)，6 步每步都是库公开 API 的最小用法。
+
+## Docling 集成（AI 文档管线）
+
+让 [docling](https://github.com/docling-project/docling)（IBM 开源的文档解析框架，支持 PDF/DOCX/图片等）直接吃进 CAD 图纸：安装集成包后，`DocumentConverter.convert("图纸.dwg")` 即可产出结构化 DoclingDocument——**每张图框一个节**（图名作标题 + 拆图 PNG 作图片项 + 图框内文本逐条入文），与 PDF/Office 文档走同一条 RAG 管线。
+
+```bash
+pip install docling-go-cad[docling]        # Python 侧（含 docling-core）
+go install github.com/unitedrhino/go-cad/cmd/caddocling@latest   # Go 侧 CLI
+```
+
+```python
+from docling.datamodel.base_models import InputFormat
+from docling.document_converter import DocumentConverter
+from docling_go_cad import CadFormatOption, register_docling
+
+register_docling()  # 注册 .dwg/.dxf/.dxfb 格式（幂等）
+converter = DocumentConverter(format_options={
+    InputFormat.CAD: CadFormatOption(),
+})
+result = converter.convert("消防施工图.dwg")
+print(result.document.export_to_markdown())   # 图名 + 图纸文本
+```
+
+只要结果、不要路由时用便捷 API：`docling_go_cad.convert_cad("图纸.dwg") -> DoclingDocument`。工作原理与能力边界见 [integrations/docling-go-cad/README.md](integrations/docling-go-cad/README.md)；一键演示脚本见 [examples/convert_dwg.py](integrations/docling-go-cad/examples/convert_dwg.py)。
+
+**已验证案例**：三张真实施工图（消防/弱电/室外弱电，3.5~4.3MB）经完整 docling 路由转换全部 SUCCESS——49 个图框拆分入文（23/25/1）、2.6 万条图纸文本逐条进入 markdown/JSON，图片与文本计数和 manifest 完全一致，图名（如"双人间弱电平面图"）作为节标题可检索。
 
 ## 真实案例验证
 
@@ -173,6 +202,8 @@ go run ./example
 | `internal/writer/` | DWG 写出（位级回放 + 结构化正向）|
 | `internal/testsupport/` | 测试支撑包：测试位流构造器 / gold 路径定位 / 比较助手（无业务依赖，供各子包测试导入）|
 | `example/` / `cmd/dwg2png/` | 一键演示与 CLI（仅依赖门面）|
+| `cmd/caddocling/` | docling 集成 CLI：manifest.json（图框/文本/图片清单）+ 拆图出图，契约见包内 README |
+| `integrations/docling-go-cad/` | docling 官方生态集成包（Python）：DocumentConverter 直接解析 DWG/DXF |
 | `testdata/` | 官方语料样本（测试内置，CI 完整运行）|
 
 依赖方向单向：`bitstream → objrec → container → entity/object → drawing → render/writer`，

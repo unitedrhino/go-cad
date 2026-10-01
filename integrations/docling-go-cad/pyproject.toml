@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "docling-go-cad"
+version = "0.1.0"
+description = "docling 的 CAD（DWG/DXF）解析后端，由 caddocling CLI 驱动"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [{ name = "unitedrhino" }]
+keywords = ["docling", "cad", "dwg", "dxf", "document-conversion"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Text Processing :: Markup",
+]
+# 仅依赖轻量的 docling-core；完整 docling 作为可选 extra，按需安装
+dependencies = ["docling-core>=2"]
+
+[project.optional-dependencies]
+docling = ["docling>=2"]
+dev = ["pytest"]
+
+[tool.setuptools]
+packages = ["docling_go_cad"]
+
+[tool.setuptools.package-data]
+docling_go_cad = ["bin/*", "py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "heavy: 需要完整 docling（未安装时相关测试自动跳过）",
+]

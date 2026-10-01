@@ -20,3 +20,20 @@ jobs:
         run: go vet ./...
       - name: go test
         run: go test ./... -count=1 -coverprofile=coverage.out
+
+  python:
+    # docling-go-cad 集成包：默认只装 docling-core（轻量），heavy 用例
+    # 需要完整 docling 时自动跳过，保持 CI 快速；本地跑 heavy 见包内 README
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: install
+        run: pip install -e 'integrations/docling-go-cad[dev]' pytest
+      - name: pytest
+        run: pytest integrations/docling-go-cad/tests -v -m 'not heavy'
