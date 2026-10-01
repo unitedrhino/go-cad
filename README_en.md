@@ -276,6 +276,18 @@ samples (implemented per spec, synthetically verified).
 PRs welcome. `go test ./...` must pass — the suite includes value-level
 alignment gates that keep decoding honest.
 
+## Community
+
+Join us in any of these ways:
+
+- Issues / PRs: this repository
+- ⭐ Star our IoT platform [unitedrhino/things](https://github.com/unitedrhino/things) — **UnitedRhino, the AI · IoT · SaaS foundation**: connect devices in minutes, debug them with your own AI (Skills / CLI), and combine device data with business tools to build AI applications, then grow them into customer-facing SaaS, industry apps and smart terminals. Free basic edition, private deployment supported. Website: [unitedrhino.com](https://www.unitedrhino.com/zh-CN)
+- Follow our WeChat Official Account (云物通科技) for release updates and CAD-parsing write-ups:
+
+<p align="center">
+  <img src="assets/wechat-official-account.jpg" alt="WeChat Official Account QR code" width="200"/>
+</p>
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).

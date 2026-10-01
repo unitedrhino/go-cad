@@ -225,6 +225,18 @@ md := doc.ToMarkdown() // 图名标题 + 图纸文本，与 PDF/Word 同一协�
 
 PR 欢迎提交，`go test ./...` 必须通过——套件内置值级对齐门禁，保证解码始终诚实。
 
+## 社区与共建
+
+欢迎通过任意方式参与共建:
+
+- 提 Issue / PR:本仓库
+- ⭐ 欢迎 Star 我们的物联网平台 [unitedrhino/things](https://github.com/unitedrhino/things)——联犀,**AI · 物联网 · SaaS 开发底座**:快速接入设备,用你熟悉的 AI(Skills / CLI)接入与调试设备,结合设备数据与业务工具构建自己的 AI 应用,再扩展为面向客户的 SaaS、行业应用与智能终端;基础版永久免费,支持私有部署。官网:[unitedrhino.com](https://www.unitedrhino.com/zh-CN)
+- 扫码关注公众号「云物通科技」,获取版本更新与 CAD 解析实践分享,一起共建:
+
+<p align="center">
+  <img src="assets/wechat-official-account.jpg" alt="微信公众号二维码" width="200"/>
+</p>
+
 ## 许可
 
 Apache-2.0，详见 [LICENSE](LICENSE)。
