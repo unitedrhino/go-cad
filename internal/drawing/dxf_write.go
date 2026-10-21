@@ -325,7 +325,16 @@ func (x *DxfWriter) writeTables(doc *Document) {
 	x.codeValue(70, int64(len(layers)))
 	for _, lr := range layers {
 		x.str(0, "LAYER")
-		x.hex(5, lr.Handle)
+		lh := lr.Handle
+		if lh == 0 {
+			// Layer "0" carries handle 0 internally, but the DXF spec requires
+			// LAYER table record handles to be non-zero and unique (strict
+			// readers like ezdxf reject handle 0 outright). Synthesize one on
+			// write; entities reference layers by name (group code 8), so
+			// they are unaffected.
+			lh = x.alloc.take()
+		}
+		x.hex(5, lh)
 		x.hex(330, x.alloc.layerTable)
 		x.str(100, "AcDbSymbolTableRecord")
 		x.str(100, "AcDbLayerTableRecord")
