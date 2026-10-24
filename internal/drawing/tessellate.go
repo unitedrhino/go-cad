@@ -227,6 +227,13 @@ func (ts *Tessellator) AppendEntity(out []Primitive, ent any, t Xform, depth int
 	case *entity.EntUnderlay:
 		out = append(out, Primitive{Kind: 0, Strokes: tessUnderlay(e, t), Color: e.Color, Layer: e.Layer, Kind0: "UNDERLAY"})
 	case *entity.EntHatch:
+		// SolidFill=true 为实心填充语义（PDF 输出接合成环真填充），图案型
+		//（SolidFill=false，剖面线由查看器/线簇表达）保持描边口径——Kind0
+		// 标记区分，渲染层按 Kind0 分派
+		kind0 := "HATCH"
+		if e.SolidFill {
+			kind0 = "HATCH_SOLID"
+		}
 		for _, p := range e.Paths {
 			var pts []entity.Point2
 			for _, v := range p.Points {
@@ -236,7 +243,7 @@ func (ts *Tessellator) AppendEntity(out []Primitive, ent any, t Xform, depth int
 			for i := 0; i+1 < len(pts); i++ {
 				strokes = append(strokes, Stroke{pts[i].X, pts[i].Y, pts[i+1].X, pts[i+1].Y})
 			}
-			out = append(out, Primitive{Kind: 0, Strokes: strokes, Color: e.Color, Layer: e.Layer, Kind0: "HATCH"})
+			out = append(out, Primitive{Kind: 0, Strokes: strokes, Color: e.Color, Layer: e.Layer, Kind0: kind0})
 		}
 	case *entity.EntDimension:
 		// 标注的真实图形保存在匿名块（*Dxx，AnonymousBlock 引用）中：

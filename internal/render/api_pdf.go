@@ -241,7 +241,9 @@ func (em *pdfEmitter) emit(p *drawing.Primitive) {
 		k := pdfColorOf(entityColor(em.doc, p, em.bgWhite))
 		// HATCH/SOLID 真填充：成功即以填充替代描边（描边只是边界的降级
 		// 表达），失败下落到通用描边路径保证几何不丢
-		if p.Kind0 == "HATCH" || p.Kind0 == "SOLID" {
+		// 仅实心语义填充：SOLID 实体与 SolidFill HATCH（Kind0="HATCH_SOLID"）；
+		// 图案型 HATCH（剖面线簇）保持描边口径，实心填充会掩盖图案语义
+		if p.Kind0 == "HATCH_SOLID" || p.Kind0 == "SOLID" {
 			if em.emitHatchFill(p, k) {
 				return
 			}

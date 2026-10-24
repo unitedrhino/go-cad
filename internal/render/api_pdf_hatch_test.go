@@ -78,7 +78,7 @@ func TestPDFHatchFillSolid(t *testing.T) {
 // 填充口径（Kind0=HATCH 分支覆盖）。
 func TestPDFHatchFillHatchClosed(t *testing.T) {
 	em := newHatchTestEmitter()
-	p := redPrim("HATCH", quadStrokes(5, 5, 80, 60))
+	p := redPrim("HATCH_SOLID", quadStrokes(5, 5, 80, 60))
 	em.emit(&p)
 	c := em.finish()
 	if !bytes.Contains(c, []byte("h\nf\n")) || bytes.Contains(c, []byte("RG")) {
@@ -98,7 +98,7 @@ func TestPDFHatchFillGreedyJoin(t *testing.T) {
 		{X1: 10, Y1: 10, X2: 10, Y2: 40}, // 反向左边
 		{X1: 10, Y1: 40, X2: 50, Y2: 40}, // 反向顶边
 	}
-	p := redPrim("HATCH", shuffled)
+	p := redPrim("HATCH_SOLID", shuffled)
 	em.emit(&p)
 	c := em.finish()
 	if !bytes.Contains(c, []byte("h\nf\n")) {
@@ -113,7 +113,7 @@ func TestPDFHatchFillGreedyJoin(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		inter = append(inter, mixed[i], mixed[i+4])
 	}
-	p2 := redPrim("HATCH", inter)
+	p2 := redPrim("HATCH_SOLID", inter)
 	em2.emit(&p2)
 	c2 := em2.finish()
 	if n := bytes.Count(c2, []byte("h\n")); n != 2 {
@@ -134,7 +134,7 @@ func TestPDFHatchFillFallbackOpenChain(t *testing.T) {
 		{X1: 40, Y1: 10, X2: 40, Y2: 30},
 		{X1: 40, Y1: 30, X2: 25, Y2: 45}, // 首尾不回到 (10,10)：开链
 	}
-	p := redPrim("HATCH", open)
+	p := redPrim("HATCH_SOLID", open)
 	em.emit(&p)
 	c := em.finish()
 	if !bytes.Contains(c, []byte("1 0 0 RG")) || !bytes.Contains(c, []byte("S\n")) {
@@ -168,7 +168,7 @@ func TestPDFHatchFillSegLimit(t *testing.T) {
 	for i := 0; i <= pdfHatchMaxSegs; i++ {
 		strokes = append(strokes, drawing.Stroke{X1: float64(i), Y1: 0, X2: float64(i) + 1, Y2: 0})
 	}
-	p := redPrim("HATCH", strokes)
+	p := redPrim("HATCH_SOLID", strokes)
 	em.emit(&p)
 	c := em.finish()
 	if !bytes.Contains(c, []byte("1 0 0 RG")) {
@@ -223,5 +223,25 @@ func TestPDFHatchFillNearCoincident(t *testing.T) {
 	c := em.finish()
 	if !bytes.Contains(c, []byte("h\nf\n")) {
 		t.Fatalf("近重合端点应按容差接合成环填充:\n%s", c)
+	}
+}
+
+// TestPDFHatchPatternStrokeOnly 图案型 HATCH（SolidFill=false → Kind0
+// "HATCH"）不触发实心填充：剖面线簇语义由描边表达，填充会掩盖图案。
+func TestPDFHatchPatternStrokeOnly(t *testing.T) {
+	doc := &drawing.Document{ModelSpace: []any{}}
+	pat := redPrim("HATCH", quadStrokes(5, 5, 80, 60))
+	sp := &sheetPipeline{doc: doc, prims: []drawing.Primitive{pat}}
+	vp := drawing.Box2{MinX: 0, MinY: 0, MaxX: 100, MaxY: 70}
+	em := newPDFEmitter(vp, 1000, RenderOptions{Background: color.RGBA{R: 255, G: 255, B: 255, A: 255}}, newPDFShaper(""), doc)
+	for i := range sp.prims {
+		em.emit(&sp.prims[i])
+	}
+	out := em.finish()
+	if len(em.hatchGrp) != 0 {
+		t.Fatalf("图案型 HATCH 不应产生填充组，got %d", len(em.hatchGrp))
+	}
+	if !bytes.Contains(out, []byte(" RG")) {
+		t.Fatal("图案型 HATCH 应保持描边输出")
 	}
 }
