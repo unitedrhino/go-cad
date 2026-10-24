@@ -25,7 +25,7 @@ expression, aligned bit-by-bit against the LibreDWG specification.
 - ✍️ **DWG writing** — six container generations (R2000→R2018), round-trip verified by re-parsing and by LibreDWG `dwgread`
 - 🖼️ **PNG rendering** — real CJK glyph engine (rotation/mirroring/alignment/width-factor), auto resolution that guarantees text legibility
 - 📐 **SVG output** — true vector with per-layer groups, text elements and AI-friendly metadata (layer names, entity types, handles, sheet summary)
-- 📄 **PDF export** — vector paths with glyph outlines (zero font embedding, opens in any viewer); smart sheet splitting emits a single multi-page PDF with a bookmark tree of sheet names
+- 📄 **PDF export** — vector paths with glyph outlines (zero font embedding, opens in any viewer); true fills for SOLID and solid-fill HATCH; optional A0-A4 standard page snapping (`RenderOptions.PageStdA`); smart sheet splitting emits a single multi-page PDF with a bookmark tree of sheet names
 - 🔪 **Smart sheet splitting** *(unique)* — auto-detects title-block frames (including non-standard extended formats), extracts sheet numbers and names, renders each sheet separately; orphan content areas (notes pages, legend tables, system diagrams) are clustered and split too; a full-drawing overview is always first
 - 📝 **Text extraction** — 14k+ texts from a single drawing, GBK/UTF-16 codepage decoding, pre-R13 codepage support
 - 🔄 **DXF both ways** — ASCII + binary reading, 23+ entity writing, gold-verified against LibreDWG `dxf2dwg` (59/59)
@@ -91,7 +91,7 @@ engine, no system fonts required.
   independent web-wide searches (photometric LIGHT, pre-R13 CJK) — implemented
   per spec with synthetic verification
 - ~5% of DumpEntities keys (long-tail table records) — tracked, coverage gate
-- **PDF text is not selectable/copyable** — glyphs become vector paths (the price of zero font embedding; use SVG output for copyable text); without a system vector font, PDF text falls back to placeholder boxes; HATCH/SOLID keep the stroke-only convention in PDF (same as PNG/SVG), true fills are a future enhancement
+- **PDF text is not selectable/copyable** — glyphs become vector paths (the price of zero font embedding; use SVG output for copyable text); without a system vector font, PDF text falls back to placeholder boxes; pattern HATCH (hatch line clusters) keeps the stroke-only convention in PDF (same as PNG/SVG), only SOLID and solid-fill HATCH get true fills
   at 15923/15923 verified keys
 
 ## Supported formats
