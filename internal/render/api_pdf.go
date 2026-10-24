@@ -1,10 +1,12 @@
 // api_pdf.go 实现 CAD 图纸的矢量 PDF 输出（RenderPDF / RenderSheetPDF /
 // RenderSheetsPDF）：复用 RenderPNG/RenderSVG 的图元展开管线（INSERT 递归
 // → 线段离散 → 放射线/原点锚定线过滤 → 鲁棒包围盒），线段输出为按颜色
-// 分组的 PDF 路径（m/l + S），文本经 pdf_text.go 的字形矢量路径化输出为
-// 填充路径（f，非零环绕）——不嵌入字体，任意查看器无字体依赖、无限缩放
-// 不失真，规避 CJK 字体子集化的授权与体积问题（代价：PDF 内文字不可
-// 选中复制，可复制文本走 SVG 输出）。
+// 分组的 PDF 路径（m/l + S），HATCH/SOLID 边界接合成闭合环后输出为真
+// 填充路径（m/l/h + f，非零环绕，置于线稿之下——PDF 相对 PNG/SVG 描边
+// 口径的格式增强，接合失败回退描边），文本经 pdf_text.go 的字形矢量
+// 路径化输出为填充路径（f，非零环绕）——不嵌入字体，任意查看器无字体
+// 依赖、无限缩放不失真，规避 CJK 字体子集化的授权与体积问题（代价：
+// PDF 内文字不可选中复制，可复制文本走 SVG 输出）。
 //
 // 与 PNG/SVG 的口径对齐：
 //   - 管线逐步同构（矢量口径展开预算沿用 svgExpandBudget，文本全覆盖）；
@@ -24,7 +26,10 @@
 // 文件主要模块划分：
 //
 //	pdfWriter：最小 PDF 1.4 writer（对象表、xref、Flate 流、trailer）
-//	pdfEmitter：单页 content stream（线段分组描边 + 文本轮廓分组填充）
+//	pdfEmitter：单页 content stream（HATCH/SOLID 填充 + 线段分组描边 +
+//	          文本轮廓分组填充）
+//	HATCH/SOLID 填充：hatchRings 边界段接合成闭合环（顺序闭合快路径 +
+//	          端点哈希贪心串链），emitHatchFill 输出填充子路径
 //	页面封装：renderPagePDF（视口 + 图元过滤 + emitter 组装）
 //	导出入口：RenderPDF（整图单页）/ RenderSheetPDF（单图框）/
 //	          RenderSheetsPDF（拆图多页单文件 + 书签树 = 图名列表）
@@ -62,6 +67,12 @@ const pdfStrokeBatch = 1000
 // 成一条 path 后统一 f（非零环绕），减少操作符数量；超限分批填充。
 const pdfGlyphBatch = 256
 
+// pdfHatchMaxSegs 单个 HATCH/SOLID 图元参与填充接合的段数上限：病态
+// 数据（巨型离散环）下端点哈希接合的贪心串链与环检测开销线性增长，
+// 超限直接放弃填充回退描边口径（不丢几何、不卡死），与展开侧的防御
+// 策略同构。
+const pdfHatchMaxSegs = 100000
+
 // pdfColorOf color.RGBA → PDF 颜色分量（0~1，保留 3 位小数精度由
 // appendPDFNum 处理）。
 func pdfColorOf(c color.RGBA) rgbKey {
@@ -78,13 +89,17 @@ type pdfGroup struct {
 
 // pdfEmitter 单页 PDF content stream 发射器：线段按颜色分组收集描边
 // 路径，文本轮廓按颜色分组收集填充路径（文本置于线段之上，与 SVG 输出
-// 层序一致，避免文字被线盖住）；占位框并入线段分组（描边口径同 SVG）。
+// 层序一致，避免文字被线盖住）；HATCH/SOLID 边界接合成闭合环后按颜色
+// 分组收集填充路径，置于线段之下（底色语义：填充盖背景、被线稿盖住，
+// 避免 hatch 底色糊住图形细节）；占位框并入线段分组（描边口径同 SVG）。
 type pdfEmitter struct {
 	k            float64 // 世界单位 → pt 缩放
 	offX, offY   float64 // 页面原点对应的世界坐标（vp.Min）
 	pageW, pageH float64 // 页面尺寸（pt，背景矩形用）
 	strokeW      float64 // 线宽（pt）
 	bg           color.RGBA
+	hatchGrp     []*pdfGroup
+	hatchIdx     map[rgbKey]int
 	strokeGrp    []*pdfGroup
 	strokeIdx    map[rgbKey]int
 	textGrp      []*pdfGroup
@@ -118,6 +133,7 @@ func newPDFEmitter(vp drawing.Box2, nominalWidth int, opts RenderOptions, shaper
 		pageH:     vh * k,
 		strokeW:   strokeW,
 		bg:        opts.Background,
+		hatchIdx:  map[rgbKey]int{},
 		strokeIdx: map[rgbKey]int{},
 		textIdx:   map[rgbKey]int{},
 		shaper:    shaper,
@@ -144,8 +160,10 @@ func (em *pdfEmitter) xy(x, y float64) (float64, float64) {
 }
 
 // emit 序列化一个展开图元：stroke 图元逐段并入同色描边组（千段分批
-// S），label 图元有字形版式且有字体时走矢量文本，否则输出半高占位框
-// （口径与 SVG emit 一致：Tx 为 nil / 无字体 / 空文本均回退占位框）。
+// S），HATCH/SOLID 图元优先尝试把边界段接合成闭合环转为填充（PDF 相对
+// PNG/SVG 描边口径的格式增强，接合失败回退描边，不丢几何），label 图元
+// 有字形版式且有字体时走矢量文本，否则输出半高占位框（口径与 SVG emit
+// 一致：Tx 为 nil / 无字体 / 空文本均回退占位框）。
 func (em *pdfEmitter) emit(p *drawing.Primitive) {
 	switch p.Kind {
 	case 0:
@@ -153,6 +171,13 @@ func (em *pdfEmitter) emit(p *drawing.Primitive) {
 			return // 空图元不建组（SVG emit 同口径）
 		}
 		k := pdfColorOf(entityColor(em.doc, p, em.bgWhite))
+		// HATCH/SOLID 真填充：成功即以填充替代描边（描边只是边界的降级
+		// 表达），失败下落到通用描边路径保证几何不丢
+		if p.Kind0 == "HATCH" || p.Kind0 == "SOLID" {
+			if em.emitHatchFill(p, k) {
+				return
+			}
+		}
 		g := em.groupFor(&em.strokeGrp, em.strokeIdx, k)
 		for _, s := range p.Strokes {
 			if !drawing.Plausible(s.X1, s.Y1) || !drawing.Plausible(s.X2, s.Y2) {
@@ -184,6 +209,179 @@ func (em *pdfEmitter) emit(p *drawing.Primitive) {
 		}
 		em.appendLabelBoxPDF(&p.Lb, k)
 	}
+}
+
+// hatchKey 端点量化键：接合时以「坐标 ÷ 容差四舍五入」的整数格为端点
+// 身份，距离小于容差的两个端点大概率落入同格即视为同一点。
+type hatchKey struct{ x, y int64 }
+
+// hatchQuantKey 端点量化：容差取图元包围盒对角线 × 1e-6（相对精度，
+// 与坐标量级无关）。跨格边界的近邻对会被判为不同点——由此导致的接合
+// 失败走回退描边兜底，不产生错误几何。
+func hatchQuantKey(x, y, tol float64) hatchKey {
+	return hatchKey{x: int64(math.Round(x / tol)), y: int64(math.Round(y / tol))}
+}
+
+// emitHatchFill 把 HATCH/SOLID 图元的边界段接合成闭合环，输出到同色
+// 填充组（m/l + h 闭合子路径，非零环绕 f）——PDF 相对 PNG/SVG 描边口径
+// 的格式增强：SOLID 本就是实心填充语义，HATCH 边界环围成区域填色后才
+// 与 CAD 中的视觉重量一致。填充色与描边同口径取实体色。
+//
+// 已知近似（诚实边界，不做反向校正）：
+//   - 非零环绕下同一 path 内方向相反的内外环自动挖洞；本实现不校验
+//     边界环绕方向（DWG 侧不保证），方向一致时洞会被填充；
+//   - 离散管线对多边界 HATCH 每个边界环输出独立图元（tessellate.go 的
+//     EntHatch 分支），跨图元的内外环分属不同填充 path，挖洞不生效；
+//   - 图元累计环段数超 pdfStrokeBatch 时按千段分批 f，跨批子路径分属
+//     不同 path，挖洞近似同样失效。
+//
+// 返回 false 表示接合失败（开链 / 分叉 / 段数超限），调用方回退描边，
+// 保证不出错、不丢几何。
+func (em *pdfEmitter) emitHatchFill(p *drawing.Primitive, k rgbKey) bool {
+	if len(p.Strokes) < 3 || len(p.Strokes) > pdfHatchMaxSegs {
+		return false // 不足 3 段无法成环；病态超限防卡死——均回退描边
+	}
+	rings := hatchRings(p.Strokes)
+	if rings == nil {
+		return false
+	}
+	g := em.groupFor(&em.hatchGrp, em.hatchIdx, k)
+	for _, ring := range rings {
+		// 环内段已定向首尾相接（量化口径）：m 首段起点，逐段 l 到各自
+		// 终点（相邻段共享点不重复输出），h 闭合回子路径起点
+		for i, s := range ring {
+			if i == 0 {
+				x1, y1 := em.xy(s.X1, s.Y1)
+				g.buf = appendPDFNum(appendPDFNum(g.buf, ' ', x1), ' ', y1)
+				g.buf = append(g.buf, " m\n"...)
+			}
+			x2, y2 := em.xy(s.X2, s.Y2)
+			g.buf = appendPDFNum(appendPDFNum(g.buf, ' ', x2), ' ', y2)
+			g.buf = append(g.buf, " l\n"...)
+		}
+		g.buf = append(g.buf, "h\n"...)
+		g.segs += len(ring)
+		if g.segs >= pdfStrokeBatch {
+			// 千段分批填充（与描边分批同口径，防超长 path 在部分查看器
+			// 上的解析性能问题）；以整环为分批单位，单环不拆分（拆开的
+			// 半个环会各自闭合形成错误填充几何）
+			g.buf = append(g.buf, "f\n"...)
+			g.segs = 0
+		}
+	}
+	return true
+}
+
+// hatchRings 把图元边界段接合为闭合环列表：先试顺序闭合快路径（SOLID
+// 四段与离散边界环通常按序首尾相接给出），失败再做端点哈希贪心串链。
+// 任一段无法归入闭合环（坐标非法、开链、分叉贪心失败）则整体返回 nil，
+// 调用方回退描边——宁可少一次填充增强，不给错误几何。
+func hatchRings(strokes []drawing.Stroke) [][]drawing.Stroke {
+	// 净化：坐标非法段排除（与描边路径的 Plausible 过滤同口径），同时
+	// 累计包围盒供容差计算
+	segs := make([]drawing.Stroke, 0, len(strokes))
+	minX, minY := math.Inf(1), math.Inf(1)
+	maxX, maxY := math.Inf(-1), math.Inf(-1)
+	for _, s := range strokes {
+		if !drawing.Plausible(s.X1, s.Y1) || !drawing.Plausible(s.X2, s.Y2) {
+			continue
+		}
+		segs = append(segs, s)
+		minX = math.Min(minX, math.Min(s.X1, s.X2))
+		minY = math.Min(minY, math.Min(s.Y1, s.Y2))
+		maxX = math.Max(maxX, math.Max(s.X1, s.X2))
+		maxY = math.Max(maxY, math.Max(s.Y1, s.Y2))
+	}
+	// 容差：包围盒对角线 × 1e-6；对角线退化（全部段共点重合）时取
+	// 1e-9 绝对值兜底（负零/NaN 一并被 !(tol > 0) 拦下）
+	tol := math.Hypot(maxX-minX, maxY-minY) * 1e-6
+	if !(tol > 0) {
+		tol = 1e-9
+	}
+	// 两端同键的零长段无几何贡献，且会以「首尾同键」卡死贪心延伸，剔除
+	n := 0
+	for _, s := range segs {
+		if hatchQuantKey(s.X1, s.Y1, tol) != hatchQuantKey(s.X2, s.Y2, tol) {
+			segs[n] = s
+			n++
+		}
+	}
+	segs = segs[:n]
+	if len(segs) < 3 {
+		return nil
+	}
+	if hatchSequentialClosed(segs, tol) {
+		return [][]drawing.Stroke{segs} // 快路径零复制：原序段即单环
+	}
+	return hatchRingsGreedy(segs, tol)
+}
+
+// hatchSequentialClosed 顺序闭合判定：段按序首尾相接（量化键口径）且
+// 末段终点回到首段起点。SOLID 四点与多数离散边界环的常态，一遍扫描
+// 免去哈希接合的分配开销。
+func hatchSequentialClosed(segs []drawing.Stroke, tol float64) bool {
+	for i := 1; i < len(segs); i++ {
+		if hatchQuantKey(segs[i-1].X2, segs[i-1].Y2, tol) != hatchQuantKey(segs[i].X1, segs[i].Y1, tol) {
+			return false
+		}
+	}
+	last := segs[len(segs)-1]
+	return hatchQuantKey(last.X2, last.Y2, tol) == hatchQuantKey(segs[0].X1, segs[0].Y1, tol)
+}
+
+// hatchRingsGreedy 端点哈希 + 贪心串链成环：从任一未用段出发定向为
+// a→b，沿链尾键在端点索引中找未用段接续（命中候选段终点则反向接入），
+// 直到链尾键回到链首键成环；剩余段继续串链（多边界图元多环场景）。
+// 任一链延伸到死端且首尾不接（开链）、或分叉端点上贪心选错，均整体
+// 返回 nil 由调用方回退描边——贪心失败只损失填充增强，不损失几何。
+func hatchRingsGreedy(segs []drawing.Stroke, tol float64) [][]drawing.Stroke {
+	// endRef 端点引用：段号 + 命中端是否为该段终点（反向接入用）
+	type endRef struct {
+		seg  int
+		tail bool
+	}
+	ends := make(map[hatchKey][]endRef, len(segs)*2)
+	for i, s := range segs {
+		ends[hatchQuantKey(s.X1, s.Y1, tol)] = append(ends[hatchQuantKey(s.X1, s.Y1, tol)], endRef{i, false})
+		ends[hatchQuantKey(s.X2, s.Y2, tol)] = append(ends[hatchQuantKey(s.X2, s.Y2, tol)], endRef{i, true})
+	}
+	used := make([]bool, len(segs))
+	var rings [][]drawing.Stroke
+	// take 在键上的候选里取首个未用段（分叉时贪心取先到者）
+	take := func(k hatchKey) (int, bool) {
+		for _, r := range ends[k] {
+			if !used[r.seg] {
+				return r.seg, r.tail
+			}
+		}
+		return -1, false
+	}
+	for i := range segs {
+		if used[i] {
+			continue
+		}
+		used[i] = true
+		chain := []drawing.Stroke{segs[i]}
+		head := hatchQuantKey(segs[i].X1, segs[i].Y1, tol)
+		tail := hatchQuantKey(segs[i].X2, segs[i].Y2, tol)
+		for tail != head {
+			j, hitTail := take(tail)
+			if j < 0 {
+				return nil // 开链死端：无法闭合，整体回退描边
+			}
+			used[j] = true
+			if hitTail {
+				// 候选段终点命中链尾：反向 b→a 接入，保持链内方向一致
+				chain = append(chain, drawing.Stroke{X1: segs[j].X2, Y1: segs[j].Y2, X2: segs[j].X1, Y2: segs[j].Y1})
+				tail = hatchQuantKey(segs[j].X1, segs[j].Y1, tol)
+			} else {
+				chain = append(chain, segs[j])
+				tail = hatchQuantKey(segs[j].X2, segs[j].Y2, tol)
+			}
+		}
+		rings = append(rings, chain)
+	}
+	return rings
 }
 
 // appendLabelBoxPDF 输出文字占位框：基线左端为原点、向上半高、随 rot
@@ -266,8 +464,9 @@ func (em *pdfEmitter) appendGlyphSegs(segs []pdfSeg, cx, cy, ax, ay, bx, by floa
 	}
 }
 
-// finish 组装单页 content stream：背景填充 → 线段分组（RG 颜色 + w 线宽
-// + 批量路径 + S）→ 文本分组（rg 颜色 + 轮廓路径 + f）。
+// finish 组装单页 content stream：背景填充 → HATCH/SOLID 填充分组
+// （rg 颜色 + 闭合子路径 + f，置于线稿之下）→ 线段分组（RG 颜色 +
+// w 线宽 + 批量路径 + S）→ 文本分组（rg 颜色 + 轮廓路径 + f）。
 func (em *pdfEmitter) finish() []byte {
 	var b []byte
 	// 背景：整页矩形填充（0 0 pageW pageH re f）
@@ -279,6 +478,22 @@ func (em *pdfEmitter) finish() []byte {
 	b = appendPDFNum(b, ' ', em.pageW)
 	b = appendPDFNum(b, ' ', em.pageH)
 	b = append(b, " re f\n"...)
+	// HATCH/SOLID 填充组先于线稿输出（底色语义：填充盖背景、线段描边
+	// 再盖填充——hatch 底色在线稿之下，不糊住图形边界细节）；填充分组
+	// 无线宽设置（填充与线宽无关）
+	for _, g := range em.hatchGrp {
+		if g.segs == 0 && len(g.buf) == 0 {
+			continue // 空组（图元全部段被过滤时残留）不输出
+		}
+		b = appendPDFNum(b, ' ', float64(g.key.r)/255)
+		b = appendPDFNum(b, ' ', float64(g.key.G)/255)
+		b = appendPDFNum(b, ' ', float64(g.key.b)/255)
+		b = append(b, " rg\n"...)
+		b = append(b, g.buf...)
+		if g.segs > 0 {
+			b = append(b, "f\n"...)
+		}
+	}
 	for _, g := range em.strokeGrp {
 		if g.segs == 0 && len(g.buf) == 0 {
 			continue // 空组（图元全部段被过滤时残留）不输出
