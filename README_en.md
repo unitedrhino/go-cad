@@ -25,7 +25,7 @@ expression, aligned bit-by-bit against the LibreDWG specification.
 - ✍️ **DWG writing** — six container generations (R2000→R2018), round-trip verified by re-parsing and by LibreDWG `dwgread`
 - 🖼️ **PNG rendering** — real CJK glyph engine (rotation/mirroring/alignment/width-factor), auto resolution that guarantees text legibility
 - 📐 **SVG output** — true vector with per-layer groups, text elements and AI-friendly metadata (layer names, entity types, handles, sheet summary)
-- 📄 **PDF export** — vector paths with glyph outlines (zero font embedding, opens in any viewer); true fills for SOLID and solid-fill HATCH; optional A0-A4 standard page snapping (`RenderOptions.PageStdA`); smart sheet splitting emits a single multi-page PDF with a bookmark tree of sheet names
+- 📄 **PDF export** — vector paths with glyph outlines (zero font embedding, opens in any viewer); true fills for SOLID and solid-fill HATCH; optional A0-A4 standard page snapping (`RenderOptions.PageStdA`); smart sheet splitting emits a single multi-page PDF with a bookmark tree of sheet names, thin fragment sheets auto-filtered by relative content volume
 - 🔪 **Smart sheet splitting** *(unique)* — auto-detects title-block frames (including non-standard extended formats), extracts sheet numbers and names, renders each sheet separately; orphan content areas (notes pages, legend tables, system diagrams) are clustered and split too; a full-drawing overview is always first
 - 📝 **Text extraction** — 14k+ texts from a single drawing, GBK/UTF-16 codepage decoding, pre-R13 codepage support
 - 🔄 **DXF both ways** — ASCII + binary reading, 23+ entity writing, gold-verified against LibreDWG `dxf2dwg` (59/59)
@@ -210,7 +210,11 @@ Every release is validated on real production drawings, not just synthetic fixtu
 - **Fire-protection & weak-current construction sets**: 9+9 title-block
   sheets auto-split with correct sheet numbers and names extracted from
   title bars (e.g. `RD(XF)-05-地下一层消防平面图`), color-legend table fully
-  restored (16 colored line samples + cable specs)
+  restored (16 colored line samples + cable specs). Full 25+23-frame sets
+  (Tangent T3, 4.3MB) validated for multi-page PDF delivery: overview-first
+  pages, per-frame pages, bookmarks = sheet names; fragment sheets
+  (title-fragment names, near-zero graphics) auto-filtered by relative
+  content volume — zero blank pages across all 21/20 pages
 - **Outdoor site plan**: outlier-robust bounds fixed a blank render
   (0.04% → 2.45% ink coverage)
 - **147-file LibreDWG official corpus**: full consumption pipeline
