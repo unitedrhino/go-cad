@@ -466,3 +466,27 @@ func TestRenderSheetPDFStdPage(t *testing.T) {
 		t.Fatalf("竖向 A1 吸附 MediaBox = %.2f×%.2f，want ≈%.2f×%.2f", pw, ph, 594*pdfMM2PT, 841*pdfMM2PT)
 	}
 }
+
+// TestRenderSheetsPDFSkipsFragments 碎片页过滤：content 长度低于全部页
+// 中位数 1/12 的页被滤除（不出空白页不进书签）；页数不足两张不过滤。
+func TestRenderSheetsPDFSkipsFragments(t *testing.T) {
+	mk := func(name string, n int) pdfPageOut {
+		return pdfPageOut{name: name, content: make([]byte, n)}
+	}
+	// 4 页：1.0M / 0.9M / 0.8M / 30K（中位 0.9M → 阈值 75K，30K 被滤）
+	pages := []pdfPageOut{mk("a", 1000_000), mk("b", 900_000), mk("c", 800_000), mk("碎片", 30_000)}
+	out := pdfFilterThinPages(pages)
+	if len(out) != 3 || out[2].name != "c" {
+		t.Fatalf("过滤后 = %d 页，want 3（碎片被滤）", len(out))
+	}
+	// 单页不过滤
+	one := pdfFilterThinPages([]pdfPageOut{mk("only", 10)})
+	if len(one) != 1 {
+		t.Fatal("单页不应过滤")
+	}
+	// 页大小相近时（正常图纸）零误杀
+	even := []pdfPageOut{mk("a", 100_000), mk("b", 90_000), mk("c", 60_000)}
+	if len(pdfFilterThinPages(even)) != 3 {
+		t.Fatal("正常页不应被误杀（中位 90K → 阈值 7.5K，60K 存活）")
+	}
+}

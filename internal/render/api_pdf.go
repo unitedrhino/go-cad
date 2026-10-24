@@ -44,6 +44,7 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -910,10 +911,9 @@ func RenderSheetsPDF(doc *drawing.Document, opts RenderOptions) ([]byte, error) 
 		}
 	}
 	shaper := newPDFShaper(opts.FontPath)
-	w := &pdfWriter{}
-	catalogNum := w.alloc()
-	pagesNum := w.alloc()
-	pageObjs := make([]int, 0, len(sheets))
+	// 阶段一：逐张渲染收集（content 全量驻留内存，量级与最终未压缩流
+	// 相当；阶段二过滤后即可回收）
+	pages := make([]pdfPageOut, 0, len(sheets))
 	for _, s := range sheets {
 		vp := sheetViewport(s.Box)
 		width := sp.sheetWidthFor(vp, s, opts.Width)
@@ -922,8 +922,17 @@ func RenderSheetsPDF(doc *drawing.Document, opts RenderOptions) ([]byte, error) 
 		if s.Name == "整图全览" && opts.Width <= 0 {
 			width = SheetDefaultWidth
 		}
-		content := renderPagePDF(sp, vp, width, opts, shaper, true)
-		pageObjs = append(pageObjs, appendPDFPage(w, content, vp, opts.PageStdA))
+		pages = append(pages, pdfPageOut{name: s.Name, content: renderPagePDF(sp, vp, width, opts, shaper, true), vp: vp})
+	}
+	// 阶段二：碎片页过滤——DetectSheets 残余切分会产出图名残片（如"反"）
+	// +稀薄内容的碎片 Sheet，逐页输出即空白页；相对口径对小图纸自适应
+	pages = pdfFilterThinPages(pages)
+	w := &pdfWriter{}
+	catalogNum := w.alloc()
+	pagesNum := w.alloc()
+	pageObjs := make([]int, 0, len(pages))
+	for i := range pages {
+		pageObjs = append(pageObjs, appendPDFPage(w, pages[i].content, pages[i].vp, opts.PageStdA))
 	}
 	kids := make([]string, len(pageObjs))
 	for i, p := range pageObjs {
@@ -932,11 +941,57 @@ func RenderSheetsPDF(doc *drawing.Document, opts RenderOptions) ([]byte, error) 
 	w.set(pagesNum, []byte(fmt.Sprintf("<< /Type /Pages /Kids [%s] /Count %d >>",
 		strings.Join(kids, " "), len(pageObjs))))
 	catalog := fmt.Sprintf("<< /Type /Catalog /Pages %d 0 R", pagesNum)
-	if outlines := pdfAppendOutlines(w, pdfSheetNames(sheets), pageObjs); outlines > 0 {
+	if outlines := pdfAppendOutlines(w, pageNames(pages), pageObjs); outlines > 0 {
 		catalog += fmt.Sprintf(" /Outlines %d 0 R /PageMode /UseOutlines", outlines)
 	}
 	w.set(catalogNum, []byte(catalog+" >>"))
 	return w.bytes(), nil
+}
+
+// pdfPageOut 单页渲染产物（多页组装中间态）。
+type pdfPageOut struct {
+	name    string       // 图框名（书签标题）
+	content []byte       // 未压缩 content stream（长度即内容量度量）
+	vp      drawing.Box2 // 页面世界视口（MediaBox 基准）
+}
+
+// pdfThinFragFrac 碎片页判定分母：页 content 长度低于全部页中位数的
+// 1/该值判碎片。真实施工图实测：碎片页 135~320KB vs 正常页最小 796KB、
+// 中位 4.5MB——1/12 对两类分离度充足；相对口径对小图纸按比例自适应，
+// 不误杀内容少的正常小页。
+const pdfThinFragFrac = 12
+
+// pdfFilterThinPages 滤掉内容量过低的碎片页（不出页不进书签）。页数
+// 不足两张时不过滤（无从比较，单张即全部内容）。
+func pdfFilterThinPages(pages []pdfPageOut) []pdfPageOut {
+	if len(pages) < 2 {
+		return pages
+	}
+	sizes := make([]int, len(pages))
+	for i := range pages {
+		sizes[i] = len(pages[i].content)
+	}
+	sort.Ints(sizes)
+	threshold := sizes[len(sizes)/2] / pdfThinFragFrac
+	if threshold <= 0 {
+		return pages
+	}
+	out := pages[:0]
+	for i := range pages {
+		if len(pages[i].content) >= threshold {
+			out = append(out, pages[i])
+		}
+	}
+	return out
+}
+
+// pageNames 过滤后页面名清单（书签标题用）。
+func pageNames(pages []pdfPageOut) []string {
+	names := make([]string, len(pages))
+	for i := range pages {
+		names[i] = pages[i].name
+	}
+	return names
 }
 
 // pdfSheetNames 图框名清单（书签标题用）。
