@@ -15,7 +15,10 @@
 //
 // 坐标系：PDF 用户空间原点左下、Y 轴向上，与 CAD 世界坐标同向——只做
 // 平移与缩放，无 Y 翻转。页面尺寸按工程惯例假设世界单位为毫米
-// （×72/25.4 折算 pt，A1 图框出 A1 物理页），宽高比恒正确。
+// （×72/25.4 折算 pt，A1 图框出 A1 物理页），宽高比恒正确；版面计算
+// （页面尺寸/缩放/原点）统一收敛到 pdfPageLayout（含 RenderOptions.
+// PageStdA 的 A0-A4 标准幅面吸附与超限钳制），内容坐标系与 MediaBox
+// 同源，杜绝两处独立计算的量纲分叉。
 //
 // 确定性：对象顺序固定（页序 + 颜色分组首现序）、数字定点格式化、
 // zlib 压缩确定、不写 CreationDate——同输入两次输出字节一致（与 SVG
@@ -52,6 +55,76 @@ const pdfMM2PT = 72.0 / 25.4
 // 拒开）；超出时等比下调缩放系数——宽高比与视觉不变（矢量查看缩放
 // 自由），仅"物理打印 1:1"语义让位于可打开性。
 const pdfMaxPagePt = 14000
+
+// pdfStdSizes ISO 216 A 系标准幅面（mm，横向：长边×短边），A0→A4 顺序。
+// 工程图纸最常用幅面序列：相邻档面积减半、宽高比恒约 √2（这也是分档
+// 必须借助尺寸判据的原因——各档比例几乎相同，见 pdfPageLayout）。
+var pdfStdSizes = [5][2]float64{
+	{1189, 841}, // A0
+	{841, 594},  // A1
+	{594, 420},  // A2
+	{420, 297},  // A3
+	{297, 210},  // A4
+}
+
+// pdfPageLayout 单页版面统一计算：给定世界视口 vp 与是否吸附 A 系标准
+// 幅面，返回页面尺寸（pt）、世界→pt 缩放系数 k 与页面原点对应的世界
+// 坐标 offX/offY。newPDFEmitter（内容坐标系）与 appendPDFPage
+// （MediaBox）共用本函数，消除两处独立计算曾出现的量纲/口径分叉。
+//
+// stdA=false（默认，现行为）：世界单位按毫米直折 pt，单边超
+// pdfMaxPagePt 时以世界口径等比下调 k（宽高比与视觉不变），
+// offX/offY = vp.Min（原点平移），退化视口页面尺寸下限 1pt。
+//
+// stdA=true：视口与各标准幅面（横竖两向，比较时归一到长边在前）逐档
+// 比较，同时满足以下两条才吸附该档：
+//   - 宽高比偏差 <5%：视口形状与幅面同系（A 系比例族）；
+//   - 尺寸偏差 <10%：分档关键——A0-A4 比例全部 ≈√2，纯比例无法区分
+//     档位（会一律命中表首 A0）；要求宽高尺寸接近才能让"按标准幅面
+//     1:1 绘制的图框"吸附到同幅面物理页。容差需覆盖 sheetViewport
+//     对图框包围盒 2%×2 的外扩（尺寸 +4%），故取 10% 而非更紧。
+//
+// 吸附时 pageW/pageH = 幅面 mm×pdfMM2PT（标准物理尺寸，打印友好），
+// 内容等比 fit 居中：k = min(pageW/vw, pageH/vh)×0.98（四周留约 1%
+// 边距），offX/offY = vp.Min - 页内剩余空隙半宽/k（把内容从页面原点
+// 平移到居中位置）。无匹配档位时回退直折（与 stdA=false 完全一致）。
+func pdfPageLayout(vp drawing.Box2, stdA bool) (pageW, pageH, k, offX, offY float64) {
+	vw, vh := vp.MaxX-vp.MinX, vp.MaxY-vp.MinY
+	offX, offY = vp.MinX, vp.MinY
+	// 直折基准：stdA=false 的现行为，也是吸附无匹配时的回退路径
+	k = pdfMM2PT
+	if vw*k > pdfMaxPagePt || vh*k > pdfMaxPagePt {
+		k = pdfMaxPagePt / math.Max(vw, vh)
+	}
+	// 退化视口（零/负宽高）兜底：零尺寸页面会被部分查看器拒绝
+	pageW, pageH = math.Max(vw*k, 1), math.Max(vh*k, 1)
+	if !stdA || vw <= 0 || vh <= 0 {
+		return
+	}
+	// A 系吸附：视口归一到横向（长边在前）后与各档比较，页面方向跟随
+	// 视口原始方向（竖放视口用竖向幅面）
+	lw, sh := vw, vh
+	if lw < sh {
+		lw, sh = sh, lw
+	}
+	for _, sz := range pdfStdSizes {
+		ratioDev := math.Abs(lw/sh/(sz[0]/sz[1]) - 1)
+		sizeDev := math.Max(math.Abs(lw/sz[0]-1), math.Abs(sh/sz[1]-1))
+		if ratioDev >= 0.05 || sizeDev >= 0.10 {
+			continue
+		}
+		pmw, pmh := sz[0], sz[1]
+		if vw < vh {
+			pmw, pmh = pmh, pmw
+		}
+		pageW, pageH = pmw*pdfMM2PT, pmh*pdfMM2PT
+		k = math.Min(pageW/vw, pageH/vh) * 0.98
+		offX = vp.MinX - (pageW-vw*k)/(2*k)
+		offY = vp.MinY - (pageH-vh*k)/(2*k)
+		return
+	}
+	return
+}
 
 // pdfStrokeBatch 单条路径的线段批大小上限：PDF 规范对单 path 子路径数
 // 无硬限制，但超长 path（百万段）在部分查看器上有解析性能/栈深问题，
@@ -95,27 +168,22 @@ type pdfEmitter struct {
 }
 
 // newPDFEmitter 构造页面发射器：vp 为页面世界视口，nominalWidth 为名义
-// 像素宽度（线宽基准，与 SVG strokeW 口径一致）。
+// 像素宽度（线宽基准，与 SVG strokeW 口径一致）。版面（页面尺寸/缩放/
+// 原点，含 PageStdA 幅面吸附与超限钳制）统一由 pdfPageLayout 计算，
+// 与 appendPDFPage 的 MediaBox 同源。
 func newPDFEmitter(vp drawing.Box2, nominalWidth int, opts RenderOptions, shaper *pdfShaper, doc *drawing.Document) *pdfEmitter {
-	vw := vp.MaxX - vp.MinX
-	vh := vp.MaxY - vp.MinY
 	if nominalWidth <= 0 {
 		nominalWidth = 2048
 	}
-	// 页面尺寸钳制：毫米直折超查看器上限时等比下调。k 为最终 世界→pt
-	// 绝对系数，上限除以世界尺寸（毫米）得到，与 appendPDFPage 的
-	// MediaBox 钳制结果一致（否则内容坐标系与页面尺寸不匹配）
-	k := pdfMM2PT
-	if w, h := vw*k, vh*k; w > pdfMaxPagePt || h > pdfMaxPagePt {
-		k = pdfMaxPagePt / math.Max(vw, vh)
-	}
+	vw := vp.MaxX - vp.MinX
+	pageW, pageH, k, offX, offY := pdfPageLayout(vp, opts.PageStdA)
 	strokeW := vw / float64(nominalWidth) * 1.5 * k
 	return &pdfEmitter{
 		k:         k,
-		offX:      vp.MinX,
-		offY:      vp.MinY,
-		pageW:     vw * k,
-		pageH:     vh * k,
+		offX:      offX,
+		offY:      offY,
+		pageW:     pageW,
+		pageH:     pageH,
 		strokeW:   strokeW,
 		bg:        opts.Background,
 		strokeIdx: map[rgbKey]int{},
@@ -449,21 +517,11 @@ type pdfPageMeta struct {
 }
 
 // appendPDFPage 向 writer 追加一页（Page 对象 + Flate 内容流），返回
-// 页面对象编号。MediaBox 原点固定 (0,0)，尺寸取视口世界宽高折算 pt。
-func appendPDFPage(w *pdfWriter, content []byte, vp drawing.Box2) int {
-	pw := (vp.MaxX - vp.MinX) * pdfMM2PT
-	ph := (vp.MaxY - vp.MinY) * pdfMM2PT
-	if pw < 1 {
-		pw = 1
-	}
-	if ph < 1 {
-		ph = 1
-	}
-	k := pdfMM2PT
-	if pw > pdfMaxPagePt || ph > pdfMaxPagePt {
-		k = pdfMaxPagePt / math.Max(pw, ph)
-		pw, ph = pw*k, ph*k
-	}
+// 页面对象编号。MediaBox 原点固定 (0,0)，尺寸与内容坐标系统一由
+// pdfPageLayout 计算（stdA 透传 RenderOptions.PageStdA 的 A 系幅面
+// 吸附；此前此处独立折算曾与 emitter 的钳制口径分叉）。
+func appendPDFPage(w *pdfWriter, content []byte, vp drawing.Box2, stdA bool) int {
+	pw, ph, _, _, _ := pdfPageLayout(vp, stdA)
 	cnum := w.addStream(content)
 	pnum := w.alloc()
 	body := make([]byte, 0, 128)
@@ -574,7 +632,7 @@ func RenderPDF(doc *drawing.Document, opts RenderOptions) ([]byte, error) {
 	w := &pdfWriter{}
 	catalogNum := w.alloc() // 对象 1 约定 Catalog
 	pagesNum := w.alloc()
-	pnum := appendPDFPage(w, content, vp)
+	pnum := appendPDFPage(w, content, vp, opts.PageStdA)
 	w.set(pagesNum, []byte(fmt.Sprintf("<< /Type /Pages /Kids [%d 0 R] /Count 1 >>", pnum)))
 	w.set(catalogNum, []byte(fmt.Sprintf("<< /Type /Catalog /Pages %d 0 R >>", pagesNum)))
 	return w.bytes(), nil
@@ -594,7 +652,7 @@ func RenderSheetPDF(doc *drawing.Document, sheet Sheet, opts RenderOptions) ([]b
 	w := &pdfWriter{}
 	catalogNum := w.alloc()
 	pagesNum := w.alloc()
-	pnum := appendPDFPage(w, content, vp)
+	pnum := appendPDFPage(w, content, vp, opts.PageStdA)
 	w.set(pagesNum, []byte(fmt.Sprintf("<< /Type /Pages /Kids [%d 0 R] /Count 1 >>", pnum)))
 	w.set(catalogNum, []byte(fmt.Sprintf("<< /Type /Catalog /Pages %d 0 R >>", pagesNum)))
 	return w.bytes(), nil
@@ -631,7 +689,7 @@ func RenderSheetsPDF(doc *drawing.Document, opts RenderOptions) ([]byte, error) 
 			width = SheetDefaultWidth
 		}
 		content := renderPagePDF(sp, vp, width, opts, shaper, true)
-		pageObjs = append(pageObjs, appendPDFPage(w, content, vp))
+		pageObjs = append(pageObjs, appendPDFPage(w, content, vp, opts.PageStdA))
 	}
 	kids := make([]string, len(pageObjs))
 	for i, p := range pageObjs {

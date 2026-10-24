@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -349,4 +350,119 @@ func TestRenderPDFAllSamples(t *testing.T) {
 		t.Fatalf("冒烟失败 %d / %d", fail, ok+fail)
 	}
 	t.Logf("整图 PDF 冒烟 %d 样本通过", ok)
+}
+
+// pdfMediaBoxOf 提取 PDF 首个 MediaBox 的宽高（pt），供幅面断言。
+func pdfMediaBoxOf(t *testing.T, pdf []byte) (float64, float64) {
+	t.Helper()
+	// MediaBox 序列化时字面前缀与 appendPDFNum 的前导空格叠加，数值前
+	// 是双空格，正则按"一或多个空格"匹配
+	m := regexp.MustCompile(`/MediaBox \[0 0 +([\d.]+) +([\d.]+)\]`).FindSubmatch(pdf)
+	if m == nil {
+		t.Fatal("未找到 MediaBox")
+	}
+	w, err := strconv.ParseFloat(string(m[1]), 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := strconv.ParseFloat(string(m[2]), 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return w, h
+}
+
+// TestRenderSheetPDFStdPage A0-A4 标准幅面吸附（RenderOptions.PageStdA）：
+// 按标准幅面 1:1 绘制的图框吸附出同幅面物理页。A 系各档宽高比同为 √2，
+// 分档依赖尺寸判据（纯比例会一律命中表首 A0），故 A1 档（841×594）与
+// A0 档（aSeriesSheet 的 1189×841）各验一例；默认关闭与非标准比例
+// 保持毫米直折现行为（100×30 低于图框识别最短边下限，走不了
+// RenderSheetPDF 链路，以 pdfPageLayout 纯函数直测回退路径）。
+func TestRenderSheetPDFStdPage(t *testing.T) {
+	// buildStdSheet 构造指定幅面的单图框文档并取识别结果
+	buildStdSheet := func(w, hgt float64) (*drawing.Document, Sheet) {
+		doc := buildSheetDoc(t, []struct {
+			h        uint64
+			name     string
+			title    string
+			offset   [2]float64
+			W, hgt   float64
+			scale    float64
+			rotation float64
+		}{{h: 100, name: "SHEET1", title: "平面图", offset: [2]float64{0, 0}, W: w, hgt: hgt, scale: 1}})
+		sheets := DetectSheets(doc)
+		if len(sheets) != 1 {
+			t.Fatalf("单图框识别异常: %d", len(sheets))
+		}
+		return doc, sheets[0]
+	}
+	const tol = 2 // pt：MediaBox 定点 2 位输出 + 页面折算舍入余量
+
+	// 841×594（A1 横向 1:1 绘制）+ 吸附 → A1 物理页（841mm/594mm 折算 pt）
+	docA1, sheetA1 := buildStdSheet(841, 594)
+	pdf, err := RenderSheetPDF(docA1, sheetA1, RenderOptions{PageStdA: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pdfWellFormed(t, pdf)
+	w, h := pdfMediaBoxOf(t, pdf)
+	if dw, dh := w-841*pdfMM2PT, h-594*pdfMM2PT; math.Abs(dw) > tol || math.Abs(dh) > tol {
+		t.Fatalf("A1 图框吸附后 MediaBox = %.2f×%.2f，want ≈%.2f×%.2f（偏差 %.2f/%.2f）",
+			w, h, 841*pdfMM2PT, 594*pdfMM2PT, dw, dh)
+	}
+
+	// aSeriesSheet 构造（1189×841：A 系 √2 比例、A0 档 1:1 尺寸）+ 吸附
+	// → 按尺寸分档吸附到 A0 而非 A1
+	docA0 := buildSheetDoc(t, []struct {
+		h        uint64
+		name     string
+		title    string
+		offset   [2]float64
+		W, hgt   float64
+		scale    float64
+		rotation float64
+	}{aSeriesSheet(100, "SHEET1", "平面图", [2]float64{0, 0})})
+	sheetsA0 := DetectSheets(docA0)
+	if len(sheetsA0) != 1 {
+		t.Fatalf("aSeriesSheet 单图框识别异常: %d", len(sheetsA0))
+	}
+	pdf, err = RenderSheetPDF(docA0, sheetsA0[0], RenderOptions{PageStdA: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, h = pdfMediaBoxOf(t, pdf)
+	if dw, dh := w-1189*pdfMM2PT, h-841*pdfMM2PT; math.Abs(dw) > tol || math.Abs(dh) > tol {
+		t.Fatalf("A0 图框吸附后 MediaBox = %.2f×%.2f，want ≈%.2f×%.2f（偏差 %.2f/%.2f）",
+			w, h, 1189*pdfMM2PT, 841*pdfMM2PT, dw, dh)
+	}
+
+	// 默认关闭（PageStdA=false）：A1 图框保持毫米直折现行为
+	//（视口 = 图框包围盒每边外扩 sheetViewportMargin，宽高各 +4%）
+	pdf, err = RenderSheetPDF(docA1, sheetA1, RenderOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, h = pdfMediaBoxOf(t, pdf)
+	wantW := 841 * (1 + 2*sheetViewportMargin) * pdfMM2PT
+	wantH := 594 * (1 + 2*sheetViewportMargin) * pdfMM2PT
+	if dw, dh := w-wantW, h-wantH; math.Abs(dw) > tol || math.Abs(dh) > tol {
+		t.Fatalf("默认关闭时 MediaBox = %.2f×%.2f，want 直折 ≈%.2f×%.2f", w, h, wantW, wantH)
+	}
+
+	// 非标准比例（100×30）不吸附：回退毫米直折（k/原点均为直折口径；
+	// 页面尺寸用微小容差比较——编译期常量乘法与运行时乘法存在 1 ulp
+	// 双舍入差，位级比较会误报）
+	pw, ph, k, offX, offY := pdfPageLayout(drawing.Box2{MinX: 0, MinY: 0, MaxX: 100, MaxY: 30}, true)
+	if math.Abs(pw-100*pdfMM2PT) > 1e-6 || math.Abs(ph-30*pdfMM2PT) > 1e-6 ||
+		k != pdfMM2PT || offX != 0 || offY != 0 {
+		t.Fatalf("非标准比例应回退直折: got %.2f×%.2f k=%v off=(%v,%v)", pw, ph, k, offX, offY)
+	}
+
+	// 竖向图框（594×841，含外扩）同样吸附：比较归一到横向、页面方向
+	// 跟随视口（宽 < 高 → 竖向 A1 幅面）
+	pw, ph, _, _, _ = pdfPageLayout(
+		drawing.Box2{MinX: 10, MinY: 20, MaxX: 10 + 594*(1+2*sheetViewportMargin), MaxY: 20 + 841*(1+2*sheetViewportMargin)}, true)
+	if dw, dh := pw-594*pdfMM2PT, ph-841*pdfMM2PT; math.Abs(dw) > tol || math.Abs(dh) > tol {
+		t.Fatalf("竖向 A1 吸附 MediaBox = %.2f×%.2f，want ≈%.2f×%.2f", pw, ph, 594*pdfMM2PT, 841*pdfMM2PT)
+	}
 }
