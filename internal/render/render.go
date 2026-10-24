@@ -20,6 +20,10 @@ type RenderOptions struct {
 	Width      int        // 输出宽度像素，默认 2048；高度按包围盒比例确定
 	Background color.RGBA // 背景色，默认白色
 	FontPath   string     // 字形渲染字体文件路径（空=自动探测系统字体；无可用字体回退占位条）
+	// PageStdA PDF 页面吸附 A0-A4 标准幅面，默认 false 按图框世界尺寸
+	//（毫米假设）直折 pt；true 时视口宽高比与尺寸均接近标准幅面
+	//（按标准幅面 1:1 绘制的图框）则用标准物理幅面出页，打印友好
+	PageStdA bool
 }
 
 // RenderPNG 将文档模型空间渲染为 PNG 字节流。
