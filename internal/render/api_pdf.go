@@ -889,6 +889,23 @@ func RenderSheetsPDF(doc *drawing.Document, opts RenderOptions) ([]byte, error) 
 	sheets := DetectSheets(doc)
 	if len(sheets) != 1 || sheets[0].Name != "整图" {
 		if b := quantileSheetBounds(sp.prims); !b.Invalid() {
+			// 全览覆盖全部图框的并集（含兜底切分区）：quantile 分位窗口
+			// 是"单图主体+离群标注"口径，多图框平铺时只罩住密集区（首框），
+			// 全览页会缺后续图框、起不到总览作用
+			for _, s := range sheets {
+				if s.Box[0] < b.MinX {
+					b.MinX = s.Box[0]
+				}
+				if s.Box[1] < b.MinY {
+					b.MinY = s.Box[1]
+				}
+				if s.Box[2] > b.MaxX {
+					b.MaxX = s.Box[2]
+				}
+				if s.Box[3] > b.MaxY {
+					b.MaxY = s.Box[3]
+				}
+			}
 			sheets = append([]Sheet{{Name: "整图全览", Box: [4]float64{b.MinX, b.MinY, b.MaxX, b.MaxY}}}, sheets...)
 		}
 	}
