@@ -1,9 +1,9 @@
 // main.go 实现 dwg2png 命令行工具：把 AutoCAD DWG / DXF 图纸渲染为
-// PNG 位图或 SVG 矢量图。
+// PNG 位图、SVG 矢量图或矢量 PDF。
 //
 // 用法：
 //
-//	dwg2png <input.dwg|input.dxf> [-o out.png|out.svg] [-width 2048] [-sheets]
+//	dwg2png <input.dwg|input.dxf> [-o out.png|out.svg|out.pdf] [-width 2048] [-sheets]
 //
 // 参数说明：
 //   - input.dwg / input.dxf：输入图纸文件路径（必填，与选项参数可任意顺序
@@ -11,21 +11,26 @@
 //     二进制 DXF 均支持），其余（.dwg）走 cad.Parse
 //   - -o：输出图片路径，缺省为输入路径去掉扩展名后加 .png；输出格式按
 //     扩展名分派——.svg 走 cad.RenderSVG 矢量输出（文字以 <text> 元素由
-//     查看器字体渲染，线条无限缩放不失真），其余走 cad.RenderPNG
+//     查看器字体渲染，线条无限缩放不失真），.pdf 走 cad.RenderPDF（文本
+//     字形轮廓路径化，零字体嵌入、任意查看器可开），其余走 cad.RenderPNG
 //   - -width：输出图片宽度（像素）；未指定时整图模式默认 2048、-sheets
 //     单图幅模式默认 4096（单图幅下字号像素高比整图大一个数量级）；高度
 //     按图纸包围盒比例自适应，SVG 中决定线宽与固有尺寸基准（viewBox
-//     保持世界坐标，缩放无损）
+//     保持世界坐标，缩放无损），PDF 中作线宽名义基准（页面尺寸按世界
+//     单位毫米折算 pt）
 //   - -sheets：按图框切分逐张出图（cad.RenderAllSheets）——识别模型空间
 //     平铺的标准图幅图框，每个图框渲染一张（无图框兜底整图单张），输出
 //     `<输出名>-<序号>-<图名>.png/svg` 多文件，图名经文件名净化；单张
 //     缺省按框内文字自适应起步并渲染后自检清晰度（文字 ≥8px 占比低于
 //     60% 时自动加倍宽度重渲，画布像素超内存上限拒绝），stdout 逐张
-//     汇总最终宽度与达标率，出图即清晰、无需人工调参选宽度
+//     汇总最终宽度与达标率，出图即清晰、无需人工调参选宽度；输出扩展名
+//     为 .pdf 时不逐张出文件，改走 cad.RenderSheetsPDF 输出单个多页 PDF
+//     （整图全览首页 + 逐图框一页，书签 = 图名列表）
 //
 // 处理流程：读取文件 → cad.Parse / cad.ParseDXF 解析 → 按输出扩展名与
-// -sheets 开关分派 cad.RenderPNG / cad.RenderSVG / cad.RenderAllSheets
-// → 写出图片文件。任一步骤失败时错误信息输出到 stderr，进程以退出码 1 结束。
+// -sheets 开关分派 cad.RenderPNG / cad.RenderSVG / cad.RenderPDF /
+// cad.RenderAllSheets / cad.RenderSheetsPDF → 写出图片文件。任一步骤
+// 失败时错误信息输出到 stderr，进程以退出码 1 结束。
 package main
 
 import (
@@ -48,10 +53,10 @@ func main() {
 // run 执行一次完整的「解析 → 渲染 → 写文件」流程，返回需报告给用户的错误。
 func run(args []string) error {
 	fs := flag.NewFlagSet("dwg2png", flag.ContinueOnError)
-	out := fs.String("o", "", "输出图片路径（.svg 为矢量输出），缺省为输入路径去扩展名加 .png")
+	out := fs.String("o", "", "输出图片路径（.svg/.pdf 为矢量输出），缺省为输入路径去扩展名加 .png")
 	// 宽度缺省 0=按模式自动：整图 2048、-sheets 单图幅 4096（文字清晰口径）
 	width := fs.Int("width", 0, "输出宽度（像素）；缺省整图 2048、-sheets 模式 4096")
-	sheets := fs.Bool("sheets", false, "按图框切分逐张出图（输出 <输入文件名>-<序号>-<图名>.png/svg 多文件）")
+	sheets := fs.Bool("sheets", false, "按图框切分逐张出图（输出 <输入文件名>-<序号>-<图名>.png/svg 多文件；.pdf 输出单个多页文件）")
 	// flag 包遇到首个位置参数即停止解析，这里先重排参数：以 - 开头的选项连同
 	// 其取值移到最前，使「dwg2png input.dwg -o out.png」这类书写顺序可用；
 	// 布尔型选项（-sheets）后不吞取值，避免误把位置参数当选项值
@@ -82,6 +87,7 @@ func run(args []string) error {
 	if output == "" {
 		output = strings.TrimSuffix(input, filepath.Ext(input)) + ".png"
 	}
+	isPDF := strings.EqualFold(filepath.Ext(output), ".pdf")
 	data, err := os.ReadFile(input)
 	if err != nil {
 		return fmt.Errorf("读取 %s: %w", input, err)
@@ -98,22 +104,27 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("解析 %s: %w", input, err)
 	}
-	// -sheets 图框切分逐张出图：输出 <输入文件名>-<序号>-<图名>.<ext>
-	// 多文件（前缀固定取输入 DWG 文件名，保证多图纸批量时对应关系明确；
-	// -o 仅决定输出目录与格式扩展名）
+	// -sheets + .pdf：图框切分为单个多页 PDF（全览首页 + 逐框一页 +
+	// 书签），与 PNG/SVG 的逐文件口径不同——PDF 的工程交付形态是一个文件
 	if *sheets {
+		if isPDF {
+			return renderSheetsPDF(doc, input, output, *width)
+		}
 		return renderSheets(doc, input, output, *width)
 	}
 	sheetWidth := *width
 	if sheetWidth <= 0 {
 		sheetWidth = 2048
 	}
-	// 输出格式按 -o 扩展名分派：.svg 矢量输出（文字/线条无限缩放清晰），
-	// 其余（含缺省 .png）走 PNG 位图
+	// 输出格式按 -o 扩展名分派：.svg 矢量输出（文字/线条无限缩放清晰）、
+	// .pdf 矢量 PDF（文本路径化零字体依赖），其余（含缺省 .png）走 PNG 位图
 	var imgData []byte
-	if strings.EqualFold(filepath.Ext(output), ".svg") {
+	switch {
+	case strings.EqualFold(filepath.Ext(output), ".svg"):
 		imgData, err = cad.RenderSVG(doc, cad.RenderOptions{Width: sheetWidth})
-	} else {
+	case isPDF:
+		imgData, err = cad.RenderPDF(doc, cad.RenderOptions{Width: sheetWidth})
+	default:
 		imgData, err = cad.RenderPNG(doc, cad.RenderOptions{Width: sheetWidth})
 	}
 	if err != nil {
@@ -123,6 +134,21 @@ func run(args []string) error {
 		return fmt.Errorf("写出 %s: %w", output, err)
 	}
 	fmt.Fprintf(os.Stdout, "%s -> %s（%d 字节）\n", input, output, len(imgData))
+	return nil
+}
+
+// renderSheetsPDF 图框切分为单个多页 PDF（-sheets + .pdf 输出）：整图
+// 全览首页 + 逐图框一页，书签树 = 图名列表（打开即显示）；无图框图纸
+// 兜底整图单页。与 PNG/SVG 逐文件拆图的口径差异见 run 注释。
+func renderSheetsPDF(doc *cad.Document, input, output string, width int) error {
+	pdf, err := cad.RenderSheetsPDF(doc, cad.RenderOptions{Width: width})
+	if err != nil {
+		return fmt.Errorf("图框切分 PDF 渲染: %w", err)
+	}
+	if err := os.WriteFile(output, pdf, 0o644); err != nil {
+		return fmt.Errorf("写出 %s: %w", output, err)
+	}
+	fmt.Fprintf(os.Stdout, "%s -> %s（%d 字节，多页 PDF，书签=图名列表）\n", input, output, len(pdf))
 	return nil
 }
 

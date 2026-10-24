@@ -49,6 +49,14 @@ func RenderSVG(doc *Document, opts RenderOptions) ([]byte, error) {
 	return render.RenderSVG(doc, opts)
 }
 
+// RenderPDF 将文档渲染为单页矢量 PDF 字节流：线段为路径描边、文本经
+// 字形轮廓路径化填充（不嵌字体，任意查看器无字体依赖）。opts.Width 仅
+// 作线宽名义基准；页面尺寸按世界单位毫米假设折算 pt（超查看器上限时
+// 等比钳制）。无系统矢量字体时文本回退半高占位框。
+func RenderPDF(doc *Document, opts RenderOptions) ([]byte, error) {
+	return render.RenderPDF(doc, opts)
+}
+
 // RenderSheetPNG 渲染单张图纸为 PNG。
 func RenderSheetPNG(doc *Document, sheet Sheet, opts RenderOptions) ([]byte, error) {
 	return render.RenderSheetPNG(doc, sheet, opts)
@@ -59,9 +67,22 @@ func RenderSheetSVG(doc *Document, sheet Sheet, opts RenderOptions) ([]byte, err
 	return render.RenderSheetSVG(doc, sheet, opts)
 }
 
-// RenderAllSheets 渲染全部图纸（format 为 "png"/"svg"）。
+// RenderSheetPDF 渲染单张图纸为单页矢量 PDF（无书签——单页无导航意义）。
+func RenderSheetPDF(doc *Document, sheet Sheet, opts RenderOptions) ([]byte, error) {
+	return render.RenderSheetPDF(doc, sheet, opts)
+}
+
+// RenderAllSheets 渲染全部图纸（format 为 "png"/"svg"，逐张字节流；
+// PDF 的多页单文件形态走 RenderSheetsPDF）。
 func RenderAllSheets(doc *Document, opts RenderOptions, format string) ([]SheetResult, error) {
 	return render.RenderAllSheets(doc, opts, format)
+}
+
+// RenderSheetsPDF 图框切分渲染为单个多页矢量 PDF：首页固定"整图全览"，
+// 逐图框一页，书签树 = 图名列表（打开即显示书签）。无图框图纸兜底
+// 整图单页（口径同 RenderAllSheets）。
+func RenderSheetsPDF(doc *Document, opts RenderOptions) ([]byte, error) {
+	return render.RenderSheetsPDF(doc, opts)
 }
 
 // DetectSheets 检测图纸分幅（图框识别）。

@@ -8,7 +8,7 @@
 
 ## go-cad 是什么
 
-`go-cad` 在位级解析 Autodesk DWG 图纸（R9～R2018），支持渲染 PNG/SVG、文本提取，并能按六代容器把解析结果回写为 DWG 文件。同时支持 DXF 双向转换与 LibreDWG 风格 JSON 输入。无 cgo、无外部二进制依赖，作为独立模块可嵌入任意 Go 服务。
+`go-cad` 在位级解析 Autodesk DWG 图纸（R9～R2018），支持渲染 PNG/SVG/PDF、文本提取，并能按六代容器把解析结果回写为 DWG 文件。同时支持 DXF 双向转换与 LibreDWG 风格 JSON 输入。无 cgo、无外部二进制依赖，作为独立模块可嵌入任意 Go 服务。
 
 解码正确性以 [LibreDWG](https://github.com/LibreDWG/libredwg)（参考实现）为金标准做**逐键值级验证**：37 个语料图纸、其中 34 个 strict 硬门禁，全部 100% 对齐。实现为独立纯 Go 表达，按 LibreDWG 规格逐位对齐修正。
 
@@ -18,13 +18,14 @@
 - ✍️ **DWG 写出**：六代容器（R2000→R2018），回读与 LibreDWG `dwgread` 双重验证
 - 🖼️ **PNG 渲染**：真实 CJK 字形引擎（旋转/镜像/对齐/宽度因子），分辨率自动保证文字清晰
 - 📐 **SVG 输出**：真矢量 + AI 友好元数据（图层分组/实体类型/句柄/图纸摘要）
+- 📄 **PDF 导出**：矢量路径 + 文本字形轮廓化（零字体嵌入、任意查看器可开）；智能拆图输出单个多页 PDF，书签树=图名列表
 - 🔪 **智能拆图**（独有能力）：自动识别模型空间图框（含非标加长幅）、提取图号与图名、逐幅出图；设计说明/图例表等无框内容区自动兜底切分；整图全览固定首张
 - 📝 **文本提取**：单张 4MB 图纸提取 1.4 万条文本，GBK/UTF-16 码页解码，pre-R13 码页支持
 - 🔄 **DXF 双向**：ASCII + 二进制读取、23+ 实体写出，经 LibreDWG `dxf2dwg` 金标准 59/59 验证
 - 📥 **JSON 输入**：直接消费 LibreDWG 风格 gold JSON（41 种实体）
 - 🧱 **结构化正向写出**：JSON/DXF/内存构造的 Document 均可直接写出 DWG（等价官方 dxf2dwg / dwgwrite -I json 核心能力）
 - 🛡️ **工业级可靠性**：147 个官方语料全量吞吐零 bug、千级变异模糊零 panic、出图自动清晰度保障（不达标自动提升分辨率重渲）
-- 💻 **CLI 内置**：`dwg2png` 支持 DWG/DXF → PNG/SVG，含智能拆图模式；`caddocling` 输出结构化 manifest（图框+文本+图片清单），供 AI 管线与联犀 docling 消费
+- 💻 **CLI 内置**：`dwg2png` 支持 DWG/DXF → PNG/SVG/PDF，含智能拆图模式（PDF 为单文件多页）；`caddocling` 输出结构化 manifest（图框+文本+图片清单），供 AI 管线与联犀 docling 消费
 - 🤝 **Docling 集成**（联犀文档解析库原生支持 CAD 输入）：[unitedrhino/docling](https://github.com/unitedrhino/docling) 原生集成 go-cad，`.dwg`/`.dxf`/`.dxfb` 与 PDF/Word 等走同一条解析管线
 
 ## 多语言文本支持
@@ -33,7 +34,7 @@
 
 - TEXT/MTEXT/ATTRIB/ATTDEF 全实体类型的 **GBK/UTF-16 码页解码**（R13+）与 **pre-R13 码页**（R9～R11 头变量码页）
 - 大字体（bigfont）场景与 `\U+XXXX` 转义处理
-- 渲染使用 CJK 字形引擎，中文标注在 PNG/SVG 中清晰可读
+- 渲染使用 CJK 字形引擎，中文标注在 PNG/SVG/PDF 中清晰可读（PDF 将字形轮廓转矢量路径，不嵌字体）
 - 真实验证：4 张中文工程图纸（含 505 个中文 TEXT 的 R2000 图纸）值级对齐 100%
 
 ## 渲染效果
@@ -61,7 +62,7 @@ V 型滤池泵房工艺图（R2018 容器）：剖面对象、彩色工艺管线
 | DWG 写出 | R13~R2018 | **R2000~R2018** 六代容器（`dwgread` 交叉验证）|
 | DXF 读写 | ✅ | ✅（金标准 59/59）|
 | JSON 输入输出 | ✅ | ✅ 输入（41 种实体）/ 结构化导出 |
-| 渲染 | ⚠️ 仅调试级 dwg2SVG | ✅ PNG 字形渲染 + AI 友好 SVG + 智能拆图 |
+| 渲染 | ⚠️ 仅调试级 dwg2SVG | ✅ PNG 字形渲染 + AI 友好 SVG + 矢量 PDF + 智能拆图 |
 | 中文图纸 | 部分支持 | ✅ 一等公民（码页/大字体/CJK 渲染全链路）|
 | 语言与许可 | C（GPL）| **Go（Apache-2.0）**——可嵌入，无许可证传染 |
 
@@ -72,6 +73,7 @@ V 型滤池泵房工艺图（R2018 容器）：剖面对象、彩色工艺管线
 - **R2.x～R8 古董格式**——超出 LibreDWG 支持范围
 - 少数 spec 分支经两轮全网搜索**无真实样本**（光度 LIGHT、pre-R13 中文）——已按 spec 实现+合成自证
 - 约 5% 的 DumpEntities 长尾表记录键（进行中，已验证键 15923/15923）
+- **PDF 文本不可选中复制**——字形转矢量路径（零字体嵌入的代价；可复制文本走 SVG 输出）；无系统矢量字体时 PDF 文本回退半高占位框；HATCH/SOLID 在 PDF 中沿用描边口径（与 PNG/SVG 一致），真填充为后续增强
 
 ## 支持矩阵
 
@@ -117,6 +119,9 @@ func main() {
     err = cad.WriteDwg(doc, &buf) // 六代容器写出，按版本自动分派
 
     svg, err := cad.RenderSVG(doc, cad.RenderOptions{Width: 4096})
+
+    pdf, err := cad.RenderPDF(doc, cad.RenderOptions{Width: 4096})  // 矢量 PDF（文本轮廓化）
+    multi, err := cad.RenderSheetsPDF(doc, cad.RenderOptions{})      // 智能拆图多页 PDF（书签=图名）
     _ = png; _ = svg
 }
 ```
@@ -126,6 +131,9 @@ func main() {
 ```bash
 go run ./cmd/dwg2png drawing.dwg -o out.png            # PNG（2048）
 go run ./cmd/dwg2png drawing.dwg -o out.svg            # SVG（矢量，无限缩放）
+go run ./cmd/dwg2png drawing.dwg -o out.pdf            # PDF（矢量，文本轮廓化零字体依赖）
+go run ./cmd/dwg2png drawing.dwg -sheets -o s.pdf      # 智能拆图（PDF）：
+                                                       # 单个多页 PDF，书签=图名列表
 go run ./cmd/dwg2png drawing.dwg -sheets -o s.png      # 智能拆图：
                                                        # 按图框逐张出图（宽度自适应），
                                                        # 无框内容区（设计说明/图例表）兜底切分，

@@ -9,7 +9,7 @@
 ## What is go-cad ?
 
 `go-cad` parses Autodesk DWG drawings at the bit level (R9–R2018), renders them
-to PNG/SVG, extracts text, and writes DWG files back in six container
+to PNG/SVG/PDF, extracts text, and writes DWG files back in six container
 generations. It also reads and writes DXF, and consumes LibreDWG-style JSON.
 No cgo, no external binaries — a standalone module embeddable in any Go service.
 
@@ -25,13 +25,14 @@ expression, aligned bit-by-bit against the LibreDWG specification.
 - ✍️ **DWG writing** — six container generations (R2000→R2018), round-trip verified by re-parsing and by LibreDWG `dwgread`
 - 🖼️ **PNG rendering** — real CJK glyph engine (rotation/mirroring/alignment/width-factor), auto resolution that guarantees text legibility
 - 📐 **SVG output** — true vector with per-layer groups, text elements and AI-friendly metadata (layer names, entity types, handles, sheet summary)
+- 📄 **PDF export** — vector paths with glyph outlines (zero font embedding, opens in any viewer); smart sheet splitting emits a single multi-page PDF with a bookmark tree of sheet names
 - 🔪 **Smart sheet splitting** *(unique)* — auto-detects title-block frames (including non-standard extended formats), extracts sheet numbers and names, renders each sheet separately; orphan content areas (notes pages, legend tables, system diagrams) are clustered and split too; a full-drawing overview is always first
 - 📝 **Text extraction** — 14k+ texts from a single drawing, GBK/UTF-16 codepage decoding, pre-R13 codepage support
 - 🔄 **DXF both ways** — ASCII + binary reading, 23+ entity writing, gold-verified against LibreDWG `dxf2dwg` (59/59)
 - 📥 **JSON input** — consumes LibreDWG-style gold JSON directly (41 entity types)
 - 🧱 **Structured forward writing** — any in-memory `Document` (from JSON/DXF/your own code) can be written to DWG without a source file
 - 🛡️ **Industrial reliability** — 147-file official corpus throughput with zero bugs, 1000+ mutation-fuzz variants with zero panics, auto-clarity retry built into rendering
-- 💻 **CLI included** — `dwg2png` renders DWG/DXF to PNG or SVG, with per-sheet splitting; `caddocling` emits a structured manifest (sheets + texts + image list) for AI pipelines and unitedrhino/docling
+- 💻 **CLI included** — `dwg2png` renders DWG/DXF to PNG, SVG or PDF, with per-sheet splitting (PDF as one multi-page file); `caddocling` emits a structured manifest (sheets + texts + image list) for AI pipelines and unitedrhino/docling
 - 🤝 **Docling integration** *(unitedrhino's document-parsing library natively supports CAD input)* — [unitedrhino/docling](https://github.com/unitedrhino/docling) integrates go-cad natively, so `.dwg`/`.dxf`/`.dxfb` flow through the same parsing pipeline as PDF/Word
 
 ## Multilingual drawing support
@@ -41,7 +42,7 @@ CJK drawings are first-class citizens, not an afterthought:
 - **GBK/UTF-16 codepage decoding** for TEXT/MTEXT/ATTRIB/ATTDEF (R13+) and
   **pre-R13 codepages** from the R9–R11 header variable stream
 - Bigfont handling and `\U+XXXX` escape processing
-- CJK glyph engine — Chinese annotations render crisply in PNG/SVG
+- CJK glyph engine — Chinese annotations render crisply in PNG/SVG/PDF (PDF converts glyph outlines to vector paths, no font embedding)
 - Verified on 4 real Chinese engineering drawings (incl. an R2000 drawing with
   505 Chinese TEXT entities) at 100% value-level alignment
 
@@ -77,7 +78,7 @@ engine, no system fonts required.
 | DWG writing | R13–R2018 | **R2000–R2018** (six generations, verified by `dwgread`) |
 | DXF read/write | ✅ | ✅ (gold-verified 59/59) |
 | JSON in/out | ✅ | ✅ in (41 types) / structured dump out |
-| Rendering | ⚠️ debug-grade `dwg2SVG` only | ✅ PNG glyph rendering + AI-friendly SVG + smart sheet splitting |
+| Rendering | ⚠️ debug-grade `dwg2SVG` only | ✅ PNG glyph rendering + AI-friendly SVG + vector PDF + smart sheet splitting |
 | Language | C (GPL) | **Go (Apache-2.0)** — embeddable, no license contamination |
 
 ### What go-cad cannot do (honest limits)
@@ -90,6 +91,7 @@ engine, no system fonts required.
   independent web-wide searches (photometric LIGHT, pre-R13 CJK) — implemented
   per spec with synthetic verification
 - ~5% of DumpEntities keys (long-tail table records) — tracked, coverage gate
+- **PDF text is not selectable/copyable** — glyphs become vector paths (the price of zero font embedding; use SVG output for copyable text); without a system vector font, PDF text falls back to placeholder boxes; HATCH/SOLID keep the stroke-only convention in PDF (same as PNG/SVG), true fills are a future enhancement
   at 15923/15923 verified keys
 
 ## Supported formats
@@ -136,6 +138,9 @@ func main() {
     err = cad.WriteDwg(doc, &buf) // six-container writer, auto-dispatched
 
     svg, err := cad.RenderSVG(doc, cad.RenderOptions{Width: 4096})
+
+    pdf, err := cad.RenderPDF(doc, cad.RenderOptions{Width: 4096})  // vector PDF (glyph outlines)
+    multi, err := cad.RenderSheetsPDF(doc, cad.RenderOptions{})      // multi-page PDF (bookmarks = sheet names)
     _ = png; _ = svg
 }
 ```
@@ -145,6 +150,9 @@ func main() {
 ```bash
 go run ./cmd/dwg2png drawing.dwg -o out.png            # PNG (2048)
 go run ./cmd/dwg2png drawing.dwg -o out.svg            # SVG (vector, zoom forever)
+go run ./cmd/dwg2png drawing.dwg -o out.pdf            # PDF (vector, glyph outlines, no fonts embedded)
+go run ./cmd/dwg2png drawing.dwg -sheets -o s.pdf      # smart sheet split (PDF):
+                                                       # one multi-page PDF, bookmarks = sheet names
 go run ./cmd/dwg2png drawing.dwg -sheets -o s.png      # smart sheet split:
                                                        # one PNG per title-block frame,
                                                        # auto width per sheet text size,
