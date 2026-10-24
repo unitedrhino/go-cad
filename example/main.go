@@ -1,6 +1,7 @@
 // example 是 cad 库的一键演示程序：无需任何参数，默认使用包内 testdata
-// 样本完整走一遍「解析 → 文本提取 → PNG 渲染 → DWG 回写 → 再解析校验 →
-// DXF 双向 → JSON 结构导出」全链路，产物落在当前目录（可用 -o 改输出目录）。
+// 样本完整走一遍「解析 → 文本提取 → 渲染（PNG + 矢量 PDF 整图单页 +
+// 图框拆分多页 PDF）→ DWG 回写 → 再解析校验 → DXF 双向 → JSON 结构导出」
+// 全链路，产物落在当前目录（可用 -o 改输出目录）。
 // 用法：
 //
 //	cd backend/share && go run ./cad/example              # 一键演示
@@ -60,9 +61,10 @@ func main() {
 	}
 	fmt.Println()
 
-	// ③ PNG 渲染
+	// ③ 渲染：PNG 光栅 + 矢量 PDF（Width 对 PDF 仅作线宽名义基准）
+	renderOpts := cad.RenderOptions{Width: *width}
 	t0 = time.Now()
-	pngData, err := cad.RenderPNG(doc, cad.RenderOptions{Width: *width})
+	pngData, err := cad.RenderPNG(doc, renderOpts)
 	must(err, "渲染失败")
 	pngPath := filepath.Join(*outDir, base+".png")
 	must(os.WriteFile(pngPath, pngData, 0o644), "写出 PNG 失败")
@@ -70,6 +72,24 @@ func main() {
 	must(err, "PNG 自检失败")
 	fmt.Printf("[3] RenderPNG      %dx%d  %d 字节  耗时=%v  → %s\n",
 		img.Bounds().Dx(), img.Bounds().Dy(), len(pngData), time.Since(t0), pngPath)
+
+	// 整图单页矢量 PDF：文本字形轮廓化填充、零字体嵌入（任意查看器无字体依赖）
+	t0 = time.Now()
+	pdfData, err := cad.RenderPDF(doc, renderOpts)
+	must(err, "整图 PDF 渲染失败")
+	pdfPath := filepath.Join(*outDir, base+".pdf")
+	must(os.WriteFile(pdfPath, pdfData, 0o644), "写出整图 PDF 失败")
+	fmt.Printf("[3] RenderPDF      整图单页  %d 字节  耗时=%v  → %s\n",
+		len(pdfData), time.Since(t0), pdfPath)
+
+	// 图框智能拆分为多页单文件 PDF：书签树=图名列表，无图框时兜底整图单页
+	t0 = time.Now()
+	sheetsData, err := cad.RenderSheetsPDF(doc, renderOpts)
+	must(err, "拆图 PDF 渲染失败")
+	sheetsPath := filepath.Join(*outDir, base+".sheets.pdf")
+	must(os.WriteFile(sheetsPath, sheetsData, 0o644), "写出拆图 PDF 失败")
+	fmt.Printf("[3] RenderSheetsPDF  拆图多页  %d 字节  耗时=%v  → %s\n",
+		len(sheetsData), time.Since(t0), sheetsPath)
 
 	// ④ DWG 回写 + 再解析校验（按文档版本自动分派六代容器）
 	var buf bytes.Buffer
@@ -98,7 +118,7 @@ func main() {
 	must(err, "DumpEntities 失败")
 	fmt.Printf("[6] DumpEntities   %d 字节 JSON  耗时=%v\n", len(js), time.Since(t0))
 
-	fmt.Printf("\n全部完成，产物在 %s（*.png / *.rewrite.dwg / *.dxf）\n", *outDir)
+	fmt.Printf("\n全部完成，产物在 %s（*.png / *.pdf / *.sheets.pdf / *.rewrite.dwg / *.dxf）\n", *outDir)
 }
 
 func must(err error, what string) {

@@ -148,7 +148,7 @@ go run ./cmd/caddocling drawing.dwg -o out             # 结构化 manifest（�
 go run ./example
 ```
 
-零参数即跑全链路（解析→文本→渲染→DWG 回写→再解析校验→DXF 双向→JSON 导出），产物 PNG/DWG/DXF 落当前目录；`-f` 指定任意样本、`-o` 改输出目录、`-width` 改渲染宽度。源码见 [example/main.go](example/main.go)，6 步每步都是库公开 API 的最小用法。
+零参数即跑全链路（解析→文本→渲染→DWG 回写→再解析校验→DXF 双向→JSON 导出），产物 PNG/PDF/DWG/DXF 落当前目录（PDF 为矢量输出：整图单页 + 智能拆图多页单文件，书签=图名列表，文本轮廓化零字体嵌入）；`-f` 指定任意样本、`-o` 改输出目录、`-width` 改渲染宽度。源码见 [example/main.go](example/main.go)，6 步每步都是库公开 API 的最小用法。
 
 ## Docling 集成（联犀文档解析）
 
